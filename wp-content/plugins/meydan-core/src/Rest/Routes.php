@@ -25,5 +25,37 @@ final class Routes
   self::r('/campaigns/current','GET',[$misc,'currentCampaign']);self::r('/campaigns/(?P<id>\d+)','GET',[$misc,'campaign']);self::r('/campaigns/(?P<id>\d+)/schedule','GET',[$misc,'campaignSchedule']);
   self::r('/notifications','GET',[$notif,'list']);self::r('/notifications/unread-count','GET',[$notif,'unread']);self::r('/notifications/read-all','PUT',[$notif,'readAll']);self::r('/notifications/(?P<id>\d+)/read','PUT',[$notif,'read']);self::r('/notifications/(?P<id>\d+)/read','DELETE',[$notif,'unreadOne']);self::r('/notifications/(?P<id>\d+)/archive','PUT',[$notif,'archive']);self::r('/notifications/(?P<id>\d+)/archive','DELETE',[$notif,'unarchive']);self::r('/notifications/(?P<id>\d+)','DELETE',[$notif,'delete']);self::r('/admin/notifications/broadcast','POST',[$notif,'broadcast']);self::r('/config','GET',[$misc,'config']);
  }
- private static function r(string $route,string $method,callable $callback):void{register_rest_route(self::NS,$route,['methods'=>$method,'callback'=>$callback,'permission_callback'=>'__return_true']);}
+ private static function r(string $route,string $method,callable $callback):void
+ {
+  register_rest_route(self::NS,$route,['methods'=>$method,'callback'=>$callback,'permission_callback'=>self::permission($route,$method)]);
+ }
+
+ private static function permission(string $route,string $method):callable
+ {
+  if (str_starts_with($route,'/admin/')) {
+   $cap = match (true) {
+    str_contains($route,'content') => 'manage_meydan_content',
+    str_contains($route,'creator') => 'manage_meydan_creators',
+    str_contains($route,'notification') => 'manage_meydan_notifications',
+    str_contains($route,'reflection') => 'manage_meydan_media_reflections',
+    default => 'manage_options',
+   };
+   return static fn():bool|\WP_Error => current_user_can($cap) ? true : new \WP_Error('forbidden','دسترسی کافی ندارید.',['status'=>403]);
+  }
+  if (str_starts_with($route,'/auth/')) {
+   if (in_array($route,['/auth/logout','/auth/logout-all'],true)) {
+    return static fn():bool|\WP_Error => is_user_logged_in() ? true : new \WP_Error('unauthenticated','برای انجام این عملیات باید وارد شوید.',['status'=>401]);
+   }
+   return static fn():true => true;
+  }
+  $public = ['/timeline','/content','/creators','/speakers','/squares','/squares/map','/geo/provinces','/geo/cities','/initiatives','/explore/search','/explore/trends','/explore/suggestions','/campaigns/current','/config'];
+  $isPublic = in_array($route,$public,true)
+   || preg_match('#^/(content|creators|speakers|squares|initiatives|campaigns)/\\(\\?P<id>\\d+\\)#',$route)
+   || preg_match('#^/squares/\\(\\?P<id>\\d+\\)/(narratives|schedule)$#',$route)
+   || preg_match('#^/campaigns/\\(\\?P<id>\\d+\\)/schedule$#',$route)
+   || ($route === '/narratives/(?P<id>\\d+)' && $method === 'GET')
+   || str_starts_with($route,'/users/');
+  if ($isPublic) return static fn():true => true;
+  return static fn():bool|\WP_Error => is_user_logged_in() ? true : new \WP_Error('unauthenticated','برای انجام این عملیات باید وارد شوید.',['status'=>401]);
+ }
 }

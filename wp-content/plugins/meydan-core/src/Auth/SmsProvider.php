@@ -16,9 +16,11 @@ final class SmsProvider
             return true;
         }
 
-        $endpoint = defined('MEYDAN_SMS_ENDPOINT') ? trim((string) MEYDAN_SMS_ENDPOINT) : '';
+        $endpoint = defined('MEYDAN_SMS_ENDPOINT') ? trim((string) MEYDAN_SMS_ENDPOINT) : 'https://edge.ippanel.com/v1/api/send';
         $token = defined('MEYDAN_SMS_TOKEN') ? (string) MEYDAN_SMS_TOKEN : '';
-        if ($endpoint === '') {
+        $from = defined('MEYDAN_SMS_FROM_NUMBER') ? trim((string) MEYDAN_SMS_FROM_NUMBER) : '';
+        $pattern = defined('MEYDAN_SMS_PATTERN_CODE') ? trim((string) MEYDAN_SMS_PATTERN_CODE) : '';
+        if ($token === '' || $from === '' || $pattern === '') {
             return new WP_Error('sms_not_configured', 'سرویس پیامک پیکربندی نشده است.');
         }
 
@@ -26,9 +28,15 @@ final class SmsProvider
             'timeout' => 10,
             'headers' => array_filter([
                 'Content-Type' => 'application/json',
-                'Authorization' => $token !== '' ? 'Bearer ' . $token : null,
+                'Authorization' => $token,
             ]),
-            'body' => wp_json_encode(['phone' => $phone, 'code' => $code]),
+            'body' => wp_json_encode([
+                'sending_type' => 'pattern',
+                'from_number' => $from,
+                'code' => $pattern,
+                'recipients' => [$phone],
+                'params' => ['code' => $code],
+            ]),
         ]);
         if (is_wp_error($response)) {
             return $response;

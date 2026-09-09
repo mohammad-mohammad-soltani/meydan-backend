@@ -1,0 +1,2344 @@
+{
+  "info": {
+    "name": "Meydan API v1",
+    "_postman_id": "meydan-v1-local",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Generated from the registered REST routes. Set base_url to the local WordPress API root."
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/wp-json/meydan/v1"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "POST /auth/otp/request",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/otp/request",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "otp",
+            "request"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /auth/otp/verify",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/otp/verify",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "otp",
+            "verify"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /auth/refresh",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/refresh",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "refresh"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /auth/logout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/logout",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "logout"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /auth/logout-all",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/logout-all",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "logout-all"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /auth/register/user",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/register/user",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "register",
+            "user"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /auth/register/square",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/register/square",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "register",
+            "square"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /me",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PATCH /me/profile",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me/profile",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me",
+            "profile"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /me/narratives",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me/narratives",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me",
+            "narratives"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /me/following",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me/following",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me",
+            "following"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /me/initiatives",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me/initiatives",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me",
+            "initiatives"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /me/bookmarks",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me/bookmarks",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me",
+            "bookmarks"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /me/speaker-requests",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me/speaker-requests",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me",
+            "speaker-requests"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PATCH /me/square",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me/square",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me",
+            "square"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PUT /me/square/location",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me/square/location",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me",
+            "square",
+            "location"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /me/square/schedule",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me/square/schedule",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me",
+            "square",
+            "schedule"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /me/square/schedule",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me/square/schedule",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me",
+            "square",
+            "schedule"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PATCH /me/square/schedule/(?P<id>\\d+)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me/square/schedule/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me",
+            "square",
+            "schedule",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /me/square/schedule/(?P<id>\\d+)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me/square/schedule/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "me",
+            "square",
+            "schedule",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /users/(?P<id>\\d+)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/users/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "users",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /users/(?P<id>\\d+)/narratives",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/users/:id/narratives",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "users",
+            ":id",
+            "narratives"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /narratives/(?P<id>\\d+)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/narratives/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "narratives",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /narratives",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/narratives",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "narratives"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PATCH /narratives/(?P<id>\\d+)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/narratives/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "narratives",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /narratives/(?P<id>\\d+)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/narratives/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "narratives",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PUT /narratives/(?P<id>\\d+)/like",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/narratives/:id/like",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "narratives",
+            ":id",
+            "like"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /narratives/(?P<id>\\d+)/like",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/narratives/:id/like",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "narratives",
+            ":id",
+            "like"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PUT /narratives/(?P<id>\\d+)/repost",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/narratives/:id/repost",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "narratives",
+            ":id",
+            "repost"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /narratives/(?P<id>\\d+)/repost",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/narratives/:id/repost",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "narratives",
+            ":id",
+            "repost"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /narratives/(?P<id>\\d+)/share",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/narratives/:id/share",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "narratives",
+            ":id",
+            "share"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /narratives/(?P<id>\\d+)/comments",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/narratives/:id/comments",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "narratives",
+            ":id",
+            "comments"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /narratives/(?P<id>\\d+)/comments",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/narratives/:id/comments",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "narratives",
+            ":id",
+            "comments"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /comments/(?P<id>\\d+)/replies",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/comments/:id/replies",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "comments",
+            ":id",
+            "replies"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PATCH /comments/(?P<id>\\d+)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/comments/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "comments",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /comments/(?P<id>\\d+)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/comments/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "comments",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /narratives/(?P<id>\\d+)/media-reflections",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/narratives/:id/media-reflections",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "narratives",
+            ":id",
+            "media-reflections"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /admin/narratives/(?P<id>\\d+)/media-reflections",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/narratives/:id/media-reflections",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "narratives",
+            ":id",
+            "media-reflections"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PATCH /admin/media-reflections/(?P<id>\\d+)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/media-reflections/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "media-reflections",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /admin/media-reflections/(?P<id>\\d+)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/media-reflections/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "media-reflections",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /uploads",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/uploads",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "uploads"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PUT /uploads/(?P<upload_id>[A-Za-z0-9_\\-]+)/chunks/(?P<index>\\d+)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/uploads/:upload_id/chunks/:index",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "uploads",
+            ":upload_id",
+            "chunks",
+            ":index"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /uploads/(?P<upload_id>[A-Za-z0-9_\\-]+)/complete",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/uploads/:upload_id/complete",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "uploads",
+            ":upload_id",
+            "complete"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /uploads/(?P<upload_id>[A-Za-z0-9_\\-]+)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/uploads/:upload_id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "uploads",
+            ":upload_id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /timeline",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/timeline",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "timeline"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PUT /actors/(?P<type>user|square)/(?P<id>\\d+)/follow",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/actors/:type/:id/follow",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "actors",
+            ":type",
+            ":id",
+            "follow"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /actors/(?P<type>user|square)/(?P<id>\\d+)/follow",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/actors/:type/:id/follow",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "actors",
+            ":type",
+            ":id",
+            "follow"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /actors/(?P<type>user|square)/(?P<id>\\d+)/followers",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/actors/:type/:id/followers",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "actors",
+            ":type",
+            ":id",
+            "followers"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /actors/(?P<type>user|square)/(?P<id>\\d+)/following",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/actors/:type/:id/following",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "actors",
+            ":type",
+            ":id",
+            "following"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /content",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/content",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "content"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /content/(?P<id>\\d+)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/content/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "content",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PUT /content/(?P<id>\\d+)/bookmark",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/content/:id/bookmark",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "content",
+            ":id",
+            "bookmark"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /content/(?P<id>\\d+)/bookmark",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/content/:id/bookmark",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "content",
+            ":id",
+            "bookmark"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /content/(?P<id>\\d+)/share",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/content/:id/share",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "content",
+            ":id",
+            "share"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /content/(?P<id>\\d+)/files/(?P<file_id>\\d+)/download",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/content/:id/files/:file_id/download",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "content",
+            ":id",
+            "files",
+            ":file_id",
+            "download"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /admin/content",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/content",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "content"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PATCH /admin/content/(?P<id>\\d+)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/content/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "content",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /admin/content/(?P<id>\\d+)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/content/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "content",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /creators",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/creators",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "creators"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /creators/(?P<id>\\d+)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/creators/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "creators",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /speakers",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/speakers",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "speakers"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /speakers/(?P<id>\\d+)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/speakers/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "speakers",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /admin/creators",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/creators",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "creators"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PATCH /admin/creators/(?P<id>\\d+)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/creators/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "creators",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /admin/creators/(?P<id>\\d+)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/creators/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "creators",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /speaker-requests",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/speaker-requests",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "speaker-requests"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /speaker-requests/(?P<id>\\d+)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/speaker-requests/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "speaker-requests",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /speaker-requests/(?P<id>\\d+)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/speaker-requests/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "speaker-requests",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /squares",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/squares",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "squares"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /squares/map",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/squares/map",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "squares",
+            "map"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /squares/(?P<id>\\d+)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/squares/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "squares",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /squares/(?P<id>\\d+)/narratives",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/squares/:id/narratives",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "squares",
+            ":id",
+            "narratives"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /squares/(?P<id>\\d+)/schedule",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/squares/:id/schedule",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "squares",
+            ":id",
+            "schedule"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /geo/provinces",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/geo/provinces",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "geo",
+            "provinces"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /geo/cities",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/geo/cities",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "geo",
+            "cities"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /initiatives",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/initiatives",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "initiatives"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /initiatives/(?P<id>\\d+)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/initiatives/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "initiatives",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PUT /initiatives/(?P<id>\\d+)/join",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/initiatives/:id/join",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "initiatives",
+            ":id",
+            "join"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /initiatives/(?P<id>\\d+)/join",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/initiatives/:id/join",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "initiatives",
+            ":id",
+            "join"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /explore/search",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/explore/search",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "explore",
+            "search"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /explore/trends",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/explore/trends",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "explore",
+            "trends"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /explore/suggestions",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/explore/suggestions",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "explore",
+            "suggestions"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /campaigns/current",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/campaigns/current",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "campaigns",
+            "current"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /campaigns/(?P<id>\\d+)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/campaigns/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "campaigns",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /campaigns/(?P<id>\\d+)/schedule",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/campaigns/:id/schedule",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "campaigns",
+            ":id",
+            "schedule"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /notifications",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/notifications",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "notifications"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /notifications/unread-count",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/notifications/unread-count",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "notifications",
+            "unread-count"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PUT /notifications/read-all",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/notifications/read-all",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "notifications",
+            "read-all"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PUT /notifications/(?P<id>\\d+)/read",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/notifications/:id/read",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "notifications",
+            ":id",
+            "read"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /notifications/(?P<id>\\d+)/read",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/notifications/:id/read",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "notifications",
+            ":id",
+            "read"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PUT /notifications/(?P<id>\\d+)/archive",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/notifications/:id/archive",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "notifications",
+            ":id",
+            "archive"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /notifications/(?P<id>\\d+)/archive",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/notifications/:id/archive",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "notifications",
+            ":id",
+            "archive"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /notifications/(?P<id>\\d+)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/notifications/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "notifications",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /admin/notifications/broadcast",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/notifications/broadcast",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "notifications",
+            "broadcast"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /config",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/config",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "config"
+          ]
+        }
+      }
+    }
+  ]
+}
