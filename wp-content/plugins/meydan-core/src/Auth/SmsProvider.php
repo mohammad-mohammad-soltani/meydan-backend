@@ -16,10 +16,15 @@ final class SmsProvider
             return true;
         }
 
-        $endpoint = defined('MEYDAN_SMS_ENDPOINT') ? trim((string) MEYDAN_SMS_ENDPOINT) : 'https://edge.ippanel.com/v1/api/send';
-        $token = defined('MEYDAN_SMS_TOKEN') ? (string) MEYDAN_SMS_TOKEN : '';
-        $from = defined('MEYDAN_SMS_FROM_NUMBER') ? trim((string) MEYDAN_SMS_FROM_NUMBER) : '';
-        $pattern = defined('MEYDAN_SMS_PATTERN_CODE') ? trim((string) MEYDAN_SMS_PATTERN_CODE) : '';
+        $settings = (array) get_option('meydan_sms_settings', []);
+        $enabled = !array_key_exists('enabled', $settings) || (bool) $settings['enabled'];
+        if (!$enabled) {
+            return new WP_Error('sms_not_configured', 'ارسال پیامک در تنظیمات غیرفعال است.');
+        }
+        $endpoint = trim((string) ($settings['endpoint'] ?? (defined('MEYDAN_SMS_ENDPOINT') ? MEYDAN_SMS_ENDPOINT : 'https://edge.ippanel.com/v1/api/send')));
+        $token = (string) ($settings['token'] ?? (defined('MEYDAN_SMS_TOKEN') ? MEYDAN_SMS_TOKEN : ''));
+        $from = trim((string) ($settings['from_number'] ?? (defined('MEYDAN_SMS_FROM_NUMBER') ? MEYDAN_SMS_FROM_NUMBER : '')));
+        $pattern = trim((string) ($settings['pattern_code'] ?? (defined('MEYDAN_SMS_PATTERN_CODE') ? MEYDAN_SMS_PATTERN_CODE : '')));
         if ($token === '' || $from === '' || $pattern === '') {
             return new WP_Error('sms_not_configured', 'سرویس پیامک پیکربندی نشده است.');
         }
