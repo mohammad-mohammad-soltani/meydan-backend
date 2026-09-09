@@ -11,11 +11,27 @@ final class Stats
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_narrative_stats';
         $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE narrative_id = %d", $id), ARRAY_A);
+        // Likes, reposts and comments are source-of-truth relations. Older
+        // imported fixtures may contain stale aggregate values, so never let
+        // those values disagree with the data users can actually see.
+        $interactions = $wpdb->prefix . 'meydan_interactions';
+        $likes = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$interactions} WHERE object_type='narrative' AND object_id=%d AND action='like'",
+            $id
+        ));
+        $reposts = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$interactions} WHERE object_type='narrative' AND object_id=%d AND action='repost'",
+            $id
+        ));
+        $comments = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_type='meydan_comment' AND comment_approved='1'",
+            $id
+        ));
         return [
             'views' => (int) ($row['views'] ?? 0),
-            'likes' => (int) ($row['likes'] ?? 0),
-            'comments' => (int) ($row['comments'] ?? 0),
-            'reposts' => (int) ($row['reposts'] ?? 0),
+            'likes' => $likes,
+            'comments' => $comments,
+            'reposts' => $reposts,
             'shares' => (int) ($row['shares'] ?? 0),
         ];
     }

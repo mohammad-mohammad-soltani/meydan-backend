@@ -50,10 +50,15 @@ final class Routes
   }
   $public = ['/timeline','/content','/creators','/speakers','/squares','/squares/map','/geo/provinces','/geo/cities','/initiatives','/explore/search','/explore/trends','/explore/suggestions','/campaigns/current','/config'];
   $isPublic = in_array($route,$public,true)
-   || preg_match('#^/(content|creators|speakers|squares|initiatives|campaigns)/\\(\\?P<id>\\d+\\)#',$route)
-   || preg_match('#^/squares/\\(\\?P<id>\\d+\\)/(narratives|schedule)$#',$route)
-   || preg_match('#^/campaigns/\\(\\?P<id>\\d+\\)/schedule$#',$route)
-   || ($route === '/narratives/(?P<id>\\d+)' && $method === 'GET')
+   || ($method === 'GET' && (
+    str_starts_with($route,'/content/(?P<id>')
+    || str_starts_with($route,'/creators/(?P<id>')
+    || str_starts_with($route,'/speakers/(?P<id>')
+    || str_starts_with($route,'/squares/(?P<id>')
+    || str_starts_with($route,'/initiatives/(?P<id>')
+    || str_starts_with($route,'/campaigns/(?P<id>')
+    || str_starts_with($route,'/narratives/(?P<id>')
+   ))
    || str_starts_with($route,'/users/');
   if ($isPublic) return static fn():true => true;
   return static fn():bool|\WP_Error => is_user_logged_in() ? true : new \WP_Error('unauthenticated','برای انجام این عملیات باید وارد شوید.',['status'=>401]);

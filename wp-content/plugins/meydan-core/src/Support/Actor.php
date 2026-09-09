@@ -21,7 +21,7 @@ final class Actor
             'id' => 'usr_' . $userId,
             'type' => 'user',
             'display_name' => (string) get_user_meta($userId, 'meydan_full_name', true) ?: ($user?->display_name ?: 'کاربر میدان'),
-            'avatar_url' => self::avatar((int) get_user_meta($userId, 'meydan_avatar_media_id', true), $userId),
+            'avatar_url' => self::avatarUrl((int) get_user_meta($userId, 'meydan_avatar_media_id', true)),
             'verified' => (bool) get_user_meta($userId, 'meydan_verified', true),
         ];
     }
@@ -33,7 +33,7 @@ final class Actor
             'id' => 'sq_' . $squareId,
             'type' => 'square',
             'display_name' => $post ? get_the_title($post) : 'میدان',
-            'avatar_url' => self::mediaUrl((int) get_post_meta($squareId, 'meydan_avatar_media_id', true)),
+            'avatar_url' => self::avatarUrl((int) get_post_meta($squareId, 'meydan_avatar_media_id', true)),
             'verified' => (bool) get_post_meta($squareId, 'meydan_verified', true),
         ];
     }
@@ -67,10 +67,12 @@ final class Actor
         return null;
     }
 
-    private static function avatar(int $mediaId, int $userId): string
+    public static function avatarUrl(int $mediaId): string
     {
-        $url = self::mediaUrl($mediaId);
-        return $url ?: (string) get_avatar_url($userId, ['size' => 256]);
+        if ($mediaId <= 0 || !wp_attachment_is_image($mediaId)) {
+            return '';
+        }
+        return self::mediaUrl($mediaId);
     }
 
     public static function mediaUrl(int $mediaId): string

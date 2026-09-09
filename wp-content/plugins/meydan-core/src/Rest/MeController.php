@@ -17,7 +17,7 @@ final class MeController extends BaseController
     {
         if ($e = $this->guard()) return $e;
         $uid = get_current_user_id();
-        $type = (string) get_user_meta($uid, 'meydan_account_type', true) ?: 'user';
+        $type = $this->accountType($uid);
 
         if ($type === 'square') {
             $sid = (int) get_user_meta($uid, 'meydan_square_id', true);
@@ -56,8 +56,13 @@ final class MeController extends BaseController
             }
         }
 
-        foreach (['province_id', 'city_id', 'avatar_media_id'] as $k) {
+        foreach (['province_id', 'city_id'] as $k) {
             if (array_key_exists($k, $p)) update_user_meta($uid, 'meydan_' . $k, (int) $p[$k]);
+        }
+        if (array_key_exists('avatar_media_id', $p)) {
+            $avatarId = $this->avatarMediaId($p['avatar_media_id'], $uid);
+            if (is_wp_error($avatarId)) return $this->error($avatarId);
+            update_user_meta($uid, 'meydan_avatar_media_id', $avatarId);
         }
 
         if (isset($p['skills'])) {
@@ -90,7 +95,7 @@ final class MeController extends BaseController
     {
         if ($e = $this->guard()) return $e;
         $uid = get_current_user_id();
-        $type = (string) get_user_meta($uid, 'meydan_account_type', true) ?: 'user';
+        $type = $this->accountType($uid);
         $actorId = $type === 'square' ? (int) get_user_meta($uid, 'meydan_square_id', true) : $uid;
         return $this->actorNarratives($type, $actorId, $r);
     }
@@ -146,7 +151,11 @@ final class MeController extends BaseController
         if (isset($p['name'])) $post['post_title'] = sanitize_text_field((string) $p['name']);
         if (isset($p['description'])) $post['post_content'] = wp_kses_post((string) $p['description']);
         if ($post) wp_update_post(['ID' => $sid] + $post);
-        if (isset($p['avatar_media_id'])) update_post_meta($sid, 'meydan_avatar_media_id', (int) $p['avatar_media_id']);
+        if (array_key_exists('avatar_media_id', $p)) {
+            $avatarId = $this->avatarMediaId($p['avatar_media_id'], $uid);
+            if (is_wp_error($avatarId)) return $this->error($avatarId);
+            update_post_meta($sid, 'meydan_avatar_media_id', $avatarId);
+        }
         if (isset($p['subtitle'])) update_post_meta($sid, 'meydan_subtitle', sanitize_text_field((string) $p['subtitle']));
         if (isset($p['profile_about'])) update_post_meta($sid, 'meydan_profile_about', wp_kses_post((string) $p['profile_about']));
         if (isset($p['profile_skills'])) update_post_meta($sid, 'meydan_profile_skills', array_values(array_filter(array_map('sanitize_text_field', (array) $p['profile_skills']))));
@@ -258,7 +267,8 @@ final class MeController extends BaseController
         return [
             'id' => $uid,
             'full_name' => (string) get_user_meta($uid, 'meydan_full_name', true) ?: (get_userdata($uid)?->display_name ?: 'کاربر میدان'),
-            'avatar_url' => Actor::mediaUrl((int) get_user_meta($uid, 'meydan_avatar_media_id', true)),
+            'avatar_media_id' => (int) get_user_meta($uid, 'meydan_avatar_media_id', true) ?: null,
+            'avatar_url' => Actor::avatarUrl((int) get_user_meta($uid, 'meydan_avatar_media_id', true)),
             'headline' => (string) get_user_meta($uid, 'meydan_headline', true),
             'verified' => (bool) get_user_meta($uid, 'meydan_verified', true),
             'province_id' => (int) get_user_meta($uid, 'meydan_province_id', true) ?: null,
@@ -277,6 +287,7 @@ final class MeController extends BaseController
         if (!$data) return null;
         $post = get_post($sid);
         $data['slug'] = $post ? $post->post_name : (string) $sid;
+        $data['avatar_media_id'] = (int) get_post_meta($sid, 'meydan_avatar_media_id', true) ?: null;
         $data['handle'] = (string) get_post_meta($sid, 'meydan_handle', true);
         $data['subtitle'] = (string) get_post_meta($sid, 'meydan_subtitle', true);
         $data['profile_about'] = (string) get_post_meta($sid, 'meydan_profile_about', true);
@@ -302,7 +313,29 @@ final class MeController extends BaseController
         return Response::ok(array_values(array_filter(array_map([Serializer::class, 'narrative'], $q->posts))));
     }
 
+    private function accountType(int $uid): string
+    {
+        $stored = (string) get_user_meta($uid, 'meydan_account_type', true);
+        $user = get_userdata($uid);
+        // WordPress administrators may change the role directly. Keep the
+        // account identity in sync with that authoritative role on next use.
+        $type = $user && in_array('meydan_square', (array) $user->roles, true) ? 'square' : ($stored === 'square' ? 'square' : 'user');
+        if ($stored !== $type) update_user_meta($uid, 'meydan_account_type', $type);
+        return $type;
+    }
+
+    private function avatarMediaId(mixed $value, int $uid): int|\WP_Error
+    {
+        $mediaId = (int) $value;
+        if ($mediaId === 0) return 0;
+        if (!wp_attachment_is_image($mediaId)) return new \WP_Error('validation_failed', 'آواتار باید یک تصویر معتبر باشد.', ['status' => 422]);
+        if ((int) get_post_meta($mediaId, 'meydan_upload_owner_user_id', true) !== $uid || get_post_meta($mediaId, 'meydan_upload_purpose', true) !== 'avatar') {
+            return new \WP_Error('forbidden', 'فقط تصویر آواتار آپلودشده توسط خودتان قابل انتخاب است.', ['status' => 403]);
+        }
+        return $mediaId;
+    }
+
     private function guard(){return is_user_logged_in()?null:Response::error('unauthenticated','برای انجام این عملیات باید وارد شوید.',401);}
-    private function guardSquare(){if($e=$this->guard())return $e;return get_user_meta(get_current_user_id(),'meydan_account_type',true)==='square'?null:Response::error('forbidden','این عملیات فقط برای حساب میدان مجاز است.',403);}
+    private function guardSquare(){if($e=$this->guard())return $e;return $this->accountType((int)get_current_user_id())==='square'?null:Response::error('forbidden','این عملیات فقط برای حساب میدان مجاز است.',403);}
     public function speakerRow(array $r):array{return ['id'=>(int)$r['id'],'creator_id'=>(int)$r['creator_id'],'venue'=>$r['venue'],'requested_at'=>gmdate(DATE_ATOM,strtotime($r['requested_at'].' UTC')),'note'=>$r['note'],'status'=>$r['status'],'created_at'=>gmdate(DATE_ATOM,strtotime($r['created_at'].' UTC'))];}
 }

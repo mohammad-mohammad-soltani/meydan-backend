@@ -40,6 +40,7 @@ final class Serializer
             'attachments' => array_values(array_map([self::class, 'attachment'], $attachments)),
             'tags' => wp_get_post_terms($id, 'meydan_narrative_tag', ['fields' => 'names']),
             'initiative' => $initiativeId ? self::initiative($initiativeId) : null,
+            'poll' => get_post_meta($id, 'meydan_poll', true) ?: null,
             'is_echo' => (bool) get_post_meta($id, 'meydan_is_echo', true),
             'media_reflections' => $reflections,
             'location' => [
@@ -60,6 +61,7 @@ final class Serializer
         $url = $mediaId ? (string) wp_get_attachment_url($mediaId) : (string) ($item['url'] ?? '');
         $path = $mediaId ? get_attached_file($mediaId) : '';
         $mime = $mediaId ? (string) get_post_mime_type($mediaId) : (string) ($item['mime_type'] ?? '');
+        $metadata = $mediaId ? wp_get_attachment_metadata($mediaId) : [];
         return [
             'id' => $mediaId,
             'type' => self::mediaType($mime, $url),
@@ -67,6 +69,8 @@ final class Serializer
             'filename' => $path ? wp_basename($path) : wp_basename((string) parse_url($url, PHP_URL_PATH)),
             'url' => $url,
             'size' => ($path && is_file($path)) ? (int) filesize($path) : (int) ($item['size'] ?? 0),
+            'width' => isset($metadata['width']) ? (int) $metadata['width'] : null,
+            'height' => isset($metadata['height']) ? (int) $metadata['height'] : null,
             'duration' => isset($item['duration']) ? (float) $item['duration'] : null,
             'caption' => isset($item['caption']) ? (string) $item['caption'] : null,
             'label' => isset($item['label']) ? (string) $item['label'] : null,
@@ -81,7 +85,10 @@ final class Serializer
             return null;
         }
         $id = (int) $post->ID;
-        $attachments = (array) get_post_meta($id, 'meydan_attachments', true);
+        $attachments = array_values(array_filter(
+            (array) get_post_meta($id, 'meydan_attachments', true),
+            'is_array'
+        ));
         usort($attachments, static fn(array $a, array $b): int => ((int) ($a['order'] ?? 0)) <=> ((int) ($b['order'] ?? 0)));
         $categories = wp_get_post_terms($id, 'meydan_content_category');
         return [
@@ -118,7 +125,7 @@ final class Serializer
             'types' => is_wp_error($types) ? [] : array_values($types),
             'role' => (string) get_post_meta($id, 'meydan_role', true),
             'bio' => $post->post_content,
-            'avatar_url' => Actor::mediaUrl((int) get_post_meta($id, 'meydan_avatar_media_id', true)) ?: (string) get_the_post_thumbnail_url($id, 'large'),
+            'avatar_url' => Actor::avatarUrl((int) get_post_meta($id, 'meydan_avatar_media_id', true)),
             'verified' => (bool) get_post_meta($id, 'meydan_verified', true),
             'cities' => array_values(array_map('intval', (array) get_post_meta($id, 'meydan_cities', true))),
             'social_links' => (array) get_post_meta($id, 'meydan_social_links', true),
@@ -138,7 +145,7 @@ final class Serializer
             'id' => $id,
             'name' => get_the_title($post),
             'description' => $post->post_content,
-            'avatar_url' => Actor::mediaUrl((int) get_post_meta($id, 'meydan_avatar_media_id', true)) ?: (string) get_the_post_thumbnail_url($id, 'large'),
+            'avatar_url' => Actor::avatarUrl((int) get_post_meta($id, 'meydan_avatar_media_id', true)),
             'verified' => (bool) get_post_meta($id, 'meydan_verified', true),
             'approval_status' => (string) get_post_meta($id, 'meydan_approval_status', true) ?: 'pending_verification',
             'location' => $geo ? [
@@ -163,6 +170,11 @@ final class Serializer
         }
         global $wpdb;
         $count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}meydan_initiative_members WHERE initiative_id = %d AND status = 'active'", $post->ID));
+        $viewer = Viewer::current();
+        $joined = false;
+        if ($viewer->isAuthenticated()) {
+            $joined = (bool) $wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->prefix}meydan_initiative_members WHERE initiative_id=%d AND user_id=%d AND status='active' LIMIT 1", $post->ID, $viewer->userId));
+        }
         return [
             'id' => (int) $post->ID,
             'title' => get_the_title($post),
@@ -173,6 +185,7 @@ final class Serializer
             'status' => (string) get_post_meta($post->ID, 'meydan_status', true) ?: 'active',
             'allow_guest_join' => (bool) get_post_meta($post->ID, 'meydan_allow_guest_join', true),
             'participant_count' => $count,
+            'viewer_state' => $viewer->isAuthenticated() ? ['joined' => $joined] : null,
         ];
     }
 

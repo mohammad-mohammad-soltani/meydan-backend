@@ -8,7 +8,7 @@ use Meydan\Core\Domain\Registrations;
 
 final class SeedData
 {
-    public const VERSION = '2026-09-09.1';
+    public const VERSION = '2026-09-10.1';
 
     public static function run(bool $force = false): array
     {
@@ -92,6 +92,31 @@ final class SeedData
                     $cityId = (int) $wpdb->insert_id;
                 }
                 $cities[$citySlug] = ['id' => $cityId, 'province_id' => $provinceId];
+            }
+        }
+
+        $fixturePath = dirname(__DIR__, 2) . '/data/iran-cities.json';
+        $fixture = is_file($fixturePath) ? json_decode((string) file_get_contents($fixturePath), true) : null;
+        if (is_array($fixture)) {
+            $fixtureProvinces = [];
+            foreach ((array) ($fixture['ostan'] ?? []) as $index => $province) {
+                $name = sanitize_text_field((string) ($province['name'] ?? ''));
+                if ($name === '') continue;
+                $provinceId = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM {$provincesTable} WHERE name=%s LIMIT 1", $name));
+                if (!$provinceId) {
+                    $wpdb->insert($provincesTable, ['name' => $name, 'slug' => sanitize_title($name), 'sort_order' => $index + 1, 'active' => 1]);
+                    $provinceId = (int) $wpdb->insert_id;
+                }
+                $fixtureProvinces[(int) ($province['id'] ?? 0)] = $provinceId;
+            }
+            foreach ((array) ($fixture['shahr'] ?? []) as $index => $city) {
+                $name = sanitize_text_field((string) ($city['name'] ?? ''));
+                $provinceId = $fixtureProvinces[(int) ($city['ostan'] ?? 0)] ?? 0;
+                if ($name === '' || !$provinceId) continue;
+                $cityId = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM {$citiesTable} WHERE province_id=%d AND name=%s LIMIT 1", $provinceId, $name));
+                if (!$cityId) {
+                    $wpdb->insert($citiesTable, ['province_id' => $provinceId, 'name' => $name, 'slug' => sanitize_title($name), 'sort_order' => $index + 1, 'active' => 1]);
+                }
             }
         }
 

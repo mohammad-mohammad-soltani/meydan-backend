@@ -55,6 +55,7 @@ services:
     volumes:
       - wp_data:/var/www/html
       - ./wp-content/plugins/meydan-core:/var/www/html/wp-content/plugins/meydan-core
+      - ./docker/uploads.ini:/usr/local/etc/php/conf.d/zz-meydan-uploads.ini:ro
 
   wpcli:
     image: wordpress:cli-2.12.0-php8.4
