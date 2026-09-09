@@ -67,8 +67,8 @@ jobs:
           cat >/tmp/deploy-meydan-backend.sh <<'SCRIPT'
           #!/usr/bin/env bash
           set -euo pipefail
-          DOMAIN="$1"
-          PORT="$2"
+          DOMAIN="meydan-backend-1362642112.style.dev"
+          PORT="8082"
           APP_DIR=/srv/meydan-backend
           RELEASE_DIR=/tmp/meydan-backend-release
 
@@ -140,13 +140,11 @@ jobs:
           npx freestyle@latest vm fs write "$FREESTYLE_VM_SLUG" /tmp/deploy-meydan-backend.sh /tmp/deploy-meydan-backend.sh
 
       - name: Start WordPress and MariaDB
-        shell: bash
         run: |
-          REMOTE_CMD="bash /tmp/deploy-meydan-backend.sh '${FREESTYLE_DOMAIN}' '${WORDPRESS_PORT}'"
           npx freestyle@latest vm exec "$FREESTYLE_VM_SLUG" \
             --linux-user root \
             --timeout-ms 300000 \
-            -- "$REMOTE_CMD"
+            -- bash /tmp/deploy-meydan-backend.sh
 
       - name: Route HTTPS domain
         shell: bash
