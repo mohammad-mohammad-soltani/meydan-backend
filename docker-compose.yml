@@ -29,6 +29,7 @@ services:
       WORDPRESS_DB_NAME: ${DB_NAME:-meydan}
       WORDPRESS_DB_USER: ${DB_USER:-meydan}
       WORDPRESS_DB_PASSWORD: ${DB_PASSWORD:-change-me}
+      WP_URL: ${WP_URL:-http://localhost:8082}
       WORDPRESS_DEBUG: ${WP_DEBUG:-1}
       WP_ENVIRONMENT_TYPE: ${WP_ENVIRONMENT_TYPE:-local}
       MEYDAN_DEV_OTP_CODE: ${MEYDAN_DEV_OTP_CODE:-}
@@ -37,12 +38,20 @@ services:
       MEYDAN_SMS_FROM_NUMBER: ${MEYDAN_SMS_FROM_NUMBER:-}
       MEYDAN_SMS_PATTERN_CODE: ${MEYDAN_SMS_PATTERN_CODE:-}
       WORDPRESS_CONFIG_EXTRA: |
+        if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
+            $_SERVER['HTTPS'] = 'on';
+        }
+        $meydan_wp_url = getenv('WP_URL');
+        if ($meydan_wp_url) {
+            define('WP_HOME', $meydan_wp_url);
+            define('WP_SITEURL', $meydan_wp_url);
+        }
         define('WP_ENVIRONMENT_TYPE', getenv('WP_ENVIRONMENT_TYPE') ?: 'production');
         define('MEYDAN_DEV_OTP_CODE', getenv('MEYDAN_DEV_OTP_CODE') ?: '');
         define('MEYDAN_SMS_ENDPOINT', getenv('MEYDAN_SMS_ENDPOINT') ?: '');
         define('MEYDAN_SMS_TOKEN', getenv('MEYDAN_SMS_TOKEN') ?: '');
         define('DISALLOW_FILE_EDIT', true);
-        define('FORCE_SSL_ADMIN', false);
+        define('FORCE_SSL_ADMIN', (getenv('WP_ENVIRONMENT_TYPE') ?: 'local') === 'production');
     volumes:
       - wp_data:/var/www/html
       - ./wp-content/plugins/meydan-core:/var/www/html/wp-content/plugins/meydan-core
