@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Auth;
 
+use Meydan\Core\Audit\AuditLogger;
 use WP_Error;
 
 final class SmsProvider
@@ -29,7 +30,7 @@ final class SmsProvider
         $settings = (array) get_option('meydan_sms_settings', []);
         $enabled = !array_key_exists('enabled', $settings) || (bool) $settings['enabled'];
         if (!$enabled) {
-            return new WP_Error('sms_not_configured', 'ارسال پیامک در تنظیمات غیرفعال است.');
+            return $this->failure('sms_not_configured', 'ارسال پیامک در تنظیمات غیرفعال است.', ['reason' => 'disabled']);
         }
         $endpoint = trim((string) ($settings['endpoint'] ?? (defined('MEYDAN_SMS_ENDPOINT') ? MEYDAN_SMS_ENDPOINT : 'https://api.iranpayamak.com/ws/v1/sms/pattern')));
         if ($endpoint === '' || $endpoint === 'https://edge.ippanel.com/v1/api/send') {
@@ -38,14 +39,19 @@ final class SmsProvider
         $token = (string) ($settings['token'] ?? (defined('MEYDAN_SMS_TOKEN') ? MEYDAN_SMS_TOKEN : ''));
         $from = trim((string) ($settings['from_number'] ?? (defined('MEYDAN_SMS_FROM_NUMBER') ? MEYDAN_SMS_FROM_NUMBER : '')));
         $pattern = trim((string) ($settings['pattern_code'] ?? (defined('MEYDAN_SMS_PATTERN_CODE') ? MEYDAN_SMS_PATTERN_CODE : '')));
-        $numberFormat = trim((string) ($settings['number_format'] ?? 'english'));
         if ($token === '' || $from === '' || $pattern === '') {
-            return new WP_Error('sms_not_configured', 'سرویس پیامک پیکربندی نشده است.');
+            return $this->failure('sms_not_configured', 'سرویس پیامک پیکربندی نشده است.', [
+                'provider' => 'iranpayamak',
+                'reason' => 'missing_token_or_line_or_pattern',
+            ]);
         }
 
         $recipient = self::recipientNumber($phone);
         if ($recipient === '') {
-            return new WP_Error('sms_invalid_recipient', 'شماره گیرنده پیامک معتبر نیست.');
+            return $this->failure('sms_invalid_recipient', 'شماره گیرنده پیامک معتبر نیست.', [
+                'provider' => 'iranpayamak',
+                'reason' => 'invalid_recipient_format',
+            ]);
         }
 
         $response = wp_remote_post($endpoint, [
@@ -57,18 +63,31 @@ final class SmsProvider
             ]),
             'body' => wp_json_encode([
                 'code' => $pattern,
-                'attributes' => ['var1' => $code],
+                'attributes' => ['code' => $code],
                 'recipient' => $recipient,
                 'line_number' => $from,
-                'number_format' => in_array($numberFormat, ['english', 'persian'], true) ? $numberFormat : 'english',
+                'number_format' => 'english',
             ]),
         ]);
         if (is_wp_error($response)) {
-            return $response;
+            return $this->failure('sms_transport_error', 'ارتباط با ایران‌پیامک ناموفق بود.', [
+                'provider' => 'iranpayamak',
+                'reason' => 'wp_http_error',
+                'transport_error' => $response->get_error_message(),
+            ]);
         }
         $status = wp_remote_retrieve_response_code($response);
         if ($status < 200 || $status >= 300) {
-            return new WP_Error('sms_provider_error', 'ارسال پیامک ناموفق بود.');
+            $body = substr((string) wp_remote_retrieve_body($response), 0, 4000);
+            $message = 'ایران‌پیامک درخواست را نپذیرفت. HTTP ' . $status . '.';
+            if ($body !== '') {
+                $message .= ' پاسخ provider: ' . $body;
+            }
+            return $this->failure('sms_provider_error', $message, [
+                'provider' => 'iranpayamak',
+                'http_status' => $status,
+                'response_body' => $body,
+            ]);
         }
         return true;
     }
@@ -80,5 +99,15 @@ final class SmsProvider
             return '0' . $matches[1];
         }
         return preg_match('/^09\d{9}$/', $phone) ? $phone : '';
+    }
+
+    private function failure(string $code, string $message, array $details = []): WP_Error
+    {
+        AuditLogger::log('sms_provider_error', 'sms', null, null, [
+            'error_code' => $code,
+            'message' => $message,
+            'details' => $details,
+        ]);
+        return new WP_Error($code, $message, $details);
     }
 }

@@ -38,12 +38,11 @@ final class SettingsPage
         echo '<section class="meydan-panel meydan-panel-accent"><div class="meydan-panel-heading"><div><span class="meydan-section-kicker">اتصال پیامک</span><h2>ارائه‌دهنده OTP</h2><p>برای ورود بدون رمز عبور، کد یک‌بارمصرف از طریق ایران‌پیامک (FarazSMS) و الگوی ثبت‌شده ارسال می‌شود. توکن به‌صورت ماسک‌شده نگهداری می‌شود و در صفحه دوباره نمایش داده نمی‌شود.</p></div><span class="meydan-status-dot">امن</span></div><div class="meydan-form-grid">';
         self::toggle('sms_enabled', 'فعال‌سازی ارسال پیامک', !isset($sms['enabled']) || (bool) $sms['enabled'], 'در محیط local اگر کد توسعه تعریف شده باشد، ارسال واقعی انجام نمی‌شود.');
         self::text('sms_endpoint', 'آدرس API', $smsEndpoint, 'آدرس رسمی ارسال پیامک الگویی ایران‌پیامک؛ فقط در صورت نیاز به proxy تغییر دهید.', 'url');
-        self::secret('sms_token', 'API Token', !empty($sms['token']), 'توکن را برای ثبت یا جایگزینی وارد کنید. برای پاک کردن، گزینه پاک‌سازی را فعال کنید.');
+        self::text('sms_token', 'API Key', (string) ($sms['token'] ?? ''), 'کلید API به‌صورت کامل نمایش داده می‌شود؛ برای پاک کردن، گزینه پاک‌سازی را فعال کنید.', 'text');
         self::text('sms_from_number', 'شماره خط فرستنده', (string) ($sms['from_number'] ?? ''), 'شماره خط اختصاصی ایران‌پیامک که در درخواست با line_number ارسال می‌شود.', 'text');
-        self::text('sms_pattern_code', 'کد الگوی پیامک', (string) ($sms['pattern_code'] ?? ''), 'شناسه/کد الگو را از پنل ایران‌پیامک دریافت کنید؛ متغیر OTP با نام var1 ارسال می‌شود.', 'text');
-        self::select('sms_number_format', 'فرمت شماره', (string) ($sms['number_format'] ?? 'english'), ['english' => 'English', 'persian' => 'Persian'], 'فرمت number_format مطابق مستندات ایران‌پیامک.');
+        self::text('sms_pattern_code', 'کد الگوی پیامک', (string) ($sms['pattern_code'] ?? ''), 'شناسه الگو را از پنل ایران‌پیامک دریافت کنید؛ متغیر الگوی شما باید code باشد تا مقدار OTP با attributes.code ارسال شود.', 'text');
         self::toggle('sms_clear_token', 'پاک‌سازی توکن ذخیره‌شده', false, 'برای حذف توکن فعلی؛ این گزینه بعد از ذخیره دوباره خاموش می‌شود.');
-        echo '</div><p class="meydan-help"><strong>قرارداد ارسال:</strong> درخواست POST با هدرهای <code>Api-Key</code> و <code>Accept: application/json</code> به endpoint رسمی ارسال می‌شود. بدنه شامل <code>code</code>، <code>attributes.var1</code>، <code>recipient</code> و <code>line_number</code> است.</p>';
+        echo '</div><p class="meydan-help"><strong>قرارداد ارسال:</strong> درخواست POST با هدرهای <code>Api-Key</code> و <code>Accept: application/json</code> به endpoint رسمی ارسال می‌شود. بدنه شامل <code>code</code> شناسه الگو، <code>attributes.code</code> مقدار OTP، <code>recipient</code>، <code>line_number</code> و <code>number_format=english</code> است.</p>';
         echo '<div class="meydan-sms-test"><div><strong>تست واقعی اتصال و الگو</strong><p>پس از ذخیره تنظیمات، یک شماره واقعی را وارد کنید. این دکمه حتی در محیط local مستقیماً با ایران‌پیامک تماس می‌گیرد و فقط پس از پذیرش درخواست توسط ارائه‌دهنده پیام موفقیت نشان می‌دهد.</p></div><div class="meydan-sms-test-form"><label class="meydan-field"><span class="meydan-label">شماره گیرنده تست</span><input type="tel" name="sms_test_phone" inputmode="tel" placeholder="09120000000" autocomplete="tel"><small>شماره با فرمت 09 یا +98 وارد شود.</small></label><button type="submit" name="meydan_admin_action" value="sms_test" class="button button-secondary">ارسال پیامک تست واقعی</button></div></div></section>';
 
         echo '<section class="meydan-panel"><div class="meydan-panel-heading"><div><span class="meydan-section-kicker">رفتار عمومی</span><h2>تنظیمات API</h2><p>این بخش روی کلاینت‌های متصل به بک‌اند اثر می‌گذارد. Originها را بدون مسیر و هرکدام در یک خط وارد کنید.</p></div></div>';
@@ -69,8 +68,6 @@ final class SettingsPage
         $sms['endpoint'] = esc_url_raw((string) wp_unslash($_POST['sms_endpoint'] ?? '')) ?: 'https://api.iranpayamak.com/ws/v1/sms/pattern';
         $sms['from_number'] = sanitize_text_field(wp_unslash($_POST['sms_from_number'] ?? ''));
         $sms['pattern_code'] = sanitize_text_field(wp_unslash($_POST['sms_pattern_code'] ?? ''));
-        $numberFormat = (string) wp_unslash($_POST['sms_number_format'] ?? 'english');
-        $sms['number_format'] = in_array($numberFormat, ['english', 'persian'], true) ? $numberFormat : 'english';
         if (!empty($_POST['sms_clear_token'])) {
             unset($sms['token']);
         } elseif (isset($_POST['sms_token']) && trim((string) wp_unslash($_POST['sms_token'])) !== '') {
