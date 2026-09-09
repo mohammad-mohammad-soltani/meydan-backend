@@ -38,13 +38,13 @@ services:
       MEYDAN_SMS_FROM_NUMBER: ${MEYDAN_SMS_FROM_NUMBER:-}
       MEYDAN_SMS_PATTERN_CODE: ${MEYDAN_SMS_PATTERN_CODE:-}
       WORDPRESS_CONFIG_EXTRA: |
-        if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
-            $_SERVER['HTTPS'] = 'on';
+        if (!empty($$_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($$_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
+            $$_SERVER['HTTPS'] = 'on';
         }
-        $meydan_wp_url = getenv('WP_URL');
-        if ($meydan_wp_url) {
-            define('WP_HOME', $meydan_wp_url);
-            define('WP_SITEURL', $meydan_wp_url);
+        $$meydan_wp_url = getenv('WP_URL');
+        if ($$meydan_wp_url) {
+            define('WP_HOME', $$meydan_wp_url);
+            define('WP_SITEURL', $$meydan_wp_url);
         }
         define('WP_ENVIRONMENT_TYPE', getenv('WP_ENVIRONMENT_TYPE') ?: 'production');
         define('MEYDAN_DEV_OTP_CODE', getenv('MEYDAN_DEV_OTP_CODE') ?: '');
