@@ -16,7 +16,7 @@ final class FeatureHydrator
         global $wpdb;
         $recent = [];
         if ($candidates) {
-            $viewerId = $viewer->isAuthenticated() ? (string)$viewer->userId : $viewer->guestId;
+            $viewerId = $viewer->id;
             $rows = $wpdb->get_col($wpdb->prepare(
                 "SELECT narrative_id FROM {$wpdb->prefix}meydan_served_history WHERE viewer_type=%s AND viewer_id=%s AND served_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 24 HOUR)",
                 $viewer->type, $viewerId
