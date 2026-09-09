@@ -21,8 +21,9 @@ final class CliCommand
     public function seed(array $args, array $assocArgs): void
     {
         $result = SeedData::run(isset($assocArgs['force']));
+        SeedRepairs::run();
         if (!empty($result['skipped'])) {
-            \WP_CLI::success('Meydan seed already applied: ' . $result['version']);
+            \WP_CLI::success('Meydan seed already applied; taxonomy/data repairs verified: ' . $result['version']);
             return;
         }
         foreach ($result as $key => $value) {
