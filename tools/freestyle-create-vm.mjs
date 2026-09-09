@@ -14,14 +14,13 @@ try {
 
 if (existing) {
   const vm = freestyle.vms.ref(slug);
-  await vm.update({ idleTimeoutSeconds: -1 });
+  await vm.update({ idleTimeoutSeconds: null });
   console.log(`Using existing Freestyle VM: ${slug}`);
   process.exit(0);
 }
 
 const { vmId } = await freestyle.vms.create({
   slug,
-  persistence: { type: "persistent" },
   idleTimeoutSeconds: null,
   firewall: {
     rules: [{ action: "allow", source: {}, destination: { public: true } }],
@@ -29,4 +28,4 @@ const { vmId } = await freestyle.vms.create({
   metadata: { project: "meydan-backend", managedBy: "github-actions" },
 });
 
-console.log(`Created persistent Freestyle VM ${slug} (${vmId})`);
+console.log(`Created Freestyle VM ${slug} (${vmId})`);
