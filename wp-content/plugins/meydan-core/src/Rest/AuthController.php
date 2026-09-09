@@ -14,7 +14,26 @@ use WP_REST_Request;
 
 final class AuthController extends BaseController
 {
-    public function requestOtp(WP_REST_Request $r){$p=$this->json($r);$v=(new OtpService())->request((string)($p['phone']??''));return is_wp_error($v)?$this->error($v):Response::ok($v);}
+    public function requestOtp(WP_REST_Request $r)
+    {
+        try {
+            $p = $this->json($r);
+            $v = (new OtpService())->request((string) ($p['phone'] ?? ''));
+            return is_wp_error($v) ? $this->error($v) : Response::ok($v);
+        } catch (\Throwable $e) {
+            error_log('[meydan-auth] OTP request failed: ' . $e->getMessage());
+            AuditLogger::log('otp_request_exception', 'auth', null, null, [
+                'exception' => get_class($e),
+                'message' => $e->getMessage(),
+            ]);
+            return Response::error(
+                'internal_error',
+                'ارسال کد ورود با خطای داخلی روبه‌رو شد. دوباره تلاش کنید.',
+                500
+            );
+        }
+    }
+
     public function verifyOtp(WP_REST_Request $r){$p=$this->json($r);$v=(new OtpService())->verify((string)($p['challenge_id']??''),(string)($p['code']??''));return is_wp_error($v)?$this->error($v):Response::ok($v);}
     public function refresh(WP_REST_Request $r){$p=$this->json($r);$v=(new SessionService())->refresh(isset($p['refresh_token'])?(string)$p['refresh_token']:null);return is_wp_error($v)?$this->error($v):Response::ok($v);}
     public function logout(){(new SessionService())->logoutCurrent();return Response::ok(['logged_out'=>true]);}
