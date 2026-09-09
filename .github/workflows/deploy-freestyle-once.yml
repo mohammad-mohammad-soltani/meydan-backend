@@ -1,0 +1,170 @@
+name: Deploy backend to Freestyle once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/freestyle-api-key.enc"
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  FREESTYLE_VM_SLUG: meydan-backend-1362642112
+  FREESTYLE_DOMAIN: meydan-backend-1362642112.style.dev
+  WORDPRESS_PORT: "8082"
+  BOOTSTRAP_RUN_ID: "34396317537"
+  PRIVATE_KEY_ARTIFACT_ID: "10121634144"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@v4
+
+      - name: Download one-time private key
+        uses: actions/download-artifact@v4
+        with:
+          name: freestyle-one-time-private-key-34396317537
+          path: /tmp/freestyle-key
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 34396317537
+
+      - name: Decrypt Freestyle credential in memory
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .github/freestyle-api-key.enc >/tmp/freestyle-api-key.bin
+          FREESTYLE_API_KEY="$(openssl pkeyutl -decrypt \
+            -inkey /tmp/freestyle-key/freestyle-private.pem \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256 \
+            -in /tmp/freestyle-api-key.bin)"
+          echo "::add-mask::$FREESTYLE_API_KEY"
+          printf 'FREESTYLE_API_KEY=%s\n' "$FREESTYLE_API_KEY" >> "$GITHUB_ENV"
+          rm -f /tmp/freestyle-api-key.bin /tmp/freestyle-key/freestyle-private.pem
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Freestyle CLI and SDK
+        run: npm install --no-save freestyle@latest
+
+      - name: Create or reuse Freestyle VM
+        run: node tools/freestyle-create-vm.mjs
+
+      - name: Package backend and deployment script
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git --exclude=.github --exclude=node_modules --exclude=.env -czf /tmp/meydan-backend.tar.gz .
+
+          cat >/tmp/deploy-meydan-backend.sh <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          DOMAIN="$1"
+          PORT="$2"
+          APP_DIR=/srv/meydan-backend
+          RELEASE_DIR=/tmp/meydan-backend-release
+
+          rm -rf "$RELEASE_DIR"
+          mkdir -p "$RELEASE_DIR" "$APP_DIR"
+          tar -xzf /tmp/meydan-backend.tar.gz -C "$RELEASE_DIR"
+          find "$APP_DIR" -mindepth 1 -maxdepth 1 ! -name .env -exec rm -rf {} +
+          cp -a "$RELEASE_DIR"/. "$APP_DIR"/
+          cd "$APP_DIR"
+
+          set_env() {
+            local key="$1" value="$2"
+            if grep -q "^${key}=" .env 2>/dev/null; then
+              sed -i "s|^${key}=.*|${key}=${value}|" .env
+            else
+              printf '%s=%s\n' "$key" "$value" >>.env
+            fi
+          }
+
+          if [ ! -f .env ]; then
+            umask 077
+            cat >.env <<EOF
+          COMPOSE_PROJECT_NAME=meydan-backend
+          WORDPRESS_PORT=${PORT}
+          DB_NAME=meydan
+          DB_USER=meydan
+          DB_PASSWORD=$(openssl rand -hex 24)
+          DB_ROOT_PASSWORD=$(openssl rand -hex 32)
+          WP_URL=https://${DOMAIN}
+          WP_TITLE=Meydan Backend
+          WP_ADMIN_USER=admin
+          WP_ADMIN_PASSWORD=$(openssl rand -hex 24)
+          WP_ADMIN_EMAIL=admin@example.com
+          WP_DEBUG=0
+          WP_ENVIRONMENT_TYPE=production
+          MEYDAN_DEV_OTP_CODE=
+          MEYDAN_SMS_ENDPOINT=
+          MEYDAN_SMS_TOKEN=
+          MEYDAN_SMS_FROM_NUMBER=
+          MEYDAN_SMS_PATTERN_CODE=
+          EOF
+            chmod 600 .env
+          else
+            set_env COMPOSE_PROJECT_NAME meydan-backend
+            set_env WORDPRESS_PORT "$PORT"
+            set_env WP_URL "https://${DOMAIN}"
+            set_env WP_DEBUG 0
+            set_env WP_ENVIRONMENT_TYPE production
+            set_env MEYDAN_DEV_OTP_CODE ""
+            chmod 600 .env
+          fi
+
+          systemctl enable --now docker >/dev/null
+          docker compose pull
+          docker compose up -d db wordpress
+          docker compose run --rm wpcli
+          docker compose ps
+
+          curl -fsSL \
+            -H "Host: ${DOMAIN}" \
+            -H "X-Forwarded-Proto: https" \
+            "http://127.0.0.1:${PORT}/wp-json/meydan/v1/config" >/dev/null
+          SCRIPT
+          chmod +x /tmp/deploy-meydan-backend.sh
+
+      - name: Upload backend to VM
+        run: |
+          npx freestyle@latest vm fs write "$FREESTYLE_VM_SLUG" /tmp/meydan-backend.tar.gz /tmp/meydan-backend.tar.gz
+          npx freestyle@latest vm fs write "$FREESTYLE_VM_SLUG" /tmp/deploy-meydan-backend.sh /tmp/deploy-meydan-backend.sh
+
+      - name: Start WordPress and MariaDB
+        run: |
+          npx freestyle@latest vm exec "$FREESTYLE_VM_SLUG" \
+            --linux-user root \
+            --timeout-ms 300000 \
+            -- bash /tmp/deploy-meydan-backend.sh "$FREESTYLE_DOMAIN" "$WORDPRESS_PORT"
+
+      - name: Route HTTPS domain
+        shell: bash
+        run: |
+          if ! npx freestyle@latest tls list --vm "$FREESTYLE_VM_SLUG" | grep -Fq "$FREESTYLE_DOMAIN"; then
+            npx freestyle@latest tls create \
+              --domain "$FREESTYLE_DOMAIN" \
+              --from public \
+              --to "vm=$FREESTYLE_VM_SLUG,port=$WORDPRESS_PORT"
+          fi
+
+      - name: Verify public API
+        run: |
+          curl -fsSL --retry 24 --retry-delay 5 --retry-all-errors \
+            "https://${FREESTYLE_DOMAIN}/wp-json/meydan/v1/config" >/dev/null
+          echo "Backend API: https://${FREESTYLE_DOMAIN}/wp-json/meydan/v1" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Delete one-time private key artifact
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${PRIVATE_KEY_ARTIFACT_ID}" || true
