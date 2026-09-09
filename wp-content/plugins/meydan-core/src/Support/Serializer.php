@@ -19,9 +19,17 @@ final class Serializer
         $id = (int) $post->ID;
         $initiativeId = (int) get_post_meta($id, 'meydan_initiative_id', true);
         $reflections = self::mediaReflections($id);
-        $attachments = (array) get_post_meta($id, 'meydan_attachments', true);
-        usort($attachments, static fn(array $a, array $b): int => ((int) ($a['order'] ?? 0)) <=> ((int) ($b['order'] ?? 0)));
+        $attachments = get_post_meta($id, 'meydan_attachments', true);
 
+        $attachments = is_array($attachments)
+            ? array_values(array_filter($attachments, 'is_array'))
+            : [];
+
+        usort(
+            $attachments,
+            static fn(array $a, array $b): int =>
+                ((int) ($a['order'] ?? 0)) <=> ((int) ($b['order'] ?? 0))
+        );
         return [
             'id' => $id,
             'author' => Actor::fromNarrative($id),
