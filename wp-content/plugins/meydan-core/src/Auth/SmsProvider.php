@@ -16,6 +16,16 @@ final class SmsProvider
             return true;
         }
 
+        return $this->sendToProvider($phone, $code);
+    }
+
+    public function sendTest(string $phone, string $code): true|WP_Error
+    {
+        return $this->sendToProvider($phone, $code);
+    }
+
+    private function sendToProvider(string $phone, string $code): true|WP_Error
+    {
         $settings = (array) get_option('meydan_sms_settings', []);
         $enabled = !array_key_exists('enabled', $settings) || (bool) $settings['enabled'];
         if (!$enabled) {
