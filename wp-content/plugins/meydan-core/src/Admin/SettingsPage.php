@@ -24,6 +24,10 @@ final class SettingsPage
         }
 
         $sms = (array) get_option('meydan_sms_settings', []);
+        $smsEndpoint = (string) ($sms['endpoint'] ?? '');
+        if ($smsEndpoint === '' || $smsEndpoint === 'https://edge.ippanel.com/v1/api/send') {
+            $smsEndpoint = 'https://api.iranpayamak.com/ws/v1/sms/pattern';
+        }
         echo '<div class="wrap meydan-admin meydan-settings" dir="rtl">';
         echo '<div class="meydan-page-header"><div><span class="meydan-eyebrow">مرکز کنترل</span><h1>تنظیمات میدان</h1><p>تنظیمات اتصال، تجربه کاربری و رفتار API را از یک محل مدیریت کنید. هر بخش توضیح کوتاه و راهنمای ویرایش دارد.</p></div><div class="meydan-header-mark" aria-hidden="true">M</div></div>';
         settings_errors('meydan');
@@ -31,14 +35,16 @@ final class SettingsPage
         wp_nonce_field('meydan_admin_action');
         echo '<input type="hidden" name="meydan_admin_action" value="settings_save">';
 
-        echo '<section class="meydan-panel meydan-panel-accent"><div class="meydan-panel-heading"><div><span class="meydan-section-kicker">اتصال پیامک</span><h2>ارائه‌دهنده OTP</h2><p>برای ورود بدون رمز عبور، کد یک‌بارمصرف از طریق IPPanel/FarazSMS ارسال می‌شود. توکن به‌صورت ماسک‌شده نگهداری می‌شود و در صفحه دوباره نمایش داده نمی‌شود.</p></div><span class="meydan-status-dot">امن</span></div><div class="meydan-form-grid">';
+        echo '<section class="meydan-panel meydan-panel-accent"><div class="meydan-panel-heading"><div><span class="meydan-section-kicker">اتصال پیامک</span><h2>ارائه‌دهنده OTP</h2><p>برای ورود بدون رمز عبور، کد یک‌بارمصرف از طریق ایران‌پیامک (FarazSMS) و الگوی ثبت‌شده ارسال می‌شود. توکن به‌صورت ماسک‌شده نگهداری می‌شود و در صفحه دوباره نمایش داده نمی‌شود.</p></div><span class="meydan-status-dot">امن</span></div><div class="meydan-form-grid">';
         self::toggle('sms_enabled', 'فعال‌سازی ارسال پیامک', !isset($sms['enabled']) || (bool) $sms['enabled'], 'در محیط local اگر کد توسعه تعریف شده باشد، ارسال واقعی انجام نمی‌شود.');
-        self::text('sms_endpoint', 'آدرس API', (string) ($sms['endpoint'] ?? 'https://edge.ippanel.com/v1/api/send'), 'آدرس رسمی Edge Pattern Send؛ فقط در صورت نیاز به proxy تغییر دهید.', 'url');
+        self::text('sms_endpoint', 'آدرس API', $smsEndpoint, 'آدرس رسمی ارسال پیامک الگویی ایران‌پیامک؛ فقط در صورت نیاز به proxy تغییر دهید.', 'url');
         self::secret('sms_token', 'API Token', !empty($sms['token']), 'توکن را برای ثبت یا جایگزینی وارد کنید. برای پاک کردن، گزینه پاک‌سازی را فعال کنید.');
-        self::text('sms_from_number', 'شماره فرستنده', (string) ($sms['from_number'] ?? ''), 'فرمت پیشنهادی: +98... یا شماره اختصاصی پنل پیامک.', 'text');
-        self::text('sms_pattern_code', 'کد الگوی پیامک', (string) ($sms['pattern_code'] ?? ''), 'کدی که در پنل IPPanel برای متن OTP ساخته‌اید.', 'text');
+        self::text('sms_from_number', 'شماره خط فرستنده', (string) ($sms['from_number'] ?? ''), 'شماره خط اختصاصی ایران‌پیامک که در درخواست با line_number ارسال می‌شود.', 'text');
+        self::text('sms_pattern_code', 'کد الگوی پیامک', (string) ($sms['pattern_code'] ?? ''), 'شناسه/کد الگو را از پنل ایران‌پیامک دریافت کنید؛ متغیر OTP با نام var1 ارسال می‌شود.', 'text');
+        self::select('sms_number_format', 'فرمت شماره', (string) ($sms['number_format'] ?? 'english'), ['english' => 'English', 'persian' => 'Persian'], 'فرمت number_format مطابق مستندات ایران‌پیامک.');
         self::toggle('sms_clear_token', 'پاک‌سازی توکن ذخیره‌شده', false, 'برای حذف توکن فعلی؛ این گزینه بعد از ذخیره دوباره خاموش می‌شود.');
-        echo '</div><p class="meydan-help"><strong>قرارداد ارسال:</strong> درخواست با <code>sending_type=pattern</code>، پارامتر <code>code</code> و هدر Authorization ارسال می‌شود. قبل از فعال‌سازی، یک شماره تست را بررسی کنید.</p></section>';
+        echo '</div><p class="meydan-help"><strong>قرارداد ارسال:</strong> درخواست POST با هدرهای <code>Api-Key</code> و <code>Accept: application/json</code> به endpoint رسمی ارسال می‌شود. بدنه شامل <code>code</code>، <code>attributes.var1</code>، <code>recipient</code> و <code>line_number</code> است.</p>';
+        echo '<div class="meydan-sms-test"><div><strong>تست اتصال و الگو</strong><p>پس از ذخیره تنظیمات، یک شماره واقعی را وارد کنید تا یک کد آزمایشی با همان الگو ارسال شود. این تست در محیط local که کد توسعه فعال است، ارسال خارجی انجام نمی‌دهد.</p></div><div class="meydan-sms-test-form"><label class="meydan-field"><span class="meydan-label">شماره گیرنده تست</span><input type="tel" name="sms_test_phone" inputmode="tel" placeholder="09120000000" autocomplete="tel"><small>شماره با فرمت 09 یا +98 وارد شود.</small></label><button type="submit" name="meydan_admin_action" value="sms_test" class="button button-secondary">ارسال پیامک تست</button></div></div></section>';
 
         echo '<section class="meydan-panel"><div class="meydan-panel-heading"><div><span class="meydan-section-kicker">رفتار عمومی</span><h2>تنظیمات API</h2><p>این بخش روی کلاینت‌های متصل به بک‌اند اثر می‌گذارد. Originها را بدون مسیر و هرکدام در یک خط وارد کنید.</p></div></div>';
         self::textarea('api_allowed_origins', 'Originهای مجاز CORS', implode("\n", array_map('strval', (array) (($data = (array) get_option('meydan_api_settings', []))['allowed_origins'] ?? []))), 'مثال: https://app.example.com');
@@ -60,9 +66,11 @@ final class SettingsPage
         }
         $sms = (array) get_option('meydan_sms_settings', []);
         $sms['enabled'] = !empty($_POST['sms_enabled']);
-        $sms['endpoint'] = esc_url_raw((string) wp_unslash($_POST['sms_endpoint'] ?? '')) ?: 'https://edge.ippanel.com/v1/api/send';
+        $sms['endpoint'] = esc_url_raw((string) wp_unslash($_POST['sms_endpoint'] ?? '')) ?: 'https://api.iranpayamak.com/ws/v1/sms/pattern';
         $sms['from_number'] = sanitize_text_field(wp_unslash($_POST['sms_from_number'] ?? ''));
         $sms['pattern_code'] = sanitize_text_field(wp_unslash($_POST['sms_pattern_code'] ?? ''));
+        $numberFormat = (string) wp_unslash($_POST['sms_number_format'] ?? 'english');
+        $sms['number_format'] = in_array($numberFormat, ['english', 'persian'], true) ? $numberFormat : 'english';
         if (!empty($_POST['sms_clear_token'])) {
             unset($sms['token']);
         } elseif (isset($_POST['sms_token']) && trim((string) wp_unslash($_POST['sms_token'])) !== '') {
@@ -95,6 +103,15 @@ final class SettingsPage
     private static function text(string $name, string $label, string $value, string $help, string $type): void
     {
         echo '<label class="meydan-field"><span class="meydan-label">' . esc_html($label) . '</span><input type="' . esc_attr($type) . '" name="' . esc_attr($name) . '" value="' . esc_attr($value) . '" autocomplete="off"><small>' . esc_html($help) . '</small></label>';
+    }
+
+    private static function select(string $name, string $label, string $value, array $options, string $help): void
+    {
+        echo '<label class="meydan-field"><span class="meydan-label">' . esc_html($label) . '</span><select name="' . esc_attr($name) . '">';
+        foreach ($options as $optionValue => $optionLabel) {
+            echo '<option value="' . esc_attr((string) $optionValue) . '" ' . selected($value, (string) $optionValue, false) . '>' . esc_html((string) $optionLabel) . '</option>';
+        }
+        echo '</select><small>' . esc_html($help) . '</small></label>';
     }
 
     private static function secret(string $name, string $label, bool $configured, string $help): void
