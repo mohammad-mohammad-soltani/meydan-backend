@@ -26,4 +26,5 @@ wp option update permalink_structure '/%postname%/'
 wp rewrite flush --hard || true
 wp plugin activate meydan-core
 wp meydan migrate
+wp meydan seed
 wp meydan status
