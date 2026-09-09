@@ -17,6 +17,21 @@ final class CliCommand
         \WP_CLI::success('Meydan migrations completed: ' . Migrations::VERSION);
     }
 
+    /** Import the frontend fixtures into real WordPress entities. Use --force to rebuild seeded records. */
+    public function seed(array $args, array $assocArgs): void
+    {
+        $result = SeedData::run(isset($assocArgs['force']));
+        if (!empty($result['skipped'])) {
+            \WP_CLI::success('Meydan seed already applied: ' . $result['version']);
+            return;
+        }
+        foreach ($result as $key => $value) {
+            if ($key === 'skipped') continue;
+            \WP_CLI::log($key . ': ' . (is_scalar($value) ? (string) $value : wp_json_encode($value, JSON_UNESCAPED_UNICODE)));
+        }
+        \WP_CLI::success('Meydan fixture import completed.');
+    }
+
     /** Print backend status. */
     public function status(): void
     {
@@ -36,6 +51,7 @@ final class CliCommand
         }
         \WP_CLI::log('Meydan Core ' . MEYDAN_CORE_VERSION);
         \WP_CLI::log('DB version: ' . get_option('meydan_db_version', 'none'));
+        \WP_CLI::log('Seed version: ' . get_option('meydan_seed_version', 'none'));
         \WP_CLI::log('Chat feature: ' . (((array) get_option('meydan_feature_flags', []))['chat'] ?? false ? 'enabled' : 'disabled'));
         if ($missing) {
             \WP_CLI::error('Missing tables: ' . implode(', ', $missing));
