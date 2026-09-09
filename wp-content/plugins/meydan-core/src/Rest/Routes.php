@@ -54,6 +54,10 @@ final class Routes
    || preg_match('#^/squares/\\(\\?P<id>\\d+\\)/(narratives|schedule)$#',$route)
    || preg_match('#^/campaigns/\\(\\?P<id>\\d+\\)/schedule$#',$route)
    || ($route === '/narratives/(?P<id>\\d+)' && $method === 'GET')
+   || ($route === '/narratives/(?P<id>\\d+)/comments' && $method === 'GET')
+   || ($route === '/comments/(?P<id>\\d+)/replies' && $method === 'GET')
+   || ($route === '/narratives/(?P<id>\\d+)/media-reflections' && $method === 'GET')
+   || ($method === 'GET' && str_starts_with($route,'/actors/'))
    || str_starts_with($route,'/users/');
   if ($isPublic) return static fn():true => true;
   return static fn():bool|\WP_Error => is_user_logged_in() ? true : new \WP_Error('unauthenticated','برای انجام این عملیات باید وارد شوید.',['status'=>401]);
