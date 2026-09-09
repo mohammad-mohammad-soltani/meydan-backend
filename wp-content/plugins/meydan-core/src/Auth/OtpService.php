@@ -69,6 +69,7 @@ final class OtpService
 
     public function verify(string $challengeId, string $code): array|WP_Error
     {
+        $code = self::normalizeDigits(trim($code));
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_auth_challenges';
         $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE challenge_id = %s LIMIT 1", $challengeId));
@@ -139,6 +140,7 @@ final class OtpService
 
     public static function normalizePhone(string $phone): string
     {
+        $phone = self::normalizeDigits($phone);
         $phone = preg_replace('/[\s\-()]/', '', trim($phone)) ?? '';
         if (str_starts_with($phone, '0098')) {
             $phone = '+98' . substr($phone, 4);
@@ -146,6 +148,16 @@ final class OtpService
             $phone = '+98' . substr($phone, 1);
         }
         return preg_match('/^\+[1-9]\d{7,14}$/', $phone) ? $phone : '';
+    }
+
+    private static function normalizeDigits(string $value): string
+    {
+        return strtr($value, [
+            '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
+            '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+            '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+        ]);
     }
 
     private function findUserByPhoneHash(string $hash): int
