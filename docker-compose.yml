@@ -1,0 +1,71 @@
+services:
+  db:
+    image: mariadb:11.8
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-meydan}
+      MARIADB_USER: ${DB_USER:-meydan}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-change-me}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-change-root-me}
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  wordpress:
+    image: wordpress:7.1.0-php8.4-apache
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${WORDPRESS_PORT:-8082}:80"
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: ${DB_NAME:-meydan}
+      WORDPRESS_DB_USER: ${DB_USER:-meydan}
+      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD:-change-me}
+      WORDPRESS_DEBUG: ${WP_DEBUG:-1}
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_ENVIRONMENT_TYPE', getenv('WP_ENVIRONMENT_TYPE') ?: 'production');
+        define('MEYDAN_DEV_OTP_CODE', getenv('MEYDAN_DEV_OTP_CODE') ?: '');
+        define('MEYDAN_SMS_ENDPOINT', getenv('MEYDAN_SMS_ENDPOINT') ?: '');
+        define('MEYDAN_SMS_TOKEN', getenv('MEYDAN_SMS_TOKEN') ?: '');
+        define('DISALLOW_FILE_EDIT', true);
+        define('FORCE_SSL_ADMIN', false);
+    volumes:
+      - wp_data:/var/www/html
+      - ./wp-content/plugins/meydan-core:/var/www/html/wp-content/plugins/meydan-core
+
+  wpcli:
+    image: wordpress:cli-2.12.0-php8.4
+    depends_on:
+      db:
+        condition: service_healthy
+      wordpress:
+        condition: service_started
+    user: "33:33"
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: ${DB_NAME:-meydan}
+      WORDPRESS_DB_USER: ${DB_USER:-meydan}
+      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD:-change-me}
+      WP_URL: ${WP_URL:-http://localhost:8082}
+      WP_TITLE: ${WP_TITLE:-Meydan Backend}
+      WP_ADMIN_USER: ${WP_ADMIN_USER:-admin}
+      WP_ADMIN_PASSWORD: ${WP_ADMIN_PASSWORD:-change-admin-me}
+      WP_ADMIN_EMAIL: ${WP_ADMIN_EMAIL:-admin@example.com}
+    volumes:
+      - wp_data:/var/www/html
+      - ./wp-content/plugins/meydan-core:/var/www/html/wp-content/plugins/meydan-core
+      - ./docker/wp-init.sh:/usr/local/bin/wp-init.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/wp-init.sh"]
+    restart: "no"
+
+volumes:
+  db_data:
+  wp_data:

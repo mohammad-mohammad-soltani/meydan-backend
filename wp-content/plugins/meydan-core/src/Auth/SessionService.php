@@ -1,0 +1,150 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Meydan\Core\Auth;
+
+use Meydan\Core\Support\Crypto;
+use WP_Error;
+
+final class SessionService
+{
+    public const ACCESS_TTL = 900;
+    public const REFRESH_TTL = 30 * DAY_IN_SECONDS;
+
+    public function issue(int $userId, ?string $deviceName = null): array|WP_Error
+    {
+        if (!get_userdata($userId)) {
+            return new WP_Error('user_not_found', 'حساب کاربری پیدا نشد.', ['status' => 404]);
+        }
+        $access = Crypto::randomToken(32, 'acc_');
+        $refresh = Crypto::randomToken(48, 'ref_');
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_sessions';
+        $inserted = $wpdb->insert($table, [
+            'user_id' => $userId,
+            'access_token_hash' => Crypto::hash($access),
+            'refresh_token_hash' => Crypto::hash($refresh),
+            'access_expires_at' => gmdate('Y-m-d H:i:s', time() + self::ACCESS_TTL),
+            'refresh_expires_at' => gmdate('Y-m-d H:i:s', time() + self::REFRESH_TTL),
+            'device_name' => $deviceName ? sanitize_text_field($deviceName) : null,
+            'last_used_at' => current_time('mysql', true),
+            'created_at' => current_time('mysql', true),
+        ]);
+        if (!$inserted) {
+            return new WP_Error('internal_error', 'ایجاد نشست ناموفق بود.', ['status' => 500]);
+        }
+        self::setRefreshCookie($refresh);
+        return ['access_token' => $access, 'expires_in' => self::ACCESS_TTL, 'refresh_token' => $refresh];
+    }
+
+    public function refresh(?string $refreshToken = null): array|WP_Error
+    {
+        $refreshToken = $refreshToken ?: (isset($_COOKIE['meydan_refresh']) ? sanitize_text_field(wp_unslash($_COOKIE['meydan_refresh'])) : '');
+        if ($refreshToken === '') {
+            return new WP_Error('unauthenticated', 'نشست معتبر نیست.', ['status' => 401]);
+        }
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_sessions';
+        $hash = Crypto::hash($refreshToken);
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$table} WHERE refresh_token_hash = %s AND revoked_at IS NULL AND refresh_expires_at >= UTC_TIMESTAMP() LIMIT 1",
+            $hash
+        ));
+        if (!$row) {
+            self::clearRefreshCookie();
+            return new WP_Error('unauthenticated', 'نشست معتبر نیست.', ['status' => 401]);
+        }
+
+        $newAccess = Crypto::randomToken(32, 'acc_');
+        $newRefresh = Crypto::randomToken(48, 'ref_');
+        $wpdb->update($table, [
+            'access_token_hash' => Crypto::hash($newAccess),
+            'refresh_token_hash' => Crypto::hash($newRefresh),
+            'access_expires_at' => gmdate('Y-m-d H:i:s', time() + self::ACCESS_TTL),
+            'refresh_expires_at' => gmdate('Y-m-d H:i:s', time() + self::REFRESH_TTL),
+            'last_used_at' => current_time('mysql', true),
+        ], ['id' => (int) $row->id]);
+        self::setRefreshCookie($newRefresh);
+        return ['access_token' => $newAccess, 'expires_in' => self::ACCESS_TTL];
+    }
+
+    public function logoutCurrent(): void
+    {
+        $token = self::bearerToken();
+        if ($token !== '') {
+            global $wpdb;
+            $wpdb->update($wpdb->prefix . 'meydan_sessions', ['revoked_at' => current_time('mysql', true)], ['access_token_hash' => Crypto::hash($token)]);
+        }
+        self::clearRefreshCookie();
+    }
+
+    public function logoutAll(int $userId): void
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_sessions';
+        $wpdb->query($wpdb->prepare("UPDATE {$table} SET revoked_at = UTC_TIMESTAMP() WHERE user_id = %d AND revoked_at IS NULL", $userId));
+        self::clearRefreshCookie();
+    }
+
+    public static function authenticateBearer(mixed $userId): mixed
+    {
+        if ($userId) {
+            return $userId;
+        }
+        $token = self::bearerToken();
+        if ($token === '') {
+            return $userId;
+        }
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_sessions';
+        $hash = Crypto::hash($token);
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, user_id FROM {$table} WHERE access_token_hash = %s AND revoked_at IS NULL AND access_expires_at >= UTC_TIMESTAMP() LIMIT 1",
+            $hash
+        ));
+        if (!$row) {
+            return $userId;
+        }
+        $wpdb->update($table, ['last_used_at' => current_time('mysql', true)], ['id' => (int) $row->id]);
+        return (int) $row->user_id;
+    }
+
+    public static function bearerToken(): string
+    {
+        $header = (string) ($_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+        if (preg_match('/^Bearer\s+(.+)$/i', trim($header), $m)) {
+            return trim($m[1]);
+        }
+        return '';
+    }
+
+    private static function setRefreshCookie(string $token): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+        setcookie('meydan_refresh', $token, [
+            'expires' => time() + self::REFRESH_TTL,
+            'path' => '/wp-json/meydan/v1/auth',
+            'secure' => is_ssl() || wp_get_environment_type() === 'production',
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+        $_COOKIE['meydan_refresh'] = $token;
+    }
+
+    public static function clearRefreshCookie(): void
+    {
+        if (!headers_sent()) {
+            setcookie('meydan_refresh', '', [
+                'expires' => time() - HOUR_IN_SECONDS,
+                'path' => '/wp-json/meydan/v1/auth',
+                'secure' => is_ssl() || wp_get_environment_type() === 'production',
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
+        }
+        unset($_COOKIE['meydan_refresh']);
+    }
+}
