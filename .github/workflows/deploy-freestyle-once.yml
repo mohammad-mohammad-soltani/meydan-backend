@@ -15,7 +15,7 @@ env:
   FREESTYLE_DOMAIN: meydan-backend-1362642112.style.dev
   WORDPRESS_PORT: "8082"
   BOOTSTRAP_RUN_ID: "34396317537"
-  PRIVATE_KEY_ARTIFACT_ID: "10121634144"
+  PRIVATE_KEY_ARTIFACT_ID: "10121738689"
 
 jobs:
   deploy:
@@ -140,11 +140,13 @@ jobs:
           npx freestyle@latest vm fs write "$FREESTYLE_VM_SLUG" /tmp/deploy-meydan-backend.sh /tmp/deploy-meydan-backend.sh
 
       - name: Start WordPress and MariaDB
+        shell: bash
         run: |
+          REMOTE_CMD="bash /tmp/deploy-meydan-backend.sh '${FREESTYLE_DOMAIN}' '${WORDPRESS_PORT}'"
           npx freestyle@latest vm exec "$FREESTYLE_VM_SLUG" \
             --linux-user root \
             --timeout-ms 300000 \
-            -- bash /tmp/deploy-meydan-backend.sh "$FREESTYLE_DOMAIN" "$WORDPRESS_PORT"
+            -- "$REMOTE_CMD"
 
       - name: Route HTTPS domain
         shell: bash
