@@ -12,6 +12,7 @@ use Meydan\Core\Domain\Registrations;
 use Meydan\Core\Rest\Routes;
 use Meydan\Core\Support\ApiMiddleware;
 use Meydan\Core\Support\Cors;
+use Meydan\Core\Support\SquareActivity;
 
 final class Plugin
 {
@@ -59,6 +60,7 @@ final class Plugin
 
         if (is_admin()) {
             Admin::instance()->register();
+            SquareActivity::registerAdmin();
         }
 
         if (defined('WP_CLI') && WP_CLI) {
