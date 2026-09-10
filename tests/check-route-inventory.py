@@ -77,6 +77,7 @@ GET /squares
 GET /squares/map
 GET /squares/(?P<id>\\d+)
 GET /squares/(?P<id>\\d+)/narratives
+GET /squares/(?P<id>\\d+)/media-reflections/count
 GET /squares/(?P<id>\\d+)/schedule
 GET /geo/provinces
 GET /geo/cities
