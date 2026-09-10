@@ -143,10 +143,11 @@ final class Serializer
         $geo = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}meydan_square_geo WHERE square_id = %d", $id), ARRAY_A);
         return [
             'id' => $id,
-            'name' => get_the_title($post),
-            'description' => $post->post_content,
-            'avatar_url' => Actor::avatarUrl((int) get_post_meta($id, 'meydan_avatar_media_id', true)),
-            'verified' => (bool) get_post_meta($id, 'meydan_verified', true),
+            'name' => Actor::squareDisplayName($id),
+            'description' => (string) get_user_meta(Actor::squareOwnerUserId($id), 'meydan_about', true) ?: $post->post_content,
+            'avatar_url' => Actor::squareAvatarUrl($id),
+            'cover_url' => Actor::squareCoverUrl($id),
+            'verified' => true,
             'approval_status' => (string) get_post_meta($id, 'meydan_approval_status', true) ?: 'pending_verification',
             'location' => $geo ? [
                 'province_id' => (int) $geo['province_id'],

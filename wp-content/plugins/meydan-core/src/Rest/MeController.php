@@ -60,9 +60,14 @@ final class MeController extends BaseController
             if (array_key_exists($k, $p)) update_user_meta($uid, 'meydan_' . $k, (int) $p[$k]);
         }
         if (array_key_exists('avatar_media_id', $p)) {
-            $avatarId = $this->avatarMediaId($p['avatar_media_id'], $uid);
+            $avatarId = $this->profileImageMediaId($p['avatar_media_id'], $uid, 'avatar');
             if (is_wp_error($avatarId)) return $this->error($avatarId);
             update_user_meta($uid, 'meydan_avatar_media_id', $avatarId);
+        }
+        if (array_key_exists('cover_media_id', $p)) {
+            $coverId = $this->profileImageMediaId($p['cover_media_id'], $uid, 'cover');
+            if (is_wp_error($coverId)) return $this->error($coverId);
+            update_user_meta($uid, 'meydan_cover_media_id', $coverId);
         }
 
         if (isset($p['skills'])) {
@@ -147,18 +152,17 @@ final class MeController extends BaseController
         $sid = (int) get_user_meta($uid, 'meydan_square_id', true);
         $p = $this->json($r);
         $before = $this->squareProfile($sid);
-        $post = [];
-        if (isset($p['name'])) $post['post_title'] = sanitize_text_field((string) $p['name']);
-        if (isset($p['description'])) $post['post_content'] = wp_kses_post((string) $p['description']);
-        if ($post) wp_update_post(['ID' => $sid] + $post);
+        if (isset($p['name'])) update_user_meta($uid, 'meydan_full_name', sanitize_text_field((string) $p['name']));
+        if (isset($p['description'])) update_user_meta($uid, 'meydan_about', wp_kses_post((string) $p['description']));
         if (array_key_exists('avatar_media_id', $p)) {
-            $avatarId = $this->avatarMediaId($p['avatar_media_id'], $uid);
+            $avatarId = $this->profileImageMediaId($p['avatar_media_id'], $uid, 'avatar');
             if (is_wp_error($avatarId)) return $this->error($avatarId);
-            update_post_meta($sid, 'meydan_avatar_media_id', $avatarId);
+            update_user_meta($uid, 'meydan_avatar_media_id', $avatarId);
         }
-        if (isset($p['subtitle'])) update_post_meta($sid, 'meydan_subtitle', sanitize_text_field((string) $p['subtitle']));
-        if (isset($p['profile_about'])) update_post_meta($sid, 'meydan_profile_about', wp_kses_post((string) $p['profile_about']));
-        if (isset($p['profile_skills'])) update_post_meta($sid, 'meydan_profile_skills', array_values(array_filter(array_map('sanitize_text_field', (array) $p['profile_skills']))));
+        if (array_key_exists('cover_media_id', $p)) {$coverId = $this->profileImageMediaId($p['cover_media_id'], $uid, 'cover');if (is_wp_error($coverId)) return $this->error($coverId);update_user_meta($uid, 'meydan_cover_media_id', $coverId);}
+        if (isset($p['subtitle'])) update_user_meta($uid, 'meydan_headline', sanitize_text_field((string) $p['subtitle']));
+        if (isset($p['profile_about'])) update_user_meta($uid, 'meydan_about', wp_kses_post((string) $p['profile_about']));
+        if (isset($p['profile_skills'])) update_user_meta($uid, 'meydan_skills', array_values(array_filter(array_map('sanitize_text_field', (array) $p['profile_skills']))));
         AuditLogger::log('square_updated', 'square', $sid, $before, $this->squareProfile($sid));
         return Response::ok($this->squareProfile($sid));
     }
@@ -260,7 +264,7 @@ final class MeController extends BaseController
             $resumeStats = [
                 ['value' => (string) $narratives, 'label' => 'روایت منتشرشده'],
                 ['value' => 'فعال', 'label' => 'وضعیت عضویت', 'tone' => 'success'],
-                ['value' => (bool) get_user_meta($uid, 'meydan_verified', true) ? 'تأییدشده' : 'عادی', 'label' => 'اعتبار هویت'],
+                ['value' => Actor::isVerifiedUser($uid) ? 'تأییدشده' : 'عادی', 'label' => 'اعتبار هویت'],
             ];
         }
 
@@ -269,8 +273,10 @@ final class MeController extends BaseController
             'full_name' => (string) get_user_meta($uid, 'meydan_full_name', true) ?: (get_userdata($uid)?->display_name ?: 'کاربر میدان'),
             'avatar_media_id' => (int) get_user_meta($uid, 'meydan_avatar_media_id', true) ?: null,
             'avatar_url' => Actor::avatarUrl((int) get_user_meta($uid, 'meydan_avatar_media_id', true)),
+            'cover_media_id' => (int) get_user_meta($uid, 'meydan_cover_media_id', true) ?: null,
+            'cover_url' => Actor::coverUrl($uid),
             'headline' => (string) get_user_meta($uid, 'meydan_headline', true),
-            'verified' => (bool) get_user_meta($uid, 'meydan_verified', true),
+            'verified' => Actor::isVerifiedUser($uid),
             'province_id' => (int) get_user_meta($uid, 'meydan_province_id', true) ?: null,
             'city_id' => (int) get_user_meta($uid, 'meydan_city_id', true) ?: null,
             'location_label' => (string) get_user_meta($uid, 'meydan_location_label', true),
@@ -287,11 +293,14 @@ final class MeController extends BaseController
         if (!$data) return null;
         $post = get_post($sid);
         $data['slug'] = $post ? $post->post_name : (string) $sid;
-        $data['avatar_media_id'] = (int) get_post_meta($sid, 'meydan_avatar_media_id', true) ?: null;
+        $ownerId = Actor::squareOwnerUserId($sid);
+        $data['avatar_media_id'] = (int) get_user_meta($ownerId, 'meydan_avatar_media_id', true) ?: ((int) get_post_meta($sid, 'meydan_avatar_media_id', true) ?: null);
+        $data['cover_media_id'] = (int) get_user_meta($ownerId, 'meydan_cover_media_id', true) ?: null;
+        $data['cover_url'] = Actor::coverUrl($ownerId);
         $data['handle'] = (string) get_post_meta($sid, 'meydan_handle', true);
-        $data['subtitle'] = (string) get_post_meta($sid, 'meydan_subtitle', true);
-        $data['profile_about'] = (string) get_post_meta($sid, 'meydan_profile_about', true);
-        $data['profile_skills'] = array_values((array) get_post_meta($sid, 'meydan_profile_skills', true));
+        $data['subtitle'] = (string) get_user_meta($ownerId, 'meydan_headline', true) ?: (string) get_post_meta($sid, 'meydan_subtitle', true);
+        $data['profile_about'] = (string) get_user_meta($ownerId, 'meydan_about', true) ?: (string) get_post_meta($sid, 'meydan_profile_about', true);
+        $data['profile_skills'] = array_values((array) get_user_meta($ownerId, 'meydan_skills', true) ?: (array) get_post_meta($sid, 'meydan_profile_skills', true));
         $data['square_stats'] = array_values((array) get_post_meta($sid, 'meydan_square_stats', true));
         $data['resume_stats'] = array_values((array) get_post_meta($sid, 'meydan_resume_stats', true));
         return $data;
@@ -299,16 +308,28 @@ final class MeController extends BaseController
 
     private function actorNarratives(string $type, int $id, WP_REST_Request $r)
     {
+        $meta = [
+            'relation' => 'AND',
+            ['key' => 'meydan_author_actor_type', 'value' => $type],
+            ['key' => 'meydan_author_actor_id', 'value' => $id],
+        ];
+        if ($type === 'square') {
+            $ownerId = Actor::squareOwnerUserId($id);
+            if ($ownerId > 0) {
+                $meta = [
+                    'relation' => 'OR',
+                    ['relation' => 'AND', ['key' => 'meydan_author_actor_type', 'value' => 'square'], ['key' => 'meydan_author_actor_id', 'value' => $id]],
+                    ['relation' => 'AND', ['key' => 'meydan_author_actor_type', 'value' => 'user'], ['key' => 'meydan_author_actor_id', 'value' => $ownerId]],
+                ];
+            }
+        }
         $q = new WP_Query([
             'post_type' => 'meydan_narrative',
             'post_status' => 'publish',
             'posts_per_page' => 20,
             'orderby' => 'date',
             'order' => 'DESC',
-            'meta_query' => [
-                ['key' => 'meydan_author_actor_type', 'value' => $type],
-                ['key' => 'meydan_author_actor_id', 'value' => $id],
-            ],
+            'meta_query' => $meta,
         ]);
         return Response::ok(array_values(array_filter(array_map([Serializer::class, 'narrative'], $q->posts))));
     }
@@ -319,18 +340,18 @@ final class MeController extends BaseController
         $user = get_userdata($uid);
         // WordPress administrators may change the role directly. Keep the
         // account identity in sync with that authoritative role on next use.
-        $type = $user && in_array('meydan_square', (array) $user->roles, true) ? 'square' : ($stored === 'square' ? 'square' : 'user');
+        $type = $user && in_array('meydan_square', (array) $user->roles, true) ? 'square' : 'user';
         if ($stored !== $type) update_user_meta($uid, 'meydan_account_type', $type);
         return $type;
     }
 
-    private function avatarMediaId(mixed $value, int $uid): int|\WP_Error
+    private function profileImageMediaId(mixed $value, int $uid, string $purpose): int|\WP_Error
     {
         $mediaId = (int) $value;
         if ($mediaId === 0) return 0;
-        if (!wp_attachment_is_image($mediaId)) return new \WP_Error('validation_failed', 'آواتار باید یک تصویر معتبر باشد.', ['status' => 422]);
-        if ((int) get_post_meta($mediaId, 'meydan_upload_owner_user_id', true) !== $uid || get_post_meta($mediaId, 'meydan_upload_purpose', true) !== 'avatar') {
-            return new \WP_Error('forbidden', 'فقط تصویر آواتار آپلودشده توسط خودتان قابل انتخاب است.', ['status' => 403]);
+        if (!wp_attachment_is_image($mediaId)) return new \WP_Error('validation_failed', 'تصویر پروفایل باید معتبر باشد.', ['status' => 422]);
+        if ((int) get_post_meta($mediaId, 'meydan_upload_owner_user_id', true) !== $uid || get_post_meta($mediaId, 'meydan_upload_purpose', true) !== $purpose) {
+            return new \WP_Error('forbidden', 'فقط تصویر آپلودشده توسط خودتان قابل انتخاب است.', ['status' => 403]);
         }
         return $mediaId;
     }

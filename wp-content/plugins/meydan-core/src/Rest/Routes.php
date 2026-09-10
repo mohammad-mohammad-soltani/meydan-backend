@@ -14,13 +14,13 @@ final class Routes
   self::r('/narratives/(?P<id>\d+)/media-reflections','GET',[$mr,'list']);self::r('/admin/narratives/(?P<id>\d+)/media-reflections','POST',[$mr,'create']);self::r('/admin/media-reflections/(?P<id>\d+)','PATCH',[$mr,'update']);self::r('/admin/media-reflections/(?P<id>\d+)','DELETE',[$mr,'delete']);
   self::r('/uploads','POST',[$u,'start']);self::r('/uploads/(?P<upload_id>[A-Za-z0-9_\-]+)/chunks/(?P<index>\d+)','PUT',[$u,'chunk']);self::r('/uploads/(?P<upload_id>[A-Za-z0-9_\-]+)/complete','POST',[$u,'complete']);self::r('/uploads/(?P<upload_id>[A-Za-z0-9_\-]+)','DELETE',[$u,'abort']);
   self::r('/timeline','GET',[$tl,'timeline']);
-  self::r('/actors/(?P<type>user|square)/(?P<id>\d+)/follow','PUT',[$actor,'follow']);self::r('/actors/(?P<type>user|square)/(?P<id>\d+)/follow','DELETE',[$actor,'unfollow']);self::r('/actors/(?P<type>user|square)/(?P<id>\d+)/followers','GET',[$actor,'followers']);self::r('/actors/(?P<type>user|square)/(?P<id>\d+)/following','GET',[$actor,'following']);
+  self::r('/actors/(?P<type>user|square)/(?P<id>\d+)/replies','GET',[$actor,'replies']);self::r('/actors/(?P<type>user|square)/(?P<id>\d+)/follow','PUT',[$actor,'follow']);self::r('/actors/(?P<type>user|square)/(?P<id>\d+)/follow','DELETE',[$actor,'unfollow']);self::r('/actors/(?P<type>user|square)/(?P<id>\d+)/followers','GET',[$actor,'followers']);self::r('/actors/(?P<type>user|square)/(?P<id>\d+)/following','GET',[$actor,'following']);
   self::r('/content','GET',[$content,'list']);self::r('/content/(?P<id>\d+)','GET',[$content,'get']);self::r('/content/(?P<id>\d+)/bookmark','PUT',[$content,'bookmark']);self::r('/content/(?P<id>\d+)/bookmark','DELETE',[$content,'unbookmark']);self::r('/content/(?P<id>\d+)/share','POST',[$content,'share']);self::r('/content/(?P<id>\d+)/files/(?P<file_id>\d+)/download','POST',[$content,'download']);
   self::r('/admin/content','POST',[$content,'adminCreate']);self::r('/admin/content/(?P<id>\d+)','PATCH',[$content,'adminUpdate']);self::r('/admin/content/(?P<id>\d+)','DELETE',[$content,'adminDelete']);
   self::r('/creators','GET',[$creator,'list']);self::r('/creators/(?P<id>\d+)','GET',[$creator,'get']);self::r('/speakers','GET',[$creator,'speakers']);self::r('/speakers/(?P<id>\d+)','GET',[$creator,'speaker']);self::r('/admin/creators','POST',[$creator,'adminCreate']);self::r('/admin/creators/(?P<id>\d+)','PATCH',[$creator,'adminUpdate']);self::r('/admin/creators/(?P<id>\d+)','DELETE',[$creator,'adminDelete']);
   self::r('/speaker-requests','POST',[$speaker,'create']);self::r('/speaker-requests/(?P<id>\d+)','GET',[$speaker,'get']);self::r('/speaker-requests/(?P<id>\d+)','DELETE',[$speaker,'delete']);
   self::r('/squares','GET',[$square,'list']);self::r('/squares/map','GET',[$square,'map']);self::r('/squares/(?P<id>\d+)','GET',[$square,'get']);self::r('/squares/(?P<id>\d+)/narratives','GET',[$square,'narratives']);self::r('/squares/(?P<id>\d+)/schedule','GET',[$square,'schedule']);
-  self::r('/geo/provinces','GET',[$misc,'provinces']);self::r('/geo/cities','GET',[$misc,'cities']);self::r('/initiatives','GET',[$init,'list']);self::r('/initiatives/(?P<id>\d+)','GET',[$init,'get']);self::r('/initiatives/(?P<id>\d+)/join','PUT',[$init,'join']);self::r('/initiatives/(?P<id>\d+)/join','DELETE',[$init,'leave']);
+  self::r('/geo/provinces','GET',[$misc,'provinces']);self::r('/geo/cities','GET',[$misc,'cities']);self::r('/geo/reverse','GET',[$misc,'reverse']);self::r('/initiatives','GET',[$init,'list']);self::r('/initiatives/(?P<id>\d+)','GET',[$init,'get']);self::r('/initiatives/(?P<id>\d+)/join','PUT',[$init,'join']);self::r('/initiatives/(?P<id>\d+)/join','DELETE',[$init,'leave']);
   self::r('/explore/search','GET',[$exp,'search']);self::r('/explore/trends','GET',[$exp,'trends']);self::r('/explore/suggestions','GET',[$exp,'suggestions']);
   self::r('/campaigns/current','GET',[$misc,'currentCampaign']);self::r('/campaigns/(?P<id>\d+)','GET',[$misc,'campaign']);self::r('/campaigns/(?P<id>\d+)/schedule','GET',[$misc,'campaignSchedule']);
   self::r('/notifications','GET',[$notif,'list']);self::r('/notifications/unread-count','GET',[$notif,'unread']);self::r('/notifications/read-all','PUT',[$notif,'readAll']);self::r('/notifications/(?P<id>\d+)/read','PUT',[$notif,'read']);self::r('/notifications/(?P<id>\d+)/read','DELETE',[$notif,'unreadOne']);self::r('/notifications/(?P<id>\d+)/archive','PUT',[$notif,'archive']);self::r('/notifications/(?P<id>\d+)/archive','DELETE',[$notif,'unarchive']);self::r('/notifications/(?P<id>\d+)','DELETE',[$notif,'delete']);self::r('/admin/notifications/broadcast','POST',[$notif,'broadcast']);self::r('/config','GET',[$misc,'config']);
@@ -48,7 +48,7 @@ final class Routes
    }
    return static fn():true => true;
   }
-  $public = ['/timeline','/content','/creators','/speakers','/squares','/squares/map','/geo/provinces','/geo/cities','/initiatives','/explore/search','/explore/trends','/explore/suggestions','/campaigns/current','/config'];
+  $public = ['/timeline','/content','/creators','/speakers','/squares','/squares/map','/geo/provinces','/geo/cities','/geo/reverse','/initiatives','/explore/search','/explore/trends','/explore/suggestions','/campaigns/current','/config'];
   $isPublic = in_array($route,$public,true)
    || ($method === 'GET' && (
     str_starts_with($route,'/content/(?P<id>')
@@ -58,6 +58,7 @@ final class Routes
     || str_starts_with($route,'/initiatives/(?P<id>')
     || str_starts_with($route,'/campaigns/(?P<id>')
     || str_starts_with($route,'/narratives/(?P<id>')
+    || str_starts_with($route,'/actors/(?P<type>user|square)/(?P<id>')
    ))
    || str_starts_with($route,'/users/');
   if ($isPublic) return static fn():true => true;

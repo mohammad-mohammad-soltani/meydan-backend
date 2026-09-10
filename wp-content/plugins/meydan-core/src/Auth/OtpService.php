@@ -21,17 +21,6 @@ final class OtpService
         }
 
         $phoneHash = Crypto::hash($phone);
-        $limits = [
-            RateLimiter::hit('otp-phone-minute', $phoneHash, 1, MINUTE_IN_SECONDS),
-            RateLimiter::hit('otp-phone-day', $phoneHash, 5, DAY_IN_SECONDS),
-            RateLimiter::hit('otp-ip-hour', RateLimiter::ip(), 20, HOUR_IN_SECONDS),
-        ];
-        foreach ($limits as $limit) {
-            if (!$limit['allowed']) {
-                return new WP_Error('rate_limited', 'تعداد درخواست‌ها بیش از حد مجاز است.', ['status' => 429, 'retry_after' => $limit['retry_after']]);
-            }
-        }
-
         $dev = defined('MEYDAN_DEV_OTP_CODE') ? trim((string) MEYDAN_DEV_OTP_CODE) : '';
         $code = ($dev !== '' && wp_get_environment_type() === 'local') ? $dev : (string) random_int(100000, 999999);
         if (!preg_match('/^\d{6}$/', $code)) {
