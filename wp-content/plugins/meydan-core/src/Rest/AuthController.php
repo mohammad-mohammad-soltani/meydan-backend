@@ -9,6 +9,7 @@ use Meydan\Core\Auth\SessionService;
 use Meydan\Core\Notifications\NotificationService;
 use Meydan\Core\Support\Crypto;
 use Meydan\Core\Support\Response;
+use Meydan\Core\Support\SquareActivity;
 use WP_Error;
 use WP_REST_Request;
 
@@ -61,6 +62,7 @@ final class AuthController extends BaseController
             $sid=wp_insert_post(['post_type'=>'meydan_square','post_status'=>'pending','post_title'=>$display,'post_content'=>wp_kses_post((string)($p['description']??'')),'post_author'=>$uid],true);
             if(is_wp_error($sid)){wp_delete_user($uid);return $this->error(new WP_Error('registration_failed','ساخت میدان ناموفق بود.',['status'=>500]));}
             update_user_meta($uid,'meydan_square_id',$sid);update_post_meta($sid,'meydan_owner_user_id',$uid);update_post_meta($sid,'meydan_approval_status','pending_verification');update_post_meta($sid,'meydan_verified',0);update_post_meta($sid,'meydan_avatar_media_id',(int)($p['avatar_media_id']??0));
+            if(array_key_exists('start_date',$p)){$startSaved=SquareActivity::setStartDate((int)$sid,$p['start_date']);if(is_wp_error($startSaved)){wp_delete_post((int)$sid,true);wp_delete_user($uid);return $this->error($startSaved);}}
             update_post_meta($sid,'meydan_contact_name',sanitize_text_field((string)($p['contact_name']??'')));update_post_meta($sid,'meydan_contact_phone',sanitize_text_field((string)($p['contact_phone']??'')));
             global $wpdb;$wpdb->replace($wpdb->prefix.'meydan_square_geo',['square_id'=>$sid,'province_id'=>(int)$p['province_id'],'city_id'=>(int)$p['city_id'],'address'=>sanitize_textarea_field((string)$p['address']),'latitude'=>(float)$p['latitude'],'longitude'=>(float)$p['longitude'],'updated_at'=>current_time('mysql',true)]);
             AuditLogger::log('square_registration','square',$sid,null,['status'=>'pending_verification'],$uid);
