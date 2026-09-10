@@ -56,6 +56,10 @@ services:
         define('DISALLOW_FILE_EDIT', true);
         define('FORCE_SSL_ADMIN', (getenv('WP_ENVIRONMENT_TYPE') ?: 'local') === 'production');
         define('COOKIE_DOMAIN', '');
+        define('COOKIEPATH', '/');
+        define('SITECOOKIEPATH', '/');
+        define('ADMIN_COOKIE_PATH', '/');
+        define('PLUGINS_COOKIE_PATH', '/');
     volumes:
       - wp_data:/var/www/html
       - ./wp-content/plugins/meydan-core:/var/www/html/wp-content/plugins/meydan-core
