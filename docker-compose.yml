@@ -41,6 +41,9 @@ services:
         if (!empty($$_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($$_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
             $$_SERVER['HTTPS'] = 'on';
         }
+        if (!empty($$_SERVER['HTTP_X_FORWARDED_SSL']) && $$_SERVER['HTTP_X_FORWARDED_SSL'] === 'on') {
+            $$_SERVER['HTTPS'] = 'on';
+        }
         $$meydan_wp_url = getenv('WP_URL');
         if ($$meydan_wp_url) {
             define('WP_HOME', $$meydan_wp_url);
@@ -52,6 +55,7 @@ services:
         define('MEYDAN_SMS_TOKEN', getenv('MEYDAN_SMS_TOKEN') ?: '');
         define('DISALLOW_FILE_EDIT', true);
         define('FORCE_SSL_ADMIN', (getenv('WP_ENVIRONMENT_TYPE') ?: 'local') === 'production');
+        define('COOKIE_DOMAIN', '');
     volumes:
       - wp_data:/var/www/html
       - ./wp-content/plugins/meydan-core:/var/www/html/wp-content/plugins/meydan-core
