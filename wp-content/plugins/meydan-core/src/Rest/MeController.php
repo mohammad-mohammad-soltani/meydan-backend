@@ -8,6 +8,7 @@ use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Cursor;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\Serializer;
+use Meydan\Core\Support\SquareActivity;
 use WP_Query;
 use WP_REST_Request;
 
@@ -163,6 +164,10 @@ final class MeController extends BaseController
         if (isset($p['subtitle'])) update_user_meta($uid, 'meydan_headline', sanitize_text_field((string) $p['subtitle']));
         if (isset($p['profile_about'])) update_user_meta($uid, 'meydan_about', wp_kses_post((string) $p['profile_about']));
         if (isset($p['profile_skills'])) update_user_meta($uid, 'meydan_skills', array_values(array_filter(array_map('sanitize_text_field', (array) $p['profile_skills']))));
+        if (array_key_exists('start_date', $p)) {
+            $saved = SquareActivity::setStartDate($sid, $p['start_date']);
+            if (is_wp_error($saved)) return $this->error($saved);
+        }
         AuditLogger::log('square_updated', 'square', $sid, $before, $this->squareProfile($sid));
         return Response::ok($this->squareProfile($sid));
     }
@@ -303,6 +308,9 @@ final class MeController extends BaseController
         $data['profile_skills'] = array_values((array) get_user_meta($ownerId, 'meydan_skills', true) ?: (array) get_post_meta($sid, 'meydan_profile_skills', true));
         $data['square_stats'] = array_values((array) get_post_meta($sid, 'meydan_square_stats', true));
         $data['resume_stats'] = array_values((array) get_post_meta($sid, 'meydan_resume_stats', true));
+        $data['start_date'] = SquareActivity::startDate($sid);
+        $data['stats'] = is_array($data['stats'] ?? null) ? $data['stats'] : [];
+        $data['stats']['active_nights'] = SquareActivity::activeNights($sid);
         return $data;
     }
 
