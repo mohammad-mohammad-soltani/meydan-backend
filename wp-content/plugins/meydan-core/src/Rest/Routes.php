@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);namespace Meydan\Core\Rest;
 final class Routes
 {
@@ -19,7 +20,7 @@ final class Routes
   self::r('/admin/content','POST',[$content,'adminCreate']);self::r('/admin/content/(?P<id>\d+)','PATCH',[$content,'adminUpdate']);self::r('/admin/content/(?P<id>\d+)','DELETE',[$content,'adminDelete']);
   self::r('/creators','GET',[$creator,'list']);self::r('/creators/(?P<id>\d+)','GET',[$creator,'get']);self::r('/speakers','GET',[$creator,'speakers']);self::r('/speakers/(?P<id>\d+)','GET',[$creator,'speaker']);self::r('/admin/creators','POST',[$creator,'adminCreate']);self::r('/admin/creators/(?P<id>\d+)','PATCH',[$creator,'adminUpdate']);self::r('/admin/creators/(?P<id>\d+)','DELETE',[$creator,'adminDelete']);
   self::r('/speaker-requests','POST',[$speaker,'create']);self::r('/speaker-requests/(?P<id>\d+)','GET',[$speaker,'get']);self::r('/speaker-requests/(?P<id>\d+)','DELETE',[$speaker,'delete']);
-  self::r('/squares','GET',[$square,'list']);self::r('/squares/map','GET',[$square,'map']);self::r('/squares/(?P<id>\d+)','GET',[$square,'get']);self::r('/squares/(?P<id>\d+)/narratives','GET',[$square,'narratives']);self::r('/squares/(?P<id>\d+)/schedule','GET',[$square,'schedule']);
+  self::r('/squares','GET',[$square,'list']);self::r('/squares/map','GET',[$square,'map']);self::r('/squares/(?P<id>\d+)','GET',[$square,'get']);self::r('/squares/(?P<id>\d+)/narratives','GET',[$square,'narratives']);self::r('/squares/(?P<id>\d+)/media-reflections/count','GET',[$square,'mediaReflectionCount']);self::r('/squares/(?P<id>\d+)/schedule','GET',[$square,'schedule']);
   self::r('/geo/provinces','GET',[$misc,'provinces']);self::r('/geo/cities','GET',[$misc,'cities']);self::r('/geo/reverse','GET',[$misc,'reverse']);self::r('/initiatives','GET',[$init,'list']);self::r('/initiatives/(?P<id>\d+)','GET',[$init,'get']);self::r('/initiatives/(?P<id>\d+)/join','PUT',[$init,'join']);self::r('/initiatives/(?P<id>\d+)/join','DELETE',[$init,'leave']);
   self::r('/explore/search','GET',[$exp,'search']);self::r('/explore/trends','GET',[$exp,'trends']);self::r('/explore/suggestions','GET',[$exp,'suggestions']);
   self::r('/campaigns/current','GET',[$misc,'currentCampaign']);self::r('/campaigns/(?P<id>\d+)','GET',[$misc,'campaign']);self::r('/campaigns/(?P<id>\d+)/schedule','GET',[$misc,'campaignSchedule']);
