@@ -1,11 +1,407 @@
 <?php
-declare(strict_types=1);namespace Meydan\Core\Rest;
-use Meydan\Core\Support\Actor;use Meydan\Core\Support\EventLogger;use Meydan\Core\Support\Response;use Meydan\Core\Support\Serializer;use WP_Query;use WP_REST_Request;
+
+declare(strict_types=1);
+
+namespace Meydan\Core\Rest;
+
+use Meydan\Core\Support\Actor;
+use Meydan\Core\Support\EventLogger;
+use Meydan\Core\Support\Response;
+use Meydan\Core\Support\Serializer;
+use WP_Query;
+use WP_REST_Request;
+
 final class ExploreController extends BaseController
 {
- public function search(WP_REST_Request $r){$q=trim(sanitize_text_field((string)$r->get_param('q')));if($q==='')return Response::error('validation_failed','عبارت جست‌وجو الزامی است.',422,['q'=>'required']);if(!$this->searchRate())return Response::error('rate_limited','تعداد جست‌وجوها بیش از حد مجاز است.',429);$types=array_filter(array_map('sanitize_key',explode(',',(string)($r->get_param('types')?:'narrative,content,square,creator,user,topic'))));$s=['narratives'=>[],'squares'=>[],'users'=>[],'content'=>[],'creators'=>[],'topics'=>[]];if(in_array('narrative',$types,true))$s['narratives']=$this->posts('meydan_narrative',$q,[Serializer::class,'narrative']);if(in_array('content',$types,true))$s['content']=$this->posts('meydan_content',$q,[Serializer::class,'content']);if(in_array('square',$types,true))$s['squares']=$this->posts('meydan_square',$q,[Serializer::class,'square']);if(in_array('creator',$types,true))$s['creators']=$this->posts('meydan_creator',$q,[Serializer::class,'creator']);if(in_array('user',$types,true)){foreach(get_users(['search'=>'*'.$q.'*','search_columns'=>['display_name'],'number'=>10]) as $u){if(get_user_meta($u->ID,'meydan_account_type',true)!=='square')$s['users'][]=Actor::forUser((int)$u->ID);}}if(in_array('topic',$types,true)){$terms=get_terms(['taxonomy'=>'meydan_topic','search'=>$q,'hide_empty'=>false,'number'=>10]);if(!is_wp_error($terms))$s['topics']=array_map(static fn($t)=>['id'=>$t->term_id,'name'=>$t->name,'slug'=>$t->slug],$terms);}EventLogger::log('search','search',null,['q'=>$q,'types'=>$types]);return Response::ok(['sections'=>$s]);}
- public function trends(WP_REST_Request $r){$window=(string)($r->get_param('window')?:'24h');$hours=in_array($window,['1h','6h','24h'],true)?(int)$window:24;global $wpdb;$w=(array)get_option('meydan_trends',[]);$like=(float)($w['likes']??1);$rep=(float)($w['reposts']??2);$com=(float)($w['comments']??2.5);$share=(float)($w['shares']??1.5);$rows=$wpdb->get_results($wpdb->prepare("SELECT p.ID,(%f*COALESCE(s.likes,0)+%f*COALESCE(s.reposts,0)+%f*COALESCE(s.comments,0)+%f*COALESCE(s.shares,0)+(24/GREATEST(1,TIMESTAMPDIFF(HOUR,p.post_date_gmt,UTC_TIMESTAMP())))) AS trend_score FROM {$wpdb->posts} p LEFT JOIN {$wpdb->prefix}meydan_narrative_stats s ON s.narrative_id=p.ID WHERE p.post_type='meydan_narrative' AND p.post_status='publish' AND p.post_date_gmt>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL %d HOUR) ORDER BY trend_score DESC LIMIT 20",$like,$rep,$com,$share,$hours),ARRAY_A);$data=[];foreach($rows?:[] as $row){$n=Serializer::narrative((int)$row['ID']);if($n){$n['trend_score']=round((float)$row['trend_score'],4);$data[]=$n;}}return Response::ok(['window'=>$window,'items'=>$data]);}
- public function suggestions(){ $v=$this->viewer();$s=['nearby_squares'=>[],'creators'=>[],'topics'=>[],'content'=>[],'recommended_actors'=>[]];$sq=new WP_Query(['post_type'=>'meydan_square','post_status'=>'publish','posts_per_page'=>10]);$s['nearby_squares']=array_values(array_filter(array_map([Serializer::class,'square'],$sq->posts)));if($v->cityId)$s['nearby_squares']=array_values(array_filter($s['nearby_squares'],fn($x)=>($x['location']['city_id']??0)===$v->cityId));$cr=new WP_Query(['post_type'=>'meydan_creator','post_status'=>'publish','posts_per_page'=>10,'meta_key'=>'meydan_verified','meta_value'=>'1']);$s['creators']=array_values(array_filter(array_map([Serializer::class,'creator'],$cr->posts)));$ct=new WP_Query(['post_type'=>'meydan_content','post_status'=>'publish','posts_per_page'=>10,'meta_key'=>'meydan_featured','meta_value'=>'1']);$s['content']=array_values(array_filter(array_map([Serializer::class,'content'],$ct->posts)));$terms=get_terms(['taxonomy'=>'meydan_topic','hide_empty'=>false,'number'=>10]);if(!is_wp_error($terms))$s['topics']=array_map(static fn($t)=>['id'=>$t->term_id,'name'=>$t->name,'slug'=>$t->slug],$terms);$s['recommended_actors']=array_slice(array_map(static fn($x)=>['id'=>'sq_'.$x['id'],'type'=>'square','display_name'=>$x['name'],'avatar_url'=>$x['avatar_url'],'verified'=>$x['verified']],$s['nearby_squares']),0,5);return Response::ok($s);}
- private function posts(string $type,string $q,callable $cb):array{$wpq=new WP_Query(['post_type'=>$type,'post_status'=>'publish','s'=>$q,'posts_per_page'=>10]);return array_values(array_filter(array_map($cb,$wpq->posts)));}
- private function searchRate():bool{$v=$this->viewer();$key=$v->isAuthenticated()?'u'.$v->userId:'g'.$v->id;$r=\Meydan\Core\Support\RateLimiter::hit('search',$key,60,MINUTE_IN_SECONDS);return $r['allowed'];}
+    public function search(WP_REST_Request $request)
+    {
+        $query = $this->normalizeSearch((string) $request->get_param('q'));
+
+        if ($query === '') {
+            return Response::error(
+                'validation_failed',
+                'عبارت جست‌وجو الزامی است.',
+                422,
+                ['q' => 'required']
+            );
+        }
+
+        if (!$this->searchRate()) {
+            return Response::error(
+                'rate_limited',
+                'تعداد جست‌وجوها بیش از حد مجاز است.',
+                429
+            );
+        }
+
+        $types = array_values(array_filter(array_map(
+            'sanitize_key',
+            explode(
+                ',',
+                (string) ($request->get_param('types') ?: 'narrative,content,square,creator,user,topic')
+            )
+        )));
+
+        $sections = [
+            'narratives' => [],
+            'squares' => [],
+            'users' => [],
+            'content' => [],
+            'creators' => [],
+            'topics' => [],
+        ];
+
+        if (in_array('narrative', $types, true)) {
+            $sections['narratives'] = $this->posts(
+                'meydan_narrative',
+                $query,
+                [Serializer::class, 'narrative']
+            );
+        }
+
+        if (in_array('content', $types, true)) {
+            $sections['content'] = $this->posts(
+                'meydan_content',
+                $query,
+                [Serializer::class, 'content']
+            );
+        }
+
+        if (in_array('square', $types, true)) {
+            $sections['squares'] = $this->searchSquares($query);
+        }
+
+        if (in_array('creator', $types, true)) {
+            $sections['creators'] = $this->posts(
+                'meydan_creator',
+                $query,
+                [Serializer::class, 'creator']
+            );
+        }
+
+        if (in_array('user', $types, true)) {
+            $sections['users'] = $this->searchUsers($query);
+        }
+
+        if (in_array('topic', $types, true)) {
+            $terms = get_terms([
+                'taxonomy' => 'meydan_topic',
+                'search' => $query,
+                'hide_empty' => false,
+                'number' => 10,
+            ]);
+
+            if (!is_wp_error($terms)) {
+                $sections['topics'] = array_map(
+                    static fn($term) => [
+                        'id' => $term->term_id,
+                        'name' => $term->name,
+                        'slug' => $term->slug,
+                    ],
+                    $terms
+                );
+            }
+        }
+
+        EventLogger::log('search', 'search', null, [
+            'q' => $query,
+            'types' => $types,
+        ]);
+
+        return Response::ok(['sections' => $sections]);
+    }
+
+    public function trends(WP_REST_Request $request)
+    {
+        $window = (string) ($request->get_param('window') ?: '24h');
+        $hours = in_array($window, ['1h', '6h', '24h'], true)
+            ? (int) $window
+            : 24;
+
+        global $wpdb;
+
+        $weights = (array) get_option('meydan_trends', []);
+        $likeWeight = (float) ($weights['likes'] ?? 1);
+        $repostWeight = (float) ($weights['reposts'] ?? 2);
+        $commentWeight = (float) ($weights['comments'] ?? 2.5);
+        $shareWeight = (float) ($weights['shares'] ?? 1.5);
+
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT p.ID,
+                    (%f * COALESCE(s.likes, 0)
+                    + %f * COALESCE(s.reposts, 0)
+                    + %f * COALESCE(s.comments, 0)
+                    + %f * COALESCE(s.shares, 0)
+                    + (24 / GREATEST(1, TIMESTAMPDIFF(HOUR, p.post_date_gmt, UTC_TIMESTAMP())))) AS trend_score
+                FROM {$wpdb->posts} p
+                LEFT JOIN {$wpdb->prefix}meydan_narrative_stats s
+                    ON s.narrative_id = p.ID
+                WHERE p.post_type = 'meydan_narrative'
+                    AND p.post_status = 'publish'
+                    AND p.post_date_gmt >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)
+                ORDER BY trend_score DESC
+                LIMIT 20",
+                $likeWeight,
+                $repostWeight,
+                $commentWeight,
+                $shareWeight,
+                $hours
+            ),
+            ARRAY_A
+        );
+
+        $items = [];
+
+        foreach ($rows ?: [] as $row) {
+            $narrative = Serializer::narrative((int) $row['ID']);
+            if (!$narrative) {
+                continue;
+            }
+
+            $narrative['trend_score'] = round((float) $row['trend_score'], 4);
+            $items[] = $narrative;
+        }
+
+        return Response::ok([
+            'window' => $window,
+            'items' => $items,
+        ]);
+    }
+
+    public function suggestions()
+    {
+        $viewer = $this->viewer();
+
+        $result = [
+            'nearby_squares' => [],
+            'creators' => [],
+            'topics' => [],
+            'content' => [],
+            'recommended_actors' => [],
+        ];
+
+        $squareQuery = new WP_Query([
+            'post_type' => 'meydan_square',
+            'post_status' => 'publish',
+            'posts_per_page' => 12,
+            'orderby' => 'date',
+            'order' => 'DESC',
+        ]);
+
+        $allSquares = array_values(array_filter(array_map(
+            [Serializer::class, 'square'],
+            $squareQuery->posts
+        )));
+
+        $nearbySquares = $allSquares;
+
+        if ($viewer->cityId) {
+            $cityMatches = array_values(array_filter(
+                $allSquares,
+                fn($square) => ($square['location']['city_id'] ?? 0) === $viewer->cityId
+            ));
+
+            if ($cityMatches) {
+                $nearbySquares = $cityMatches;
+            }
+        }
+
+        $result['nearby_squares'] = array_slice($nearbySquares, 0, 10);
+
+        $creatorQuery = new WP_Query([
+            'post_type' => 'meydan_creator',
+            'post_status' => 'publish',
+            'posts_per_page' => 10,
+            'meta_key' => 'meydan_verified',
+            'meta_value' => '1',
+            'orderby' => 'date',
+            'order' => 'DESC',
+        ]);
+
+        $result['creators'] = array_values(array_filter(array_map(
+            [Serializer::class, 'creator'],
+            $creatorQuery->posts
+        )));
+
+        $contentQuery = new WP_Query([
+            'post_type' => 'meydan_content',
+            'post_status' => 'publish',
+            'posts_per_page' => 10,
+            'meta_key' => 'meydan_featured',
+            'meta_value' => '1',
+            'orderby' => 'date',
+            'order' => 'DESC',
+        ]);
+
+        $result['content'] = array_values(array_filter(array_map(
+            [Serializer::class, 'content'],
+            $contentQuery->posts
+        )));
+
+        $terms = get_terms([
+            'taxonomy' => 'meydan_topic',
+            'hide_empty' => false,
+            'number' => 10,
+            'orderby' => 'count',
+            'order' => 'DESC',
+        ]);
+
+        if (!is_wp_error($terms)) {
+            $result['topics'] = array_map(
+                static fn($term) => [
+                    'id' => $term->term_id,
+                    'name' => $term->name,
+                    'slug' => $term->slug,
+                ],
+                $terms
+            );
+        }
+
+        $result['recommended_actors'] = array_slice(array_map(
+            static fn($square) => [
+                'id' => 'sq_' . $square['id'],
+                'type' => 'square',
+                'display_name' => $square['name'],
+                'avatar_url' => $square['avatar_url'],
+                'verified' => $square['verified'],
+            ],
+            $result['nearby_squares']
+        ), 0, 8);
+
+        return Response::ok($result);
+    }
+
+    private function posts(string $type, string $query, callable $serializer): array
+    {
+        $wpQuery = new WP_Query([
+            'post_type' => $type,
+            'post_status' => 'publish',
+            's' => $query,
+            'posts_per_page' => 10,
+        ]);
+
+        return array_values(array_filter(array_map(
+            $serializer,
+            $wpQuery->posts
+        )));
+    }
+
+    private function searchSquares(string $query): array
+    {
+        $results = $this->posts(
+            'meydan_square',
+            $query,
+            [Serializer::class, 'square']
+        );
+
+        $seen = [];
+        foreach ($results as $square) {
+            $seen[(int) $square['id']] = true;
+        }
+
+        $users = array_merge(
+            get_users([
+                'search' => '*' . $query . '*',
+                'search_columns' => ['display_name'],
+                'number' => 20,
+            ]),
+            get_users([
+                'meta_key' => 'meydan_full_name',
+                'meta_value' => $query,
+                'meta_compare' => 'LIKE',
+                'number' => 20,
+            ])
+        );
+
+        foreach ($users as $user) {
+            if (count($results) >= 10) {
+                break;
+            }
+
+            $userId = (int) $user->ID;
+            if (get_user_meta($userId, 'meydan_account_type', true) !== 'square') {
+                continue;
+            }
+
+            $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
+            if ($squareId <= 0 || isset($seen[$squareId])) {
+                continue;
+            }
+
+            $square = Serializer::square($squareId);
+            if (!$square) {
+                continue;
+            }
+
+            $results[] = $square;
+            $seen[$squareId] = true;
+        }
+
+        return array_slice($results, 0, 10);
+    }
+
+    private function searchUsers(string $query): array
+    {
+        $users = array_merge(
+            get_users([
+                'search' => '*' . $query . '*',
+                'search_columns' => ['display_name'],
+                'number' => 20,
+            ]),
+            get_users([
+                'meta_key' => 'meydan_full_name',
+                'meta_value' => $query,
+                'meta_compare' => 'LIKE',
+                'number' => 20,
+            ])
+        );
+
+        $results = [];
+        $seen = [];
+
+        foreach ($users as $user) {
+            if (count($results) >= 10) {
+                break;
+            }
+
+            $userId = (int) $user->ID;
+            if (isset($seen[$userId])) {
+                continue;
+            }
+            $seen[$userId] = true;
+
+            if (get_user_meta($userId, 'meydan_account_type', true) === 'square') {
+                continue;
+            }
+
+            $results[] = Actor::forUser($userId);
+        }
+
+        return $results;
+    }
+
+    private function normalizeSearch(string $value): string
+    {
+        $value = trim(sanitize_text_field($value));
+        $value = str_replace(['ي', 'ك'], ['ی', 'ک'], $value);
+        return preg_replace('/\s+/u', ' ', $value) ?: '';
+    }
+
+    private function searchRate(): bool
+    {
+        $viewer = $this->viewer();
+        $key = $viewer->isAuthenticated()
+            ? 'u' . $viewer->userId
+            : 'g' . $viewer->id;
+
+        $rate = \Meydan\Core\Support\RateLimiter::hit(
+            'search',
+            $key,
+            60,
+            MINUTE_IN_SECONDS
+        );
+
+        return $rate['allowed'];
+    }
 }
