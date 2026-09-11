@@ -7,6 +7,7 @@ namespace Meydan\Core;
 use Meydan\Core\Admin\Admin;
 use Meydan\Core\Auth\SessionService;
 use Meydan\Core\Auth\GuestSessionService;
+use Meydan\Core\Database\ChatMigrations;
 use Meydan\Core\Database\Migrations;
 use Meydan\Core\Domain\Registrations;
 use Meydan\Core\Rest\Routes;
@@ -29,6 +30,7 @@ final class Plugin
     public static function activate(): void
     {
         Migrations::run();
+        ChatMigrations::run();
         Registrations::registerRolesAndCapabilities();
         Registrations::registerPostTypes();
         Registrations::registerTaxonomies();
@@ -48,6 +50,7 @@ final class Plugin
         $this->booted = true;
 
         Migrations::maybeRun();
+        ChatMigrations::maybeRun();
 
         add_action('init', [Registrations::class, 'registerPostTypes']);
         add_action('init', [Registrations::class, 'registerTaxonomies']);
