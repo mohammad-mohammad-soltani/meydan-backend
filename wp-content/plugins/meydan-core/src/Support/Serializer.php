@@ -164,7 +164,7 @@ final class Serializer
             'description' => (string) get_user_meta(Actor::squareOwnerUserId($id), 'meydan_about', true) ?: $post->post_content,
             'avatar_url' => Actor::squareAvatarUrl($id),
             'cover_url' => Actor::squareCoverUrl($id),
-            'verified' => true,
+            'verified' => (bool) get_post_meta($id, 'meydan_verified', true),
             'approval_status' => (string) get_post_meta($id, 'meydan_approval_status', true) ?: 'pending_verification',
             'location' => $geo ? [
                 'province_id' => (int) $geo['province_id'],
