@@ -1,6 +1,7 @@
 import http from "node:http";
 import mysql from "mysql2/promise";
 import { Server } from "socket.io";
+import { attachmentForStorage, normalizeAttachment } from "./attachments.mjs";
 import { verifySocketTicket } from "./auth.mjs";
 
 const port = Number(process.env.PORT || 3001);
@@ -46,29 +47,6 @@ const asId = (value) => {
   return Number.isInteger(id) && id > 0 ? id : 0;
 };
 const ack = (callback, payload) => typeof callback === "function" && callback(payload);
-
-function normalizeAttachment(raw) {
-  if (!raw || typeof raw !== "object") return undefined;
-  return {
-    id: String(raw.id || ""),
-    name: String(raw.name || "پیوست"),
-    mimeType: String(raw.mime_type || raw.mimeType || "application/octet-stream"),
-    size: Math.max(0, Number(raw.size || 0)),
-    url: String(raw.url || raw.preview_url || raw.previewUrl || "") || undefined,
-  };
-}
-
-function attachmentForStorage(raw) {
-  const attachment = normalizeAttachment(raw);
-  if (!attachment) return null;
-  return {
-    id: attachment.id,
-    name: attachment.name,
-    mime_type: attachment.mimeType,
-    size: attachment.size,
-    url: attachment.url || "",
-  };
-}
 
 async function isMember(conversationId, userId) {
   const [rows] = await pool.execute(
