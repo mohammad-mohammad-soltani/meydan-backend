@@ -16,12 +16,45 @@ services:
       timeout: 5s
       retries: 30
 
+  dbcheck:
+    image: mariadb:11.8
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-meydan}
+      DB_USER: ${DB_USER:-meydan}
+      DB_PASSWORD: ${DB_PASSWORD:-change-me}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        for attempt in $$(seq 1 30); do
+          if mariadb \
+            --host="$${DB_HOST}" \
+            --port=3306 \
+            --user="$${DB_USER}" \
+            --password="$${DB_PASSWORD}" \
+            --database="$${DB_NAME}" \
+            --execute='SELECT 1' >/dev/null 2>&1; then
+            echo "Database application user is ready."
+            exit 0
+          fi
+          echo "Waiting for database application credentials/grants ($${attempt}/30)..."
+          sleep 2
+        done
+        echo "Database is healthy, but the application user cannot connect from the Docker network." >&2
+        echo "If credentials changed while db_data was preserved, recreate the database volume intentionally with: docker compose down -v" >&2
+        exit 1
+
   wordpress:
     image: wordpress:7.1.0-php8.4-apache
     restart: unless-stopped
     depends_on:
-      db:
-        condition: service_healthy
+      dbcheck:
+        condition: service_completed_successfully
     ports:
       - "${WORDPRESS_PORT:-8082}:80"
     environment:
@@ -68,8 +101,8 @@ services:
   wpcli:
     image: wordpress:cli-2.12.0-php8.4
     depends_on:
-      db:
-        condition: service_healthy
+      dbcheck:
+        condition: service_completed_successfully
       wordpress:
         condition: service_started
     user: "33:33"
