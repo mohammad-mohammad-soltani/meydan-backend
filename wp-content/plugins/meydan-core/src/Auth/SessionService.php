@@ -9,7 +9,7 @@ use WP_Error;
 
 final class SessionService
 {
-    public const ACCESS_TTL = 900;
+    public const ACCESS_TTL = 30 * DAY_IN_SECONDS;
     public const REFRESH_TTL = 30 * DAY_IN_SECONDS;
 
     public function issue(int $userId, ?string $deviceName = null): array|WP_Error
