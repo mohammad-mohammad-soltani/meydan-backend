@@ -1,7 +1,6 @@
 <?php
 
-declare(strict_types=1);
-namespace Meydan\Core\Uploads;
+declare(strict_types=1);namespace Meydan\Core\Uploads;
 
 use Meydan\Core\Support\Crypto;
 use WP_Error;
@@ -15,7 +14,7 @@ final class ChunkedUploadService
     {
         $name=sanitize_file_name((string)($p['filename']??''));$mime=sanitize_mime_type((string)($p['mime_type']??''));$size=(int)($p['size']??0);$purpose=sanitize_key((string)($p['purpose']??''));
         $ext=strtolower(pathinfo($name,PATHINFO_EXTENSION));$max=(int)((array)get_option('meydan_api_settings',[]))['max_upload_size'];if($max<=0)$max=100*1024*1024;
-        if($name===''||$size<=0||$size>$max||in_array($ext,self::BAD,true)||!in_array($purpose,['narrative','content','avatar','cover','creator','square'],true))return new WP_Error('validation_failed','مشخصات فایل معتبر نیست.',['status'=>422]);
+        if($name===''||$size<=0||$size>$max||in_array($ext,self::BAD,true)||!in_array($purpose,['narrative','content','avatar','cover','creator','square','chat'],true))return new WP_Error('validation_failed','مشخصات فایل معتبر نیست.',['status'=>422]);
         $allowed=apply_filters('meydan_allowed_upload_mimes',get_allowed_mime_types());$check=wp_check_filetype($name,$allowed);
         $canonicalMime=(string)($check['type']??'');$declaredMime=strtolower(trim($mime));$canonicalMajor=$canonicalMime!==''?strstr($canonicalMime,'/',true):false;$declaredMajor=$declaredMime!==''?strstr($declaredMime,'/',true):false;
         $mimeMatches=$declaredMime===''||$declaredMime===$canonicalMime||$declaredMime==='application/octet-stream'||($canonicalMajor&&$declaredMajor&&$canonicalMajor===$declaredMajor&&in_array($canonicalMajor,['video','audio'],true))||($canonicalMajor==='video'&&$declaredMime==='application/mp4');
