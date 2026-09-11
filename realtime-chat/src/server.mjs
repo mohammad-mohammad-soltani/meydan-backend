@@ -47,6 +47,29 @@ const asId = (value) => {
 };
 const ack = (callback, payload) => typeof callback === "function" && callback(payload);
 
+function normalizeAttachment(raw) {
+  if (!raw || typeof raw !== "object") return undefined;
+  return {
+    id: String(raw.id || ""),
+    name: String(raw.name || "پیوست"),
+    mimeType: String(raw.mime_type || raw.mimeType || "application/octet-stream"),
+    size: Math.max(0, Number(raw.size || 0)),
+    url: String(raw.url || raw.preview_url || raw.previewUrl || "") || undefined,
+  };
+}
+
+function attachmentForStorage(raw) {
+  const attachment = normalizeAttachment(raw);
+  if (!attachment) return null;
+  return {
+    id: attachment.id,
+    name: attachment.name,
+    mime_type: attachment.mimeType,
+    size: attachment.size,
+    url: attachment.url || "",
+  };
+}
+
 async function isMember(conversationId, userId) {
   const [rows] = await pool.execute(
     `SELECT 1 FROM ${table("participants")} WHERE conversation_id=? AND user_id=? AND archived_at IS NULL LIMIT 1`,
@@ -70,7 +93,7 @@ async function messageById(messageId) {
   const [reactionRows] = await pool.execute(`SELECT reaction FROM ${table("reactions")} WHERE message_id=? ORDER BY created_at ASC`, [messageId]);
   let attachment;
   if (row.attachment_json && !row.deleted_at) {
-    try { attachment = JSON.parse(row.attachment_json); } catch { attachment = undefined; }
+    try { attachment = normalizeAttachment(JSON.parse(row.attachment_json)); } catch { attachment = undefined; }
   }
   let replyTo;
   if (row.reply_to_id) {
@@ -140,7 +163,7 @@ io.on("connection", (socket) => {
       if (!conversationId || !(await isMember(conversationId, userId))) return ack(callback, { ok: false, error: "forbidden" });
       const clientId = String(input.clientId || "").slice(0, 80);
       const body = String(input.body || "").trim().slice(0, 10000);
-      const attachment = input.attachment && typeof input.attachment === "object" ? input.attachment : null;
+      const attachment = attachmentForStorage(input.attachment);
       if (!clientId || (!body && !attachment)) return ack(callback, { ok: false, error: "invalid_message" });
       const replyToId = asId(input.replyToId) || null;
       const forwardedFromMessageId = asId(input.forwardedFromMessageId) || null;
