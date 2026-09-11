@@ -19,6 +19,7 @@ final class ChatSocketTicket
         $signature = self::base64UrlEncode(hash_hmac('sha256', $encoded, self::secret(), true));
         return [
             'ticket' => $encoded . '.' . $signature,
+            'user_id' => $userId,
             'expires_at' => gmdate('c', $payload['exp']),
             'socket_url' => rtrim((string) (getenv('MEYDAN_CHAT_SOCKET_URL') ?: ''), '/'),
         ];
