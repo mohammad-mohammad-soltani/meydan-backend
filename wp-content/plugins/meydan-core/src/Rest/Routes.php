@@ -23,7 +23,7 @@ final class Routes
   self::r('/squares','GET',[$square,'list']);self::r('/squares/map','GET',[$square,'map']);self::r('/squares/(?P<id>\d+)','GET',[$square,'get']);self::r('/squares/(?P<id>\d+)/narratives','GET',[$square,'narratives']);self::r('/squares/(?P<id>\d+)/media-reflections/count','GET',[$square,'mediaReflectionCount']);self::r('/squares/(?P<id>\d+)/schedule','GET',[$square,'schedule']);
   self::r('/geo/provinces','GET',[$misc,'provinces']);self::r('/geo/cities','GET',[$misc,'cities']);self::r('/geo/reverse','GET',[$misc,'reverse']);self::r('/initiatives','GET',[$init,'list']);self::r('/initiatives/(?P<id>\d+)','GET',[$init,'get']);self::r('/initiatives/(?P<id>\d+)/participants','GET',[$init,'participants']);self::r('/initiatives/(?P<id>\d+)/join','PUT',[$init,'join']);self::r('/initiatives/(?P<id>\d+)/join','DELETE',[$init,'leave']);
   self::r('/explore/search','GET',[$exp,'search']);self::r('/explore/trends','GET',[$exp,'trends']);self::r('/explore/suggestions','GET',[$exp,'suggestions']);
-  self::r('/campaigns/current','GET',[$misc,'currentCampaign']);self::r('/campaigns/(?P<id>\d+)','GET',[$misc,'campaign']);self::r('/campaigns/(?P<id>\d+)/schedule','GET',[$misc,'campaignSchedule']);
+  self::r('/campaigns','GET',[$misc,'campaigns']);self::r('/campaigns/current','GET',[$misc,'currentCampaign']);self::r('/campaigns/(?P<id>\d+)','GET',[$misc,'campaign']);self::r('/campaigns/(?P<id>\d+)/schedule','GET',[$misc,'campaignSchedule']);
   self::r('/notifications','GET',[$notif,'list']);self::r('/notifications/unread-count','GET',[$notif,'unread']);self::r('/notifications/read-all','PUT',[$notif,'readAll']);self::r('/notifications/(?P<id>\d+)/read','PUT',[$notif,'read']);self::r('/notifications/(?P<id>\d+)/read','DELETE',[$notif,'unreadOne']);self::r('/notifications/(?P<id>\d+)/archive','PUT',[$notif,'archive']);self::r('/notifications/(?P<id>\d+)/archive','DELETE',[$notif,'unarchive']);self::r('/notifications/(?P<id>\d+)','DELETE',[$notif,'delete']);self::r('/admin/notifications/broadcast','POST',[$notif,'broadcast']);self::r('/config','GET',[$misc,'config']);
  }
  private static function r(string $route,string $method,callable $callback):void
@@ -49,7 +49,8 @@ final class Routes
    }
    return static fn():true => true;
   }
-  $public = ['/timeline','/content','/creators','/speakers','/squares','/squares/map','/geo/provinces','/geo/cities','/geo/reverse','/initiatives','/explore/search','/explore/trends','/explore/suggestions','/campaigns/current','/config'];
+  if (str_starts_with($route,'/initiatives/(?P<id>\d+)/join')) return static fn():true => true;
+  $public = ['/timeline','/content','/creators','/speakers','/squares','/squares/map','/geo/provinces','/geo/cities','/geo/reverse','/initiatives','/explore/search','/explore/trends','/explore/suggestions','/campaigns','/campaigns/current','/config'];
   $isPublic = in_array($route,$public,true)
    || ($method === 'GET' && (
     str_starts_with($route,'/content/(?P<id>')
