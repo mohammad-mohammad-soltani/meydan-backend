@@ -14,6 +14,8 @@ jobs:
         run: find wp-content/plugins/meydan-core -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Required REST inventory
         run: python3 tests/check-route-inventory.py
+      - name: Auth and timeline contract
+        run: python3 tests/check-auth-timeline-contract.py
   docker-smoke:
     runs-on: ubuntu-latest
     needs: lint-and-inventory
