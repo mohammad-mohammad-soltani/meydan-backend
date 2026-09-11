@@ -50,6 +50,7 @@ PUT /uploads/(?P<upload_id>[A-Za-z0-9_\\-]+)/chunks/(?P<index>\\d+)
 POST /uploads/(?P<upload_id>[A-Za-z0-9_\\-]+)/complete
 DELETE /uploads/(?P<upload_id>[A-Za-z0-9_\\-]+)
 GET /timeline
+GET /actors/(?P<type>user|square)/(?P<id>\\d+)/replies
 PUT /actors/(?P<type>user|square)/(?P<id>\\d+)/follow
 DELETE /actors/(?P<type>user|square)/(?P<id>\\d+)/follow
 GET /actors/(?P<type>user|square)/(?P<id>\\d+)/followers
@@ -81,8 +82,10 @@ GET /squares/(?P<id>\\d+)/media-reflections/count
 GET /squares/(?P<id>\\d+)/schedule
 GET /geo/provinces
 GET /geo/cities
+GET /geo/reverse
 GET /initiatives
 GET /initiatives/(?P<id>\\d+)
+GET /initiatives/(?P<id>\\d+)/participants
 PUT /initiatives/(?P<id>\\d+)/join
 DELETE /initiatives/(?P<id>\\d+)/join
 GET /explore/search
