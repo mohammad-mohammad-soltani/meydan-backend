@@ -10,6 +10,7 @@ on:
       - "realtime-chat/**"
       - "docker-compose.yml"
       - "tools/freestyle-create-vm.mjs"
+      - "tools/freestyle-run-deploy.mjs"
       - ".github/workflows/deploy-freestyle.yml"
 
 concurrency:
@@ -177,11 +178,7 @@ jobs:
         if: steps.auth.outputs.ready == 'true'
         env:
           FREESTYLE_API_KEY: ${{ secrets.FREESTYLE_API_KEY }}
-        run: |
-          npx freestyle@latest vm exec "$FREESTYLE_VM_SLUG" \
-            --linux-user root \
-            --timeout-ms 300000 \
-            -- bash /tmp/deploy-meydan-backend.sh "$FREESTYLE_DOMAIN" "$WORDPRESS_PORT" "$CHAT_DOMAIN" "$CHAT_PORT"
+        run: node tools/freestyle-run-deploy.mjs
 
       - name: Route HTTPS domains
         if: steps.auth.outputs.ready == 'true'
