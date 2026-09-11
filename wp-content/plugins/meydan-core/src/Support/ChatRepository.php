@@ -69,11 +69,12 @@ final class ChatRepository
             if ($preview === '' && $last->attachment_json) $preview = 'فایل پیوست‌شده';
         }
 
-        $lastRead = (int) $wpdb->get_var($wpdb->prepare(
-            "SELECT COALESCE(last_read_message_id,0) FROM {$this->table('participants')} WHERE conversation_id=%d AND user_id=%d LIMIT 1",
+        $viewerState = $wpdb->get_row($wpdb->prepare(
+            "SELECT COALESCE(last_read_message_id,0) AS last_read_message_id, notifications_muted FROM {$this->table('participants')} WHERE conversation_id=%d AND user_id=%d LIMIT 1",
             $conversationId,
             $viewerId
         ));
+        $lastRead = (int) ($viewerState->last_read_message_id ?? 0);
         $unread = (int) $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM {$this->table('messages')} WHERE conversation_id=%d AND id>%d AND sender_user_id<>%d AND deleted_at IS NULL",
             $conversationId,
@@ -89,6 +90,7 @@ final class ChatRepository
             'updated_at' => gmdate('c', strtotime((string) $conversation->updated_at . ' UTC')),
             'unread_count' => $unread,
             'last_message_id' => $lastMessageId ? (string) $lastMessageId : null,
+            'notifications_muted' => (bool) ($viewerState->notifications_muted ?? false),
         ];
     }
 
@@ -143,6 +145,39 @@ final class ChatRepository
             $limit
         )) ?: [];
         return array_values(array_map(fn($row) => $this->serializeMessage($row), array_reverse($rows)));
+    }
+
+    public function searchMessages(int $conversationId, int $viewerId, string $query, int $limit = 100): array|WP_Error
+    {
+        if (!$this->isMember($conversationId, $viewerId)) return new WP_Error('chat_not_found', 'گفتگو پیدا نشد.', ['status' => 404]);
+        $query = trim(sanitize_text_field($query));
+        if ($query === '') return [];
+        global $wpdb;
+        $limit = min(100, max(1, $limit));
+        $like = '%' . $wpdb->esc_like($query) . '%';
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$this->table('messages')} WHERE conversation_id=%d AND deleted_at IS NULL AND (body LIKE %s OR attachment_json LIKE %s) ORDER BY id DESC LIMIT %d",
+            $conversationId,
+            $like,
+            $like,
+            $limit
+        )) ?: [];
+        return array_values(array_map(fn($row) => $this->serializeMessage($row), $rows));
+    }
+
+    public function setMuted(int $conversationId, int $userId, bool $muted): array|WP_Error
+    {
+        if (!$this->isMember($conversationId, $userId)) return new WP_Error('chat_not_found', 'گفتگو پیدا نشد.', ['status' => 404]);
+        global $wpdb;
+        $updated = $wpdb->update(
+            $this->table('participants'),
+            ['notifications_muted' => $muted ? 1 : 0],
+            ['conversation_id' => $conversationId, 'user_id' => $userId],
+            ['%d'],
+            ['%d', '%d']
+        );
+        if ($updated === false) return new WP_Error('chat_mute_failed', 'تغییر وضعیت اعلان‌ها انجام نشد.', ['status' => 500]);
+        return $this->conversation($conversationId, $userId);
     }
 
     public function send(int $conversationId, int $senderId, array $input): array|WP_Error
@@ -260,15 +295,15 @@ final class ChatRepository
         if ((int) ($row->reply_to_id ?? 0) > 0) {
             $replyRow = $wpdb->get_row($wpdb->prepare("SELECT id,sender_user_id,body FROM {$this->table('messages')} WHERE id=%d LIMIT 1", (int) $row->reply_to_id));
             if ($replyRow) {
-                $replyUser = get_userdata((int) $replyRow->sender_user_id);
-                $reply = ['id' => (string) $replyRow->id, 'body' => (string) $replyRow->body, 'sender_name' => $replyUser ? $replyUser->display_name : 'کاربر'];
+                $replyUser = Actor::forUser((int) $replyRow->sender_user_id);
+                $reply = ['id' => (string) $replyRow->id, 'body' => (string) $replyRow->body, 'sender_name' => (string) ($replyUser['display_name'] ?? 'کاربر')];
             }
         }
         $forwardedFrom = null;
         if ((int) ($row->forwarded_from_message_id ?? 0) > 0) {
             $originUserId = (int) $wpdb->get_var($wpdb->prepare("SELECT sender_user_id FROM {$this->table('messages')} WHERE id=%d LIMIT 1", (int) $row->forwarded_from_message_id));
-            $originUser = $originUserId ? get_userdata($originUserId) : null;
-            $forwardedFrom = $originUser ? $originUser->display_name : 'پیام فورواردشده';
+            $originActor = $originUserId ? Actor::forUser($originUserId) : null;
+            $forwardedFrom = $originActor ? (string) ($originActor['display_name'] ?? 'پیام فورواردشده') : 'پیام فورواردشده';
         }
         return [
             'id' => (string) $row->id,
@@ -289,13 +324,34 @@ final class ChatRepository
     private function user(int $userId): array
     {
         $user = get_userdata($userId);
-        if (!$user) return ['id' => (string) $userId, 'name' => 'کاربر', 'handle' => '@user' . $userId, 'avatar_url' => null, 'verified' => false];
+        if (!$user) return [
+            'id' => (string) $userId,
+            'name' => 'کاربر',
+            'handle' => '@user' . $userId,
+            'avatar_url' => null,
+            'verified' => false,
+            'profile_type' => 'user',
+            'profile_id' => (string) $userId,
+        ];
+
+        $actor = Actor::forUser($userId);
+        $profileType = (string) ($actor['type'] ?? 'user');
+        $profileId = $userId;
+        $handle = '@' . (string) $user->user_nicename;
+        if ($profileType === 'square') {
+            $profileId = (int) get_user_meta($userId, 'meydan_square_id', true);
+            $squareHandle = (string) get_post_meta($profileId, 'meydan_handle', true);
+            $handle = $squareHandle !== '' ? (str_starts_with($squareHandle, '@') ? $squareHandle : '@' . $squareHandle) : '@square_' . $profileId;
+        }
+
         return [
             'id' => (string) $userId,
-            'name' => (string) $user->display_name,
-            'handle' => '@' . (string) $user->user_nicename,
-            'avatar_url' => get_avatar_url($userId, ['size' => 96]) ?: null,
-            'verified' => (bool) get_user_meta($userId, 'meydan_verified', true),
+            'name' => (string) ($actor['display_name'] ?? $user->display_name),
+            'handle' => $handle,
+            'avatar_url' => !empty($actor['avatar_url']) ? (string) $actor['avatar_url'] : null,
+            'verified' => (bool) ($actor['verified'] ?? false),
+            'profile_type' => $profileType === 'square' ? 'square' : 'user',
+            'profile_id' => (string) $profileId,
         ];
     }
 
