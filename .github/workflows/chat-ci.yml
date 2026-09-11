@@ -1,0 +1,60 @@
+name: Realtime chat CI
+
+on:
+  pull_request:
+    paths:
+      - "wp-content/plugins/meydan-core/**"
+      - "realtime-chat/**"
+      - "docker-compose.yml"
+      - ".github/workflows/chat-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-chat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: realtime-chat/package.json
+
+      - name: Install realtime dependencies
+        working-directory: realtime-chat
+        run: npm install --no-audit --no-fund
+
+      - name: Run realtime tests
+        working-directory: realtime-chat
+        run: npm test
+
+      - name: Check realtime server syntax
+        working-directory: realtime-chat
+        run: node --check src/server.mjs && node --check src/auth.mjs
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          coverage: none
+
+      - name: Lint chat PHP
+        run: |
+          php -l wp-content/plugins/meydan-core/src/Database/ChatMigrations.php
+          php -l wp-content/plugins/meydan-core/src/Support/ChatRepository.php
+          php -l wp-content/plugins/meydan-core/src/Support/ChatSocketTicket.php
+          php -l wp-content/plugins/meydan-core/src/Rest/ChatController.php
+          php -l wp-content/plugins/meydan-core/src/Rest/ChatRoutes.php
+          php -l wp-content/plugins/meydan-core/src/Plugin.php
+          php -l wp-content/plugins/meydan-core/src/Rest/SquareController.php
+          php -l wp-content/plugins/meydan-core/src/Uploads/ChunkedUploadService.php
+
+      - name: Validate Docker Compose
+        run: docker compose config >/dev/null
+
+      - name: Build realtime image
+        run: docker build -t meydan-realtime-chat-ci ./realtime-chat
