@@ -13,6 +13,7 @@ final class CampaignCurrentGuard
         add_action('init', [self::class, 'normalizeExisting'], 30);
         add_action('added_post_meta', [self::class, 'sync'], 20, 4);
         add_action('updated_post_meta', [self::class, 'sync'], 20, 4);
+        add_action('transition_post_status', [self::class, 'onStatusTransition'], 20, 3);
     }
 
     public static function normalizeExisting(): void
@@ -46,13 +47,33 @@ final class CampaignCurrentGuard
             $metaKey !== 'meydan_current'
             || (string) $metaValue !== '1'
             || get_post_type($postId) !== 'meydan_campaign'
+            || get_post_status($postId) !== 'publish'
         ) {
             return;
         }
 
+        self::enforceFor($postId);
+    }
+
+    public static function onStatusTransition(string $newStatus, string $oldStatus, \WP_Post $post): void
+    {
+        if (
+            $newStatus !== 'publish'
+            || $oldStatus === 'publish'
+            || $post->post_type !== 'meydan_campaign'
+            || (string) get_post_meta($post->ID, 'meydan_current', true) !== '1'
+        ) {
+            return;
+        }
+
+        self::enforceFor((int) $post->ID);
+    }
+
+    private static function enforceFor(int $postId): void
+    {
         $otherIds = get_posts([
             'post_type' => 'meydan_campaign',
-            'post_status' => 'any',
+            'post_status' => 'publish',
             'posts_per_page' => -1,
             'fields' => 'ids',
             'post__not_in' => [$postId],
