@@ -55,6 +55,14 @@ async function isMember(conversationId, userId) {
   return rows.length > 0;
 }
 
+async function notifyConversationUsers(conversationId, event, payload) {
+  const [rows] = await pool.execute(
+    `SELECT user_id FROM ${table("participants")} WHERE conversation_id=? AND archived_at IS NULL`,
+    [conversationId],
+  );
+  for (const participant of rows) io.to(userRoom(participant.user_id)).emit(event, payload);
+}
+
 async function messageById(messageId) {
   const [rows] = await pool.execute(`SELECT * FROM ${table("messages")} WHERE id=? LIMIT 1`, [messageId]);
   const row = rows[0];
@@ -153,7 +161,7 @@ io.on("connection", (socket) => {
       await pool.execute(`UPDATE ${table("conversations")} SET last_message_id=?,updated_at=UTC_TIMESTAMP() WHERE id=?`, [messageId, conversationId]);
       const message = await messageById(messageId);
       io.to(room(conversationId)).emit("message:created", message);
-      io.to(room(conversationId)).emit("conversation:updated", { conversationId: String(conversationId), message });
+      await notifyConversationUsers(conversationId, "conversation:updated", { conversationId: String(conversationId), message });
       ack(callback, { ok: true, message });
     } catch (error) {
       console.error("message:send", error);
@@ -171,6 +179,7 @@ io.on("connection", (socket) => {
       await pool.execute(`UPDATE ${table("messages")} SET body=?,edited_at=UTC_TIMESTAMP() WHERE id=? AND deleted_at IS NULL`, [nextBody, id]);
       const message = await messageById(id);
       io.to(room(membership.conversation_id)).emit("message:updated", message);
+      await notifyConversationUsers(membership.conversation_id, "conversation:updated", { conversationId: String(membership.conversation_id), message });
       ack(callback, { ok: true, message });
     } catch { ack(callback, { ok: false, error: "internal_error" }); }
   });
@@ -182,6 +191,7 @@ io.on("connection", (socket) => {
       if (!membership || Number(membership.sender_user_id) !== userId) return ack(callback, { ok: false, error: "forbidden" });
       await pool.execute(`UPDATE ${table("messages")} SET body='',attachment_json=NULL,deleted_at=UTC_TIMESTAMP() WHERE id=?`, [id]);
       io.to(room(membership.conversation_id)).emit("message:deleted", { messageId: String(id), conversationId: String(membership.conversation_id) });
+      await notifyConversationUsers(membership.conversation_id, "conversation:updated", { conversationId: String(membership.conversation_id) });
       ack(callback, { ok: true });
     } catch { ack(callback, { ok: false, error: "internal_error" }); }
   });
@@ -215,6 +225,7 @@ io.on("connection", (socket) => {
       if (!cid || !mid || !(await isMember(cid, userId))) return ack(callback, { ok: false, error: "forbidden" });
       await pool.execute(`UPDATE ${table("participants")} SET last_read_message_id=GREATEST(COALESCE(last_read_message_id,0),?) WHERE conversation_id=? AND user_id=?`, [mid, cid, userId]);
       socket.to(room(cid)).emit("receipt:read", { conversationId: String(cid), userId: String(userId), messageId: String(mid) });
+      await notifyConversationUsers(cid, "conversation:updated", { conversationId: String(cid) });
       ack(callback, { ok: true });
     } catch { ack(callback, { ok: false, error: "internal_error" }); }
   });
