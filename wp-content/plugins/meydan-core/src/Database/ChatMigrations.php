@@ -6,7 +6,7 @@ namespace Meydan\Core\Database;
 
 final class ChatMigrations
 {
-    private const VERSION = '1.0.0';
+    private const VERSION = '1.1.0';
 
     public static function maybeRun(): void
     {
@@ -42,6 +42,7 @@ final class ChatMigrations
             user_id BIGINT UNSIGNED NOT NULL,
             joined_at DATETIME NOT NULL,
             last_read_message_id BIGINT UNSIGNED NULL,
+            notifications_muted TINYINT(1) NOT NULL DEFAULT 0,
             archived_at DATETIME NULL,
             PRIMARY KEY (conversation_id, user_id),
             KEY user_id (user_id),

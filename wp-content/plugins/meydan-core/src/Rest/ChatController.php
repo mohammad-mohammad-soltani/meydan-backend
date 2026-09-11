@@ -48,6 +48,28 @@ final class ChatController extends BaseController
         return $result instanceof WP_Error ? $this->error($result) : Response::ok($result);
     }
 
+    public function search(WP_REST_Request $request): mixed
+    {
+        $result = $this->chat->searchMessages(
+            (int) $request['id'],
+            get_current_user_id(),
+            (string) ($request->get_param('q') ?? ''),
+            min(100, max(1, (int) ($request->get_param('limit') ?: 100)))
+        );
+        return $result instanceof WP_Error ? $this->error($result) : Response::ok($result);
+    }
+
+    public function mute(WP_REST_Request $request): mixed
+    {
+        $input = $this->json($request);
+        $result = $this->chat->setMuted(
+            (int) $request['id'],
+            get_current_user_id(),
+            filter_var($input['muted'] ?? false, FILTER_VALIDATE_BOOLEAN)
+        );
+        return $result instanceof WP_Error ? $this->error($result) : Response::ok($result);
+    }
+
     public function send(WP_REST_Request $request): mixed
     {
         $result = $this->chat->send((int) $request['id'], get_current_user_id(), $this->json($request));

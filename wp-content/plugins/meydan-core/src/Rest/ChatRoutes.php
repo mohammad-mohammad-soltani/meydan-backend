@@ -16,6 +16,8 @@ final class ChatRoutes
         self::route('/chat/conversations/(?P<id>\d+)', 'GET', [$chat, 'conversation']);
         self::route('/chat/conversations/(?P<id>\d+)/messages', 'GET', [$chat, 'messages']);
         self::route('/chat/conversations/(?P<id>\d+)/messages', 'POST', [$chat, 'send']);
+        self::route('/chat/conversations/(?P<id>\d+)/search', 'GET', [$chat, 'search']);
+        self::route('/chat/conversations/(?P<id>\d+)/mute', 'PUT', [$chat, 'mute']);
         self::route('/chat/conversations/(?P<id>\d+)/read', 'PUT', [$chat, 'read']);
         self::route('/chat/messages/(?P<id>\d+)', 'PATCH', [$chat, 'edit']);
         self::route('/chat/messages/(?P<id>\d+)', 'DELETE', [$chat, 'delete']);

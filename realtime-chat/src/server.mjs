@@ -1,6 +1,7 @@
 import http from "node:http";
 import mysql from "mysql2/promise";
 import { Server } from "socket.io";
+import { attachmentForStorage, normalizeAttachment } from "./attachments.mjs";
 import { verifySocketTicket } from "./auth.mjs";
 
 const port = Number(process.env.PORT || 3001);
@@ -70,7 +71,7 @@ async function messageById(messageId) {
   const [reactionRows] = await pool.execute(`SELECT reaction FROM ${table("reactions")} WHERE message_id=? ORDER BY created_at ASC`, [messageId]);
   let attachment;
   if (row.attachment_json && !row.deleted_at) {
-    try { attachment = JSON.parse(row.attachment_json); } catch { attachment = undefined; }
+    try { attachment = normalizeAttachment(JSON.parse(row.attachment_json)); } catch { attachment = undefined; }
   }
   let replyTo;
   if (row.reply_to_id) {
@@ -140,7 +141,7 @@ io.on("connection", (socket) => {
       if (!conversationId || !(await isMember(conversationId, userId))) return ack(callback, { ok: false, error: "forbidden" });
       const clientId = String(input.clientId || "").slice(0, 80);
       const body = String(input.body || "").trim().slice(0, 10000);
-      const attachment = input.attachment && typeof input.attachment === "object" ? input.attachment : null;
+      const attachment = attachmentForStorage(input.attachment);
       if (!clientId || (!body && !attachment)) return ack(callback, { ok: false, error: "invalid_message" });
       const replyToId = asId(input.replyToId) || null;
       const forwardedFromMessageId = asId(input.forwardedFromMessageId) || null;
