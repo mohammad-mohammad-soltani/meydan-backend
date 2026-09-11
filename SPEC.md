@@ -1098,7 +1098,7 @@ Reply به Reply نیز در همان thread نمایش داده شود.
 
 # 33. Media Reflection
 
-بازنشر رسانه‌ای یک Relation برای Narrative است.
+بازتاب رسانه‌ای یک Relation برای Narrative است.
 
 Fields:
 
@@ -1106,13 +1106,45 @@ Fields:
 id
 narrative_id
 outlet
+outlet_id
 title
 summary
 url
 logo_media_id
 published_at
 status
+position
 ```
+
+`outlet` نام رسانه را به‌عنوان snapshot نگه می‌دارد؛ `outlet_id` به موجودیت «رسانه» (بخش 33.1) اشاره می‌کند. خروجی API علاوه بر این دو، کلید `outlet_detail` را هم برمی‌گرداند:
+
+```json
+"media_reflections": [
+  {
+    "id": 12,
+    "narrative_id": 34,
+    "outlet": "خبرگزاری مهر",
+    "outlet_id": 7,
+    "outlet_detail": {
+      "id": 7,
+      "name": "خبرگزاری مهر",
+      "avatar_url": "https://.../logo.png",
+      "website": "https://www.mehrnews.com",
+      "bale": "https://ble.ir/mehrnews",
+      "eitaa": "https://eitaa.com/mehrnews"
+    },
+    "title": "گزارش اختصاصی",
+    "summary": "",
+    "url": "https://www.mehrnews.com/news/123",
+    "logo_url": "",
+    "published_at": "2026-09-11T10:00:00+00:00",
+    "status": "published",
+    "position": 1
+  }
+]
+```
+
+`media_reflections` در خروجی تایم‌لاین و تکی روایت (بخش 12) هر دو حضور دارد و ترتیب آن بر اساس `position` صعودی است.
 
 Public:
 
@@ -1128,21 +1160,44 @@ PATCH  /admin/media-reflections/{id}
 DELETE /admin/media-reflections/{id}
 ```
 
+`POST` کلید `outlet_id` را می‌پذیرد (یا برای سازگاری، `outlet` متنی را). `PATCH` جزئی است: ارسال تنها `position` کافی است.
+
+## 33.1 Media Outlet
+
+موجودیت «رسانه» یک CPT به نام `meydan_media_outlet` است.
+
+Fields:
+
+```text
+id
+name
+avatar_media_id
+avatar_url
+website
+bale
+eitaa
+```
+
+Public:
+
+```http
+GET /media-outlets
+GET /media-outlets/{id}
+```
+
+Admin:
+
+```http
+POST   /admin/media-outlets
+PATCH  /admin/media-outlets/{id}
+DELETE /admin/media-outlets/{id}
+```
+
 ## wp-admin
 
-باید:
-
-- Add
-- Edit
-- Delete
-- Reorder
-- link/unlink Narrative
-- Outlet
-- Title
-- Summary
-- URL
-- Date
-- Logo
+- منوی «رسانه‌ها»: تعریف رسانه با آواتار، نام، لینک سایت، لینک بله، لینک ایتا.
+- متاباکس «بازتاب‌های رسانه‌ای» روی صفحه ویرایش روایت: افزودن، ویرایش، حذف، و تغییر ترتیب (drag) بازتاب‌ها. ترتیب ذخیره‌شده همان ترتیب خروجی API است.
+- صفحه «بازتاب‌های رسانه‌ای» فقط مرور و فهرست است (ثبت از روی صفحه روایت انجام می‌شود).
 
 کاملاً قابل مدیریت باشد.
 

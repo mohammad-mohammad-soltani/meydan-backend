@@ -45,6 +45,11 @@ GET /narratives/(?P<id>\\d+)/media-reflections
 POST /admin/narratives/(?P<id>\\d+)/media-reflections
 PATCH /admin/media-reflections/(?P<id>\\d+)
 DELETE /admin/media-reflections/(?P<id>\\d+)
+GET /media-outlets
+GET /media-outlets/(?P<id>\\d+)
+POST /admin/media-outlets
+PATCH /admin/media-outlets/(?P<id>\\d+)
+DELETE /admin/media-outlets/(?P<id>\\d+)
 POST /uploads
 PUT /uploads/(?P<upload_id>[A-Za-z0-9_\\-]+)/chunks/(?P<index>\\d+)
 POST /uploads/(?P<upload_id>[A-Za-z0-9_\\-]+)/complete

@@ -7,7 +7,7 @@
  * Author: محمد محمد سلطانی
  * Text Domain: meydan-core
  * Requires at least: 7.0
- * Requires PHP: 8.2
+ * Requires PHP: 8.1
  */
 
 declare(strict_types=1);

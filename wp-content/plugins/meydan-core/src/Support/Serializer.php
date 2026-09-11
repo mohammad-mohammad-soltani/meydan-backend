@@ -127,8 +127,25 @@ final class Serializer
             'bio' => $post->post_content,
             'avatar_url' => Actor::avatarUrl((int) get_post_meta($id, 'meydan_avatar_media_id', true)),
             'verified' => (bool) get_post_meta($id, 'meydan_verified', true),
-            'cities' => array_values(array_map('intval', (array) get_post_meta($id, 'meydan_cities', true))),
-            'social_links' => (array) get_post_meta($id, 'meydan_social_links', true),
+            'cities' => array_values(array_filter(array_map('intval', (array) get_post_meta($id, 'meydan_cities', true)))),
+            'social_links' => array_values(array_filter((array) get_post_meta($id, 'meydan_social_links', true), 'is_array')),
+        ];
+    }
+
+    public static function mediaOutlet(int|WP_Post $post): ?array
+    {
+        $post = $post instanceof WP_Post ? $post : get_post($post);
+        if (!$post || $post->post_type !== 'meydan_media_outlet' || $post->post_status !== 'publish') {
+            return null;
+        }
+        $id = (int) $post->ID;
+        return [
+            'id' => $id,
+            'name' => get_the_title($post),
+            'avatar_url' => Actor::avatarUrl((int) get_post_meta($id, 'meydan_avatar_media_id', true)),
+            'website' => (string) get_post_meta($id, 'meydan_website', true),
+            'bale' => (string) get_post_meta($id, 'meydan_bale', true),
+            'eitaa' => (string) get_post_meta($id, 'meydan_eitaa', true),
         ];
     }
 
@@ -257,18 +274,23 @@ final class Serializer
             "SELECT * FROM {$wpdb->prefix}meydan_media_reflections WHERE narrative_id = %d AND status = 'published' ORDER BY position ASC, published_at DESC, id DESC",
             $narrativeId
         ), ARRAY_A);
-        return array_map(static fn(array $r): array => [
-            'id' => (int) $r['id'],
-            'narrative_id' => (int) $r['narrative_id'],
-            'outlet' => (string) $r['outlet'],
-            'title' => (string) $r['title'],
-            'summary' => (string) ($r['summary'] ?? ''),
-            'url' => (string) $r['url'],
-            'logo_url' => Actor::mediaUrl((int) ($r['logo_media_id'] ?? 0)),
-            'published_at' => !empty($r['published_at']) ? self::isoMeta((string) $r['published_at']) : null,
-            'status' => (string) $r['status'],
-            'position' => (int) $r['position'],
-        ], $rows ?: []);
+        return array_map(static function (array $r): array {
+            $outletId = (int) ($r['outlet_id'] ?? 0);
+            return [
+                'id' => (int) $r['id'],
+                'narrative_id' => (int) $r['narrative_id'],
+                'outlet' => (string) $r['outlet'],
+                'outlet_id' => $outletId,
+                'outlet_detail' => $outletId ? self::mediaOutlet($outletId) : null,
+                'title' => (string) $r['title'],
+                'summary' => (string) ($r['summary'] ?? ''),
+                'url' => (string) $r['url'],
+                'logo_url' => Actor::mediaUrl((int) ($r['logo_media_id'] ?? 0)),
+                'published_at' => !empty($r['published_at']) ? self::isoMeta((string) $r['published_at']) : null,
+                'status' => (string) $r['status'],
+                'position' => (int) $r['position'],
+            ];
+        }, $rows ?: []);
     }
 
     public static function squareSchedule(int $squareId): array

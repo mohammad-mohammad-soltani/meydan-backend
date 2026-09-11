@@ -6,7 +6,7 @@ namespace Meydan\Core\Database;
 
 final class Migrations
 {
-    public const VERSION = '1.0.0';
+    public const VERSION = '1.0.1';
 
     public static function maybeRun(): void
     {
@@ -255,6 +255,7 @@ final class Migrations
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             narrative_id BIGINT UNSIGNED NOT NULL,
             outlet VARCHAR(190) NOT NULL,
+            outlet_id BIGINT UNSIGNED NULL,
             title VARCHAR(255) NOT NULL,
             summary TEXT NULL,
             url VARCHAR(1000) NOT NULL,
@@ -266,6 +267,7 @@ final class Migrations
             updated_at DATETIME NOT NULL,
             PRIMARY KEY (id),
             KEY narrative_position (narrative_id, position),
+            KEY outlet_id (outlet_id),
             KEY status (status)
         ) {$charset};";
 

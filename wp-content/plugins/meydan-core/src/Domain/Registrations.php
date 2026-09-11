@@ -66,6 +66,7 @@ final class Registrations
         self::postType('meydan_narrative', 'روایت‌ها', 'روایت', true, 'moderate_meydan_narratives', ['editor', 'author', 'thumbnail', 'comments']);
         self::postType('meydan_content', 'محتوا', 'محتوا', true, 'manage_meydan_content', ['title', 'editor', 'excerpt', 'thumbnail']);
         self::postType('meydan_creator', 'تولیدکنندگان', 'تولیدکننده', true, 'manage_meydan_creators', ['title', 'editor', 'thumbnail']);
+        self::postType('meydan_media_outlet', 'رسانه‌ها', 'رسانه', true, 'manage_meydan_media_reflections', ['title', 'thumbnail']);
         self::postType('meydan_square', 'میدان‌ها', 'میدان', true, 'manage_meydan_squares', ['title', 'editor', 'thumbnail', 'author']);
         self::postType('meydan_initiative', 'ابتکارها', 'ابتکار', true, 'manage_meydan_initiatives', ['title', 'editor', 'thumbnail']);
         self::postType('meydan_campaign', 'کمپین‌ها', 'کمپین', true, 'manage_meydan_campaigns', ['title', 'editor', 'thumbnail']);

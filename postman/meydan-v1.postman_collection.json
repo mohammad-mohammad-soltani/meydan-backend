@@ -1000,6 +1000,127 @@
       }
     },
     {
+      "name": "GET /media-outlets",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/media-outlets",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "media-outlets"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /media-outlets/(?P<id>\\d+)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/media-outlets/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "media-outlets",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /admin/media-outlets",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/media-outlets",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "media-outlets"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PATCH /admin/media-outlets/(?P<id>\\d+)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/media-outlets/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "media-outlets",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /admin/media-outlets/(?P<id>\\d+)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/media-outlets/:id",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "media-outlets",
+            ":id"
+          ]
+        }
+      }
+    },
+    {
       "name": "POST /uploads",
       "request": {
         "method": "POST",
@@ -1116,6 +1237,32 @@
           ],
           "path": [
             "timeline"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /actors/(?P<type>user|square)/(?P<id>\\d+)/replies",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/actors/:type/:id/replies",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "actors",
+            ":type",
+            ":id",
+            "replies"
           ]
         }
       }
@@ -1783,6 +1930,32 @@
       }
     },
     {
+      "name": "GET /squares/(?P<id>\\d+)/media-reflections/count",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/squares/:id/media-reflections/count",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "squares",
+            ":id",
+            "media-reflections",
+            "count"
+          ]
+        }
+      }
+    },
+    {
       "name": "GET /squares/(?P<id>\\d+)/schedule",
       "request": {
         "method": "GET",
@@ -1856,6 +2029,30 @@
       }
     },
     {
+      "name": "GET /geo/reverse",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/geo/reverse",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "geo",
+            "reverse"
+          ]
+        }
+      }
+    },
+    {
       "name": "GET /initiatives",
       "request": {
         "method": "GET",
@@ -1898,6 +2095,31 @@
           "path": [
             "initiatives",
             ":id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /initiatives/(?P<id>\\d+)/participants",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/initiatives/:id/participants",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "initiatives",
+            ":id",
+            "participants"
           ]
         }
       }
@@ -2020,6 +2242,29 @@
           "path": [
             "explore",
             "suggestions"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /campaigns",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/campaigns",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "campaigns"
           ]
         }
       }
