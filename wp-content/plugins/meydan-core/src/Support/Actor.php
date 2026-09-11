@@ -28,13 +28,12 @@ final class Actor
 
     public static function forSquare(int $squareId): array
     {
-        $post = get_post($squareId);
         return [
             'id' => 'sq_' . $squareId,
             'type' => 'square',
             'display_name' => self::squareDisplayName($squareId),
             'avatar_url' => self::squareAvatarUrl($squareId),
-            'verified' => true,
+            'verified' => (bool) get_post_meta($squareId, 'meydan_verified', true),
         ];
     }
 
