@@ -88,6 +88,7 @@ DELETE /initiatives/(?P<id>\\d+)/join
 GET /explore/search
 GET /explore/trends
 GET /explore/suggestions
+GET /campaigns
 GET /campaigns/current
 GET /campaigns/(?P<id>\\d+)
 GET /campaigns/(?P<id>\\d+)/schedule
