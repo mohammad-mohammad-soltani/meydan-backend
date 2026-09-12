@@ -1,11 +1,130 @@
 <?php
-declare(strict_types=1);namespace Meydan\Core\Rest;
-use Meydan\Core\Audit\AuditLogger;use Meydan\Core\Notifications\NotificationService;use Meydan\Core\Support\Crypto;use Meydan\Core\Support\RateLimiter;use Meydan\Core\Support\Response;use WP_REST_Request;
+
+declare(strict_types=1);
+
+namespace Meydan\Core\Rest;
+
+use Meydan\Core\Audit\AuditLogger;
+use Meydan\Core\Auth\OtpService;
+use Meydan\Core\Notifications\NotificationService;
+use Meydan\Core\Support\Actor;
+use Meydan\Core\Support\Crypto;
+use Meydan\Core\Support\RateLimiter;
+use Meydan\Core\Support\Response;
+use WP_REST_Request;
+use WP_REST_Response;
+
+/**
+ * Legacy speaker request flow, keyed on the speaker *account*.
+ *
+ * The target is a user holding the `meydan_speaker` role; `speaker_user_id` is
+ * the canonical field and `creator_id` is accepted as a legacy alias carrying
+ * the same user id.
+ */
 final class SpeakerRequestController extends BaseController
 {
- public function create(WP_REST_Request $r){$p=$this->json($r);$cid=(int)($p['creator_id']??0);$types=$cid?wp_get_post_terms($cid,'meydan_creator_type',['fields'=>'slugs']):[];if(!$cid||is_wp_error($types)||!in_array('speaker',$types,true)||empty($p['venue'])||empty($p['requested_at']))return Response::error('validation_failed','اطلاعات درخواست سخنران معتبر نیست.',422);$uid=is_user_logged_in()?get_current_user_id():null;if(!$uid){$settings=(array)get_option('meydan_api_settings',[]);if(empty($settings['allow_guest_speaker_requests']))return Response::error('unauthenticated','درخواست عمومی غیرفعال است.',401);$phone=\Meydan\Core\Auth\OtpService::normalizePhone((string)($p['requester_phone']??''));if($phone===''||empty($p['requester_name']))return Response::error('validation_failed','نام و موبایل درخواست‌کننده الزامی است.',422);$cap=(bool)apply_filters('meydan_validate_captcha',wp_get_environment_type()==='local'&& !empty($p['captcha_token']),(string)($p['captcha_token']??''),$r);if(!$cap)return Response::error('validation_failed','اعتبارسنجی CAPTCHA ناموفق بود.',422,['captcha_token'=>'invalid']);$rl=RateLimiter::hit('speaker-guest',Crypto::hash($phone).'|'.RateLimiter::ip(),3,HOUR_IN_SECONDS);if(!$rl['allowed'])return Response::error('rate_limited','تعداد درخواست‌ها بیش از حد مجاز است.',429);}global $wpdb;$now=current_time('mysql',true);$wpdb->insert($wpdb->prefix.'meydan_speaker_requests',['creator_id'=>$cid,'requester_user_id'=>$uid,'requester_name'=>$uid?null:sanitize_text_field((string)$p['requester_name']),'requester_phone'=>$uid?null:Crypto::encrypt($phone),'venue'=>sanitize_text_field((string)$p['venue']),'requested_at'=>gmdate('Y-m-d H:i:s',strtotime((string)$p['requested_at'])),'note'=>sanitize_textarea_field((string)($p['note']??'')),'status'=>'pending','created_at'=>$now,'updated_at'=>$now]);$id=(int)$wpdb->insert_id;if(!$id)return Response::error('internal_error','ثبت درخواست ناموفق بود.',500);AuditLogger::log('speaker_request_created','speaker_request',$id,null,['creator_id'=>$cid,'user_id'=>$uid]);if($uid)(new NotificationService())->fromTemplate($uid,'speaker_request_created',null,null,'speaker_request',$id,'/speaker-invitations');return Response::ok($this->row($id),[],201);}
- public function get(WP_REST_Request $r){$row=$this->row((int)$r['id']);if(!$row)return Response::error('not_found','درخواست پیدا نشد.',404);if(!$this->can($row))return Response::error('forbidden','دسترسی کافی ندارید.',403);return Response::ok($row);}
- public function delete(WP_REST_Request $r){$row=$this->row((int)$r['id']);if(!$row)return Response::error('not_found','درخواست پیدا نشد.',404);if(!$this->can($row))return Response::error('forbidden','دسترسی کافی ندارید.',403);global $wpdb;$wpdb->update($wpdb->prefix.'meydan_speaker_requests',['status'=>'cancelled','updated_at'=>current_time('mysql',true)],['id'=>(int)$row['id']]);AuditLogger::log('speaker_request_cancelled','speaker_request',$row['id'],$row,['status'=>'cancelled']);return Response::ok(['cancelled'=>true]);}
- private function row(int $id):?array{global $wpdb;$r=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}meydan_speaker_requests WHERE id=%d",$id),ARRAY_A);if(!$r)return null;unset($r['requester_phone'],$r['internal_note']);$r['id']=(int)$r['id'];$r['creator_id']=(int)$r['creator_id'];$r['requester_user_id']=$r['requester_user_id']?(int)$r['requester_user_id']:null;return $r;}
- private function can(array $r):bool{return current_user_can('manage_meydan_speaker_requests')||(is_user_logged_in()&&(int)($r['requester_user_id']??0)===get_current_user_id());}
+    public function create(WP_REST_Request $r): WP_REST_Response
+    {
+        $p = $this->json($r);
+        $speakerUserId = (int) ($p['speaker_user_id'] ?? $p['creator_id'] ?? 0);
+        if ($speakerUserId <= 0 || !Actor::isSpeaker($speakerUserId) || empty($p['venue']) || empty($p['requested_at'])) {
+            return Response::error('validation_failed', 'اطلاعات درخواست سخنران معتبر نیست.', 422, ['speaker_user_id' => 'invalid']);
+        }
+
+        $uid = is_user_logged_in() ? get_current_user_id() : null;
+        $phone = '';
+        if (!$uid) {
+            $settings = (array) get_option('meydan_api_settings', []);
+            if (empty($settings['allow_guest_speaker_requests'])) {
+                return Response::error('unauthenticated', 'درخواست عمومی غیرفعال است.', 401);
+            }
+            $phone = OtpService::normalizePhone((string) ($p['requester_phone'] ?? ''));
+            if ($phone === '' || empty($p['requester_name'])) {
+                return Response::error('validation_failed', 'نام و موبایل درخواست‌کننده الزامی است.', 422);
+            }
+            $cap = (bool) apply_filters('meydan_validate_captcha', wp_get_environment_type() === 'local' && !empty($p['captcha_token']), (string) ($p['captcha_token'] ?? ''), $r);
+            if (!$cap) {
+                return Response::error('validation_failed', 'اعتبارسنجی CAPTCHA ناموفق بود.', 422, ['captcha_token' => 'invalid']);
+            }
+            $rl = RateLimiter::hit('speaker-guest', Crypto::hash($phone) . '|' . RateLimiter::ip(), 3, HOUR_IN_SECONDS);
+            if (!$rl['allowed']) {
+                return Response::error('rate_limited', 'تعداد درخواست‌ها بیش از حد مجاز است.', 429);
+            }
+        }
+
+        global $wpdb;
+        $now = current_time('mysql', true);
+        $wpdb->insert($wpdb->prefix . 'meydan_speaker_requests', [
+            'creator_id' => $speakerUserId,
+            'speaker_user_id' => $speakerUserId,
+            'requester_user_id' => $uid,
+            'requester_name' => $uid ? null : sanitize_text_field((string) $p['requester_name']),
+            'requester_phone' => $uid ? null : Crypto::encrypt($phone),
+            'venue' => sanitize_text_field((string) $p['venue']),
+            'requested_at' => gmdate('Y-m-d H:i:s', strtotime((string) $p['requested_at'])),
+            'note' => sanitize_textarea_field((string) ($p['note'] ?? '')),
+            'status' => 'pending',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        $id = (int) $wpdb->insert_id;
+        if (!$id) {
+            return Response::error('internal_error', 'ثبت درخواست ناموفق بود.', 500);
+        }
+
+        AuditLogger::log('speaker_request_created', 'speaker_request', $id, null, ['speaker_user_id' => $speakerUserId, 'user_id' => $uid]);
+        if ($uid) {
+            (new NotificationService())->fromTemplate($uid, 'speaker_request_created', null, null, 'speaker_request', $id, '/speaker-invitations');
+        }
+
+        return Response::ok($this->row($id), [], 201);
+    }
+
+    public function get(WP_REST_Request $r): WP_REST_Response
+    {
+        $row = $this->row((int) $r['id']);
+        if (!$row) {
+            return Response::error('not_found', 'درخواست پیدا نشد.', 404);
+        }
+        if (!$this->can($row)) {
+            return Response::error('forbidden', 'دسترسی کافی ندارید.', 403);
+        }
+        return Response::ok($row);
+    }
+
+    public function delete(WP_REST_Request $r): WP_REST_Response
+    {
+        $row = $this->row((int) $r['id']);
+        if (!$row) {
+            return Response::error('not_found', 'درخواست پیدا نشد.', 404);
+        }
+        if (!$this->can($row)) {
+            return Response::error('forbidden', 'دسترسی کافی ندارید.', 403);
+        }
+        global $wpdb;
+        $wpdb->update($wpdb->prefix . 'meydan_speaker_requests', ['status' => 'cancelled', 'updated_at' => current_time('mysql', true)], ['id' => (int) $row['id']]);
+        AuditLogger::log('speaker_request_cancelled', 'speaker_request', $row['id'], $row, ['status' => 'cancelled']);
+        return Response::ok(['cancelled' => true]);
+    }
+
+    private function row(int $id): ?array
+    {
+        global $wpdb;
+        $r = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}meydan_speaker_requests WHERE id=%d", $id), ARRAY_A);
+        if (!$r) {
+            return null;
+        }
+        unset($r['requester_phone'], $r['internal_note']);
+        $r['id'] = (int) $r['id'];
+        $r['creator_id'] = (int) $r['creator_id'];
+        $r['speaker_user_id'] = (int) ($r['speaker_user_id'] ?? 0) ?: null;
+        $r['requester_user_id'] = $r['requester_user_id'] ? (int) $r['requester_user_id'] : null;
+        return $r;
+    }
+
+    private function can(array $r): bool
+    {
+        return current_user_can('manage_meydan_speaker_requests')
+            || (is_user_logged_in() && (int) ($r['requester_user_id'] ?? 0) === get_current_user_id());
+    }
 }

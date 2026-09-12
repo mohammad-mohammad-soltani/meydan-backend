@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Support;
 
+use Meydan\Core\Database\Migrations;
 use Meydan\Core\Domain\Registrations;
 
 final class SeedData
@@ -26,6 +27,10 @@ final class SeedData
         $content = self::seedContent($creators);
         $campaign = self::seedCampaign();
         self::seedQuickActions();
+
+        // Speakers are accounts: import the seeded speaker profiles once their
+        // content links exist, so the content-ref filter stays accurate.
+        Migrations::migrateSpeakerUsers(true);
 
         update_option('meydan_seed_version', self::VERSION, false);
 

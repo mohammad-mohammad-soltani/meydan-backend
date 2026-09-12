@@ -23,37 +23,17 @@ final class SpeakerInvitationController extends BaseController
     /**
      * Speakers that can be invited.
      *
-     * Invitability is defined by the creator -> user link, which is the same
-     * rule `Actor::isSpeaker()` uses. The creator_type taxonomy is deliberately
-     * not filtered on: it labels the profile (سخنران / مداح / …), so requiring
-     * the `speaker` term would hide a linked reciter or writer who is equally
-     * able to receive an invitation.
+     * Invitability is defined by the `meydan_speaker` role itself: there is no
+     * profile link any more, so any account holding the role is invitable. A
+     * square cannot hold that role, so no extra exclusion is needed.
      */
     public function speakers(WP_REST_Request $r): \WP_REST_Response
     {
         $search = sanitize_text_field((string) $r->get_param('q'));
-        $speakerIds = get_posts([
-            'post_type' => SpeakerService::POST_TYPE,
-            'post_status' => 'publish',
-            'posts_per_page' => -1,
-            'fields' => 'ids',
-            'no_found_rows' => true,
-        ]);
-
         $items = [];
-        foreach ($speakerIds as $speakerId) {
-            $speakerId = (int) $speakerId;
-            $userId = SpeakerService::linkedUserId($speakerId);
-            // Unlinked profiles stay public but cannot receive invitations.
-            if ($userId <= 0 || !get_userdata($userId)) {
-                continue;
-            }
-            // A square is an inviter, never an invitee; excluding them here also
-            // keeps a square from finding itself in the picker.
-            if (Actor::isSquare($userId)) {
-                continue;
-            }
 
+        foreach (get_users(['role' => SpeakerService::ROLE, 'orderby' => 'display_name']) as $user) {
+            $userId = (int) $user->ID;
             $actor = Actor::forUser($userId);
             $name = (string) ($actor['display_name'] ?? '');
             if ($search !== '' && !str_contains($name, $search)) {
@@ -62,13 +42,13 @@ final class SpeakerInvitationController extends BaseController
 
             $items[] = [
                 'user_id' => $userId,
-                // Kept for client compatibility; now the speaker post id.
-                'speaker_id' => $speakerId,
-                'creator_id' => $speakerId,
+                // The speaker *is* the account: both legacy keys carry the user id.
+                'speaker_id' => $userId,
+                'creator_id' => $userId,
                 'actor' => $actor,
-                'role' => (string) get_post_meta($speakerId, 'meydan_role', true),
-                'expertise' => (string) get_post_meta($speakerId, 'meydan_expertise', true),
-                'speaker_categories' => SpeakerService::categoriesOf($speakerId),
+                'role' => (string) get_user_meta($userId, 'meydan_role', true),
+                'expertise' => (string) get_user_meta($userId, 'meydan_expertise', true),
+                'speaker_categories' => SpeakerService::categoriesOf($userId),
                 'verified_speaker' => Actor::isVerifiedSpeaker($userId),
             ];
         }
@@ -153,7 +133,9 @@ final class SpeakerInvitationController extends BaseController
         }
 
         $initiativeId = (int) ($p['initiative_id'] ?? 0);
-        $speakerId = Actor::speakerCreatorId($speakerUserId);
+        // The speaker is the account itself, so the legacy creator column now
+        // stores the same user id as `speaker_user_id`.
+        $speakerId = $speakerUserId;
         $now = current_time('mysql', true);
 
         global $wpdb;

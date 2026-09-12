@@ -6,13 +6,11 @@ namespace Meydan\Core\Admin;
 use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Auth\OtpService;
 use Meydan\Core\Auth\SmsProvider;
-use Meydan\Core\Database\Migrations;
 use Meydan\Core\Domain\CreatorService;
 use Meydan\Core\Domain\MediaOutletService;
 use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Notifications\NotificationService;
 use Meydan\Core\Notifications\SpeakerInvitationService;
-use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Serializer;
 use Meydan\Core\Support\Stats;
 
@@ -23,12 +21,7 @@ final class Admin
  public function register():void
  {
   add_action('admin_menu',[$this,'menus']);add_action('add_meta_boxes',[$this,'metaBoxes']);add_action('save_post',[$this,'saveMeta'],10,2);add_action('admin_init',[$this,'actions']);
-  // Speaker list table: surface the linked account, which was previously
-  // invisible in wp-admin, plus a filter for unlinked speakers.
-  add_filter('manage_meydan_speaker_posts_columns',[$this,'speakerColumns']);
-  add_action('manage_meydan_speaker_posts_custom_column',[$this,'speakerColumn'],10,2);
-  add_action('restrict_manage_posts',[$this,'speakerFilters']);
-  add_action('pre_get_posts',[$this,'applySpeakerFilters']);add_action('show_user_profile',[$this,'userFields']);add_action('edit_user_profile',[$this,'userFields']);add_action('personal_options_update',[$this,'saveUser']);add_action('edit_user_profile_update',[$this,'saveUser']);add_action('set_user_role',[$this,'syncAccountTypeForRole'],10,2);add_action('admin_enqueue_scripts',[$this,'assets']);add_action('admin_enqueue_scripts',[$this,'avatarAssets']);add_action('admin_enqueue_scripts',[$this,'contentAssets']);add_action('admin_enqueue_scripts',[$this,'creatorAssets']);add_action('admin_enqueue_scripts',[$this,'outletAssets']);add_action('admin_enqueue_scripts',[$this,'reflectionAssets']);add_action('admin_head',[$this,'styles']);
+  add_action('show_user_profile',[$this,'userFields']);add_action('edit_user_profile',[$this,'userFields']);add_action('personal_options_update',[$this,'saveUser']);add_action('edit_user_profile_update',[$this,'saveUser']);add_action('set_user_role',[$this,'syncAccountTypeForRole'],10,2);add_action('admin_enqueue_scripts',[$this,'assets']);add_action('admin_enqueue_scripts',[$this,'avatarAssets']);add_action('admin_enqueue_scripts',[$this,'contentAssets']);add_action('admin_enqueue_scripts',[$this,'creatorAssets']);add_action('admin_enqueue_scripts',[$this,'outletAssets']);add_action('admin_enqueue_scripts',[$this,'reflectionAssets']);add_action('admin_head',[$this,'styles']);
  }
  public function menus():void
  {
@@ -36,12 +29,9 @@ final class Admin
   $this->cpt('meydan_narrative','روایت‌ها','publish_meydan_narratives');$this->cpt('meydan_content','محتوا','manage_meydan_content');$this->cpt('meydan_creator','تولیدکنندگان','manage_meydan_creators');$this->cpt('meydan_media_outlet','رسانه‌ها','manage_meydan_media_reflections');$this->cpt('meydan_square','میدان‌ها','manage_meydan_squares');
   add_submenu_page('meydan','درخواست‌های تأیید میدان','درخواست‌های تأیید میدان','verify_meydan_squares','meydan-square-approvals',[$this,'squareApprovals']);add_submenu_page('meydan','نقشه میدان‌ها','نقشه میدان‌ها','manage_meydan_squares','meydan-map',[$this,'map']);
   $this->cpt('meydan_initiative','ابتکارها','manage_meydan_initiatives');$this->cpt('meydan_campaign','کمپین‌ها','manage_meydan_campaigns');
-  // Speakers are their own entity with their own menu, table and categories.
-  // `show_in_menu => false` on the post type means every entry must be
-  // registered explicitly, or it stays reachable only by typing a URL.
-  $this->cpt('meydan_speaker','سخنرانان','manage_meydan_speakers');
-  add_submenu_page('meydan','افزودن سخنران','افزودن سخنران','manage_meydan_speakers','meydan-speaker-new',[$this,'speakerNew']);
-  add_submenu_page('meydan','دسته‌بندی سخنرانان','دسته‌بندی سخنرانان','manage_meydan_speakers','edit-tags.php?taxonomy='.SpeakerService::SPEAKER_CATEGORY_TAXONOMY.'&post_type=meydan_speaker');
+  // Speakers are accounts, so this page lists the role-filtered users and is
+  // guarded by manage_meydan_speakers (users.php would need list_users).
+  add_submenu_page('meydan','سخنرانان','سخنرانان','manage_meydan_speakers','meydan-speakers',[$this,'speakers']);
   add_submenu_page('meydan','دعوت‌های سخنرانی','دعوت‌های سخنرانی','manage_meydan_speakers','meydan-speaker-invitations',[$this,'speakerInvitations']);
   add_submenu_page('meydan','بازتاب‌های رسانه‌ای','بازتاب‌های رسانه‌ای','manage_meydan_media_reflections','meydan-reflections',[$this,'reflections']);add_submenu_page('meydan','کامنت‌ها','کامنت‌ها','moderate_meydan_narratives','edit-comments.php?comment_type=meydan_comment');add_submenu_page('meydan','نوتیفیکیشن‌ها','نوتیفیکیشن‌ها','manage_meydan_notifications','meydan-notifications',[$this,'notifications']);add_submenu_page('meydan','اعضای ابتکار','اعضای ابتکار','manage_meydan_initiatives','meydan-initiative-members',[$this,'initiativeMembers']);add_submenu_page('meydan','استان‌ها و شهرها','استان‌ها و شهرها','manage_options','meydan-geo',[$this,'geo']);add_submenu_page('meydan','نشست‌ها','نشست‌ها','manage_options','meydan-sessions',[$this,'sessions']);add_submenu_page('meydan','آمار','آمار','manage_meydan_stats','meydan-stats',[$this,'stats']);add_submenu_page('meydan','تنظیمات','تنظیمات','manage_options','meydan-settings',[$this,'settings']);add_submenu_page('meydan','گزارش تغییرات','گزارش تغییرات','view_meydan_audit_log','meydan-audit',[$this,'audit']);
  }
@@ -49,7 +39,7 @@ final class Admin
  public function dashboard():void{Dashboard::render();}
  public function metaBoxes():void
  {
-  add_meta_box('meydan-narrative','جزئیات میدان',[$this,'narrativeBox'],'meydan_narrative','normal','high');add_meta_box('meydan-reflections','بازتاب‌های رسانه‌ای',[$this,'reflectionBox'],'meydan_narrative','normal','high');add_meta_box('meydan-content','جزئیات محتوا',[$this,'contentBox'],'meydan_content','normal','high');add_meta_box('meydan-creator','جزئیات تولیدکننده',[$this,'creatorBox'],'meydan_creator','normal','high');add_meta_box('meydan-speaker','جزئیات سخنران',[$this,'speakerBox'],'meydan_speaker','normal','high');add_meta_box('meydan-media-outlet','جزئیات رسانه',[$this,'mediaOutletBox'],'meydan_media_outlet','normal','high');add_meta_box('meydan-square','جزئیات میدان و موقعیت',[$this,'squareBox'],'meydan_square','normal','high');add_meta_box('meydan-initiative','جزئیات ابتکار',[$this,'initiativeBox'],'meydan_initiative','normal','high');add_meta_box('meydan-campaign','جزئیات کمپین',[$this,'campaignBox'],'meydan_campaign','normal','high');
+  add_meta_box('meydan-narrative','جزئیات میدان',[$this,'narrativeBox'],'meydan_narrative','normal','high');add_meta_box('meydan-reflections','بازتاب‌های رسانه‌ای',[$this,'reflectionBox'],'meydan_narrative','normal','high');add_meta_box('meydan-content','جزئیات محتوا',[$this,'contentBox'],'meydan_content','normal','high');add_meta_box('meydan-creator','جزئیات تولیدکننده',[$this,'creatorBox'],'meydan_creator','normal','high');add_meta_box('meydan-media-outlet','جزئیات رسانه',[$this,'mediaOutletBox'],'meydan_media_outlet','normal','high');add_meta_box('meydan-square','جزئیات میدان و موقعیت',[$this,'squareBox'],'meydan_square','normal','high');add_meta_box('meydan-initiative','جزئیات ابتکار',[$this,'initiativeBox'],'meydan_initiative','normal','high');add_meta_box('meydan-campaign','جزئیات کمپین',[$this,'campaignBox'],'meydan_campaign','normal','high');
  }
  private function nonce():void{wp_nonce_field('meydan_save_meta','meydan_meta_nonce');}
  public function narrativeBox(\WP_Post $p):void{$this->nonce();$this->select('meydan_author_actor_type','نوع نویسنده',(string)get_post_meta($p->ID,'meydan_author_actor_type',true),['user'=>'User','square'=>'Square']);$this->input('meydan_author_actor_id','شناسه Actor',(string)get_post_meta($p->ID,'meydan_author_actor_id',true),'number');$this->input('meydan_initiative_id','Initiative ID',(string)get_post_meta($p->ID,'meydan_initiative_id',true),'number');$this->check('meydan_is_echo','Echo',(bool)get_post_meta($p->ID,'meydan_is_echo',true));$this->attachments($p->ID);$s=Stats::narrative($p->ID);echo '<p><b>Stats:</b> '.esc_html(wp_json_encode($s,JSON_UNESCAPED_UNICODE)).'</p><p><a href="'.esc_url(admin_url('edit-comments.php?comment_type=meydan_comment&p='.$p->ID)).'">کامنت‌ها</a></p>';}
@@ -105,134 +95,6 @@ final class Admin
   $this->creatorTypes($id);
   $this->creatorCities($id);
   $this->socialLinks($id);
- }
- public function speakerColumns(array $columns):array
- {
-  $out=[];
-  foreach($columns as $key=>$label){
-   $out[$key]=$label;
-   if($key==='title'){
-    $out['meydan_speaker_avatar']='آواتار';
-    $out['meydan_speaker_user']='حساب کاربری';
-    $out['meydan_speaker_categories']='دسته‌بندی';
-   }
-  }
-  return $out;
- }
- public function speakerColumn(string $column,int $postId):void
- {
-  if($column==='meydan_speaker_avatar'){
-   $url=Actor::avatarUrl((int)get_post_meta($postId,'meydan_avatar_media_id',true));
-   echo $url?'<img src="'.esc_url($url).'" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover">':'—';
-   return;
-  }
-  if($column==='meydan_speaker_user'){
-   $uid=SpeakerService::linkedUserId($postId);
-   if($uid<=0){echo '<span style="color:#b32d2e;font-weight:600">بدون حساب — دعوت نمی‌گیرد</span>';return;}
-   $u=get_userdata($uid);
-   if(!$u){echo '<span style="color:#b32d2e">کاربر حذف شده (#'.(int)$uid.')</span>';return;}
-   echo '<a href="'.esc_url(get_edit_user_link($uid)).'">'.esc_html($u->display_name).'</a><br><small>#'.(int)$uid.'</small>';
-   return;
-  }
-  if($column==='meydan_speaker_categories'){
-   $cats=SpeakerService::categoriesOf($postId);
-   if(!$cats){echo '—';return;}
-   echo esc_html(implode('، ',array_column($cats,'name')));
-  }
- }
- /** Category + linked-account filters on the speaker list table. */
- public function speakerFilters():void
- {
-  $screen=get_current_screen();
-  if(!$screen||$screen->post_type!=='meydan_speaker')return;
-
-  $current=sanitize_key((string)($_GET['meydan_speaker_category']??''));
-  echo '<select name="meydan_speaker_category"><option value="">همه دسته‌ها</option>';
-  foreach(SpeakerService::categoryOptions() as $slug=>$label){
-   echo '<option value="'.esc_attr($slug).'" '.selected($current,$slug,false).'>'.esc_html($label).'</option>';
-  }
-  echo '</select>';
-
-  $linked=sanitize_key((string)($_GET['meydan_speaker_linked']??''));
-  echo '<select name="meydan_speaker_linked">';
-  foreach([''=>'همه سخنرانان','yes'=>'فقط دارای حساب','no'=>'فقط بدون حساب'] as $value=>$label){
-   echo '<option value="'.esc_attr($value).'" '.selected($linked,$value,false).'>'.esc_html($label).'</option>';
-  }
-  echo '</select>';
- }
- /** Applies the speaker list-table filters to the admin query. */
- public function applySpeakerFilters(\WP_Query $query):void
- {
-  if(!is_admin()||!$query->is_main_query())return;
-  if($query->get('post_type')!=='meydan_speaker')return;
-
-  $tax=[];
-  $category=sanitize_key((string)($_GET['meydan_speaker_category']??''));
-  if($category!==''){
-   $tax[]=['taxonomy'=>SpeakerService::SPEAKER_CATEGORY_TAXONOMY,'field'=>'slug','terms'=>$category];
-  }
-  if($tax)$query->set('tax_query',$tax);
-
-  $linked=sanitize_key((string)($_GET['meydan_speaker_linked']??''));
-  if($linked==='yes'){
-   // linkUser() deletes the meta on unlink, so a positive numeric value is the
-   // only representation of a live link.
-   $query->set('meta_query',[[
-    'key'=>Migrations::SPEAKER_USER_META,
-    'value'=>0,
-    'compare'=>'>',
-    'type'=>'NUMERIC',
-   ]]);
-  }elseif($linked==='no'){
-   $query->set('meta_query',[[
-    'key'=>Migrations::SPEAKER_USER_META,
-    'compare'=>'NOT EXISTS',
-   ]]);
-  }
- }
- public function speakerBox(\WP_Post $p):void
- {
-  $this->nonce();
-  $id=$p->ID;
-  $this->creatorAvatar($id);
-  echo '<div class="meydan-creator-grid">';
-  $this->field('meydan_role','نقش نمایشی',(string)get_post_meta($id,'meydan_role',true),'مثلاً «مداح و سخنران»، «استاد حوزه»');
-  $this->field('meydan_handle','شناسه/نام کاربری',(string)get_post_meta($id,'meydan_handle',true),'بدون @ وارد شود؛ در API با کلید handle برمی‌گردد.');
-  $this->field('meydan_initials','سرواژه',(string)get_post_meta($id,'meydan_initials',true),'برای نمایش جایگزین آواتار؛ اگر خالی بماند از نام ساخته می‌شود.');
-  echo '</div>';
-  echo '<div class="meydan-creator-grid">';
-  $this->field('meydan_expertise','حوزه تخصص',(string)get_post_meta($id,'meydan_expertise',true),'کاربر در فهرست سخنرانان این متن را می‌بیند.');
-  $this->check('meydan_verified','نشان تأییدشده سخنران',(bool)get_post_meta($id,'meydan_verified',true));
-  echo '</div>';
-  $this->speakerUserField($id);
-  $this->creatorCategories($id);
-  $this->creatorCities($id);
-  $this->socialLinks($id);
- }
- /**
-  * Selects the account behind a speaker. A picker rather than a raw id field:
-  * linking used to require knowing a numeric user id by heart.
-  */
- private function speakerUserField(int $id):void
- {
-  $linked=SpeakerService::linkedUserId($id);
-  $options=SpeakerService::linkableUsers();
-  echo '<div class="meydan-field"><label class="meydan-label" for="meydan_speaker_user_id">حساب کاربری متصل</label><select class="widefat" id="meydan_speaker_user_id" name="meydan_speaker_user_id"><option value="0">— بدون حساب —</option>';
-  foreach($options as $uid=>$name){echo '<option value="'.esc_attr((string)$uid).'" '.selected($linked,$uid,false).'>'.esc_html($name.' (#'.$uid.')').'</option>';}
-  // Keep a linked account selectable even if it later becomes a square.
-  if($linked>0&&!isset($options[$linked])){$u=get_userdata($linked);echo '<option value="'.esc_attr((string)$linked).'" selected>'.esc_html(($u?$u->display_name:'#'.$linked).' (#'.$linked.')').'</option>';}
-  echo '</select><small>تا وقتی حسابی متصل نباشد، این سخنران در وب دیده می‌شود اما دعوت سخنرانی نمی‌گیرد. حساب‌های میدان در این فهرست نیستند چون دعوت‌کننده‌اند، نه سخنران.</small></div>';
- }
- public function creatorCategories(int $id):void
- {
-  $selected=wp_get_post_terms($id,SpeakerService::SPEAKER_CATEGORY_TAXONOMY,['fields'=>'slugs']);
-  $selected=is_wp_error($selected)?[]:$selected;
-  // Sentinel: an unchecked chip row posts nothing, so without this a cleared
-  // selection is indistinguishable from the box not being on screen.
-  echo '<input type="hidden" name="meydan_speaker_categories_present" value="1">';
-  echo '<div class="meydan-field"><span class="meydan-label">دسته‌بندی موضوعی</span><small>یک یا چند مورد انتخاب کنید؛ این دسته‌ها در فهرست سخنرانان و انتخابگر دعوت به‌عنوان فیلتر نمایش داده می‌شوند.</small><div class="meydan-chip-row">';
-  foreach(SpeakerService::categoryOptions() as $slug=>$label){echo '<label class="meydan-chip"><input type="checkbox" name="meydan_speaker_categories[]" value="'.esc_attr($slug).'" '.checked(in_array($slug,$selected,true),true,false).'><span>'.esc_html($label).'</span></label>';}
-  echo '</div></div>';
  }
  private function field(string $name,string $label,string $value,string $description=''):void
  {
@@ -291,7 +153,6 @@ final class Admin
  {
   if(!isset($_POST['meydan_meta_nonce'])||!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['meydan_meta_nonce'])),'meydan_save_meta')||wp_is_post_autosave($id)||wp_is_post_revision($id))return;if(!current_user_can('edit_post',$id))return;$before=['meta'=>get_post_meta($id)];
   if($post->post_type==='meydan_creator'){$this->saveCreatorMeta($id);AuditLogger::log('admin_post_updated',$post->post_type,$id,$before,['meta'=>get_post_meta($id)]);return;}
-  if($post->post_type==='meydan_speaker'){$this->saveSpeakerMeta($id);AuditLogger::log('admin_post_updated',$post->post_type,$id,$before,['meta'=>get_post_meta($id)]);return;}
   if($post->post_type==='meydan_media_outlet'){$this->saveOutletMeta($id);AuditLogger::log('admin_post_updated',$post->post_type,$id,$before,['meta'=>get_post_meta($id)]);return;}
   $text=['meydan_author_actor_type','meydan_approval_status','meydan_format','meydan_cta_label','meydan_status','meydan_starts_at','meydan_ends_at'];foreach($text as $k)if(isset($_POST[$k]))update_post_meta($id,$k,sanitize_text_field(wp_unslash($_POST[$k])));
   $ints=['meydan_author_actor_id','meydan_initiative_id','meydan_avatar_media_id','meydan_owner_user_id','meydan_order'];foreach($ints as $k)if(isset($_POST[$k]))update_post_meta($id,$k,(int)$_POST[$k]);foreach(['meydan_is_echo','meydan_featured','meydan_verified','meydan_allow_guest_join','meydan_current'] as $k)update_post_meta($id,$k,isset($_POST[$k])?1:0);if(isset($_POST['meydan_usage_note']))update_post_meta($id,'meydan_usage_note',sanitize_textarea_field(wp_unslash($_POST['meydan_usage_note'])));
@@ -312,20 +173,6 @@ final class Admin
   if(isset($_POST['meydan_avatar_media_id']))$input['avatar_media_id']=(int)$_POST['meydan_avatar_media_id'];
   if(isset($_POST['meydan_social_links_json'])){$links=json_decode(wp_unslash($_POST['meydan_social_links_json']),true);if(is_array($links))$input['social_links']=$links;}
   CreatorService::save($input,$id);
- }
- private function saveSpeakerMeta(int $id):void
- {
-  $input=[];
-  foreach(['meydan_role'=>'role','meydan_handle'=>'handle','meydan_expertise'=>'expertise','meydan_initials'=>'initials'] as $field=>$key)if(isset($_POST[$field]))$input[$key]=sanitize_text_field(wp_unslash($_POST[$field]));
-  $input['verified']=isset($_POST['meydan_verified']);
-  // An unchecked chip row posts nothing, so an explicit sentinel distinguishes
-  // "cleared every category" from "this box was not on screen".
-  if(isset($_POST['meydan_speaker_categories_present']))$input['categories']=array_map('sanitize_key',(array)wp_unslash($_POST['meydan_speaker_categories']??[]));
-  if(isset($_POST['meydan_cities_present']))$input['cities']=array_map('intval',(array)wp_unslash($_POST['meydan_cities']??[]));
-  if(isset($_POST['meydan_avatar_media_id']))$input['avatar_media_id']=(int)$_POST['meydan_avatar_media_id'];
-  if(isset($_POST['meydan_social_links_json'])){$links=json_decode(wp_unslash($_POST['meydan_social_links_json']),true);if(is_array($links))$input['social_links']=$links;}
-  if(isset($_POST['meydan_speaker_user_id']))$input['user_id']=(int)$_POST['meydan_speaker_user_id'];
-  SpeakerService::save($input,$id);
  }
  private function saveOutletMeta(int $id):void
  {
@@ -616,6 +463,8 @@ JS
   if($action==='settings_save'&&current_user_can('manage_options')){SettingsPage::save();return;}
   if($action==='sms_test'&&current_user_can('manage_options')){$phone=OtpService::normalizePhone((string)wp_unslash($_POST['sms_test_phone']??''));if($phone===''){add_settings_error('meydan','sms_test_invalid_phone','شماره گیرنده تست معتبر نیست.','error');return;}try{$result=(new SmsProvider())->sendTest($phone,(string)random_int(100000,999999));if(is_wp_error($result)){add_settings_error('meydan','sms_test_failed','ارسال پیامک تست ناموفق بود: '.sanitize_text_field($result->get_error_message()),'error');}else{AuditLogger::log('sms_test_sent','sms',null,null,['recipient_hash'=>wp_hash($phone)]);add_settings_error('meydan','sms_test_sent','ایران‌پیامک ارسال آزمایشی را با موفقیت پذیرفت.','updated');}}catch(\Throwable $e){add_settings_error('meydan','sms_test_failed','ارسال پیامک تست ناموفق بود.','error');}return;}
   if($action==='square_status'&&current_user_can('verify_meydan_squares')){$id=(int)$_POST['id'];$status=sanitize_key(wp_unslash($_POST['status']));$before=Serializer::square($id);update_post_meta($id,'meydan_approval_status',$status);update_post_meta($id,'meydan_admin_note',sanitize_textarea_field(wp_unslash($_POST['admin_note']??'')));if($status==='approved'){update_post_meta($id,'meydan_verified',1);wp_update_post(['ID'=>$id,'post_status'=>'publish']);}elseif($status==='rejected'){update_post_meta($id,'meydan_verified',0);wp_update_post(['ID'=>$id,'post_status'=>'pending']);}elseif($status==='suspended'){update_post_meta($id,'meydan_verified',0);wp_update_post(['ID'=>$id,'post_status'=>'draft']);}AuditLogger::log('square_'.$status,'square',$id,$before,Serializer::square($id));$owner=(int)get_post_meta($id,'meydan_owner_user_id',true);if($owner&&(in_array($status,['approved','rejected'],true)))(new NotificationService())->fromTemplate($owner,$status==='approved'?'square_verified':'square_rejected',null,null,'square',$id,'/profile');}
+  if($action==='speaker_promote'&&current_user_can('manage_meydan_speakers')){$uid=(int)($_POST['user_id']??0);$result=SpeakerService::promote($uid);AuditLogger::log('speaker_promoted','speaker',$uid,null,['user_id'=>$uid,'ok'=>!is_wp_error($result)]);wp_safe_redirect(admin_url('admin.php?page=meydan-speakers'));exit;}
+  if($action==='speaker_demote'&&current_user_can('manage_meydan_speakers')){$uid=(int)($_POST['user_id']??0);$before=Serializer::speaker($uid);$result=SpeakerService::demote($uid);AuditLogger::log('speaker_demoted','speaker',$uid,$before,['user_id'=>$uid,'ok'=>!is_wp_error($result)]);wp_safe_redirect(admin_url('admin.php?page=meydan-speakers'));exit;}
   if($action==='speaker_invitation_status'&&current_user_can('manage_meydan_speakers')){
    $id=(int)$_POST['id'];
    $table=SpeakerInvitationService::table();
@@ -646,49 +495,43 @@ JS
  public function squareApprovals():void{global $wpdb;$q=new \WP_Query(['post_type'=>'meydan_square','post_status'=>['pending','publish','draft'],'posts_per_page'=>100,'meta_key'=>'meydan_approval_status','orderby'=>'date','order'=>'DESC']);echo '<div class="wrap"><h1>درخواست‌های تأیید میدان</h1><table class="widefat striped"><thead><tr><th>ID</th><th>نام</th><th>وضعیت</th><th>موقعیت</th><th>عملیات</th></tr></thead><tbody>';foreach($q->posts as $p){$s=Serializer::square($p);$g=$s['location']??[];echo '<tr><td>'.$p->ID.'</td><td><a href="'.esc_url(get_edit_post_link($p->ID)).'">'.esc_html($p->post_title).'</a></td><td>'.esc_html($s['approval_status']).'</td><td>'.esc_html(($g['address']??'').' '.($g['latitude']??'').' '.($g['longitude']??'')).'</td><td><form method="post">';wp_nonce_field('meydan_admin_action');echo '<input type="hidden" name="meydan_admin_action" value="square_status"><input type="hidden" name="id" value="'.$p->ID.'"><select name="status"><option value="approved">Approve</option><option value="rejected">Reject</option><option value="suspended">Suspend</option><option value="pending_verification">Restore pending</option></select><input name="admin_note" placeholder="Admin note"><button class="button">اعمال</button></form></td></tr>';}echo '</tbody></table></div>';}
  public function map():void{global $wpdb;$rows=$wpdb->get_results("SELECT g.*,p.post_title FROM {$wpdb->prefix}meydan_square_geo g JOIN {$wpdb->posts} p ON p.ID=g.square_id WHERE p.post_type='meydan_square'",ARRAY_A);echo '<div class="wrap"><h1>نقشه میدان‌ها</h1><div id="meydan-admin-map" style="height:70vh"></div><script>window.MEYDAN_MAP_POINTS='.wp_json_encode($rows).';</script></div>';}
  /**
-  * Dedicated add-speaker form: creates the profile and links the account in one
-  * submit, so no raw user id has to be typed.
+  * Speaker accounts: promotes an existing user to the speaker role and lists
+  * the accounts that currently hold it.
+  *
+  * This is a plugin page rather than users.php so the manage_meydan_speakers
+  * capability is sufficient; the full profile is edited on the user screen.
   */
- public function speakerNew():void
+ public function speakers():void
  {
   if(!current_user_can('manage_meydan_speakers')){wp_die(esc_html__('دسترسی کافی ندارید.','meydan-core'));}
-  $notice='';
-  if(isset($_POST['meydan_speaker_new_nonce'])&&wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['meydan_speaker_new_nonce'])),'meydan_speaker_new')){
-   $input=[
-    'name'=>sanitize_text_field(wp_unslash($_POST['name']??'')),
-    'bio'=>wp_kses_post(wp_unslash($_POST['bio']??'')),
-    'role'=>sanitize_text_field(wp_unslash($_POST['meydan_role']??'')),
-    'expertise'=>sanitize_text_field(wp_unslash($_POST['meydan_expertise']??'')),
-    'verified'=>isset($_POST['meydan_verified']),
-    'categories'=>array_map('sanitize_key',(array)wp_unslash($_POST['meydan_speaker_categories']??[])),
-    'user_id'=>(int)($_POST['meydan_speaker_user_id']??0),
-   ];
-   $saved=SpeakerService::save($input,0);
-   if(is_wp_error($saved)){
-    $notice='<div class="notice notice-error"><p>'.esc_html($saved->get_error_message()).'</p></div>';
-   }else{
-    AuditLogger::log('speaker_created','speaker',(int)$saved,null,Serializer::speaker((int)$saved));
-    $notice='<div class="notice notice-success"><p>سخنران ثبت شد. <a href="'.esc_url(get_edit_post_link((int)$saved)).'">ویرایش</a></p></div>';
-   }
+  echo '<div class="wrap meydan-admin"><h1>سخنرانان</h1>';
+  echo '<p>سخنران یک حساب کاربری با نقش «Meydan Speaker» است؛ پروفایل کامل در صفحه ویرایش همان کاربر ذخیره می‌شود و همین نقش باعث دعوت‌پذیری او می‌شود.</p>';
+  echo '<h2>ارتقای کاربر به سخنران</h2>';
+  $promotable=SpeakerService::promotableUsers();
+  if($promotable){
+   echo '<form method="post" class="meydan-inline-form">';wp_nonce_field('meydan_admin_action');
+   echo '<input type="hidden" name="meydan_admin_action" value="speaker_promote"><select name="user_id">';
+   foreach($promotable as $uid=>$name){echo '<option value="'.esc_attr((string)$uid).'">'.esc_html($name.' (#'.$uid.')').'</option>';}
+   echo '</select> <button class="button button-primary">ارتقا به سخنران</button></form>';
+  }else{
+   echo '<p>کاربر واجد شرایطی برای ارتقا وجود ندارد. ابتدا از بخش کاربران یک حساب بسازید.</p>';
   }
-  echo '<div class="wrap meydan-admin"><h1>افزودن سخنران</h1>'.$notice;
-  echo '<form method="post" style="max-width:720px">';
-  wp_nonce_field('meydan_speaker_new','meydan_speaker_new_nonce');
-  echo '<table class="form-table"><tbody>';
-  echo '<tr><th><label for="name">نام</label></th><td><input name="name" id="name" class="regular-text" required></td></tr>';
-  echo '<tr><th><label for="bio">معرفی</label></th><td><textarea name="bio" id="bio" class="large-text" rows="4"></textarea></td></tr>';
-  echo '<tr><th><label for="meydan_role">نقش نمایشی</label></th><td><input name="meydan_role" id="meydan_role" class="regular-text" placeholder="مثلاً «مداح و سخنران»"></td></tr>';
-  echo '<tr><th><label for="meydan_expertise">حوزه تخصص</label></th><td><input name="meydan_expertise" id="meydan_expertise" class="regular-text"></td></tr>';
-  echo '<tr><th><label for="meydan_speaker_user_id">حساب کاربری متصل</label></th><td><select name="meydan_speaker_user_id" id="meydan_speaker_user_id"><option value="0">— بدون حساب —</option>';
-  foreach(SpeakerService::linkableUsers() as $uid=>$name){echo '<option value="'.esc_attr((string)$uid).'" '.selected((int)($_GET['user_id']??0),$uid,false).'>'.esc_html($name.' (#'.$uid.')').'</option>';}
-  echo '</select><p class="description">اگر خالی بماند، سخنران در وب دیده می‌شود اما دعوت نمی‌گیرد.</p></td></tr>';
-  echo '<tr><th>دسته‌بندی موضوعی</th><td><fieldset>';
-  foreach(SpeakerService::categoryOptions() as $slug=>$label){echo '<label style="display:inline-block;margin-inline-end:12px"><input type="checkbox" name="meydan_speaker_categories[]" value="'.esc_attr($slug).'"> '.esc_html($label).'</label>';}
-  echo '</fieldset></td></tr>';
-  echo '<tr><th>نشان تأییدشده</th><td><label><input type="checkbox" name="meydan_verified" value="1"> نشان قرمز سخنران تأییدشده</label></td></tr>';
-  echo '</tbody></table>';
-  submit_button('افزودن سخنران');
-  echo '</form></div>';
+  $speakers=get_users(['role'=>SpeakerService::ROLE,'orderby'=>'display_name']);
+  echo '<table class="widefat striped"><thead><tr><th>حساب</th><th>نقش نمایشی</th><th>دسته‌بندی</th><th>تأیید</th><th>عملیات</th></tr></thead><tbody>';
+  foreach($speakers as $user){
+   $uid=(int)$user->ID;
+   $name=(string)get_user_meta($uid,'meydan_full_name',true)?:$user->display_name;
+   $link=get_edit_user_link($uid);
+   $cats=SpeakerService::categoriesOf($uid);
+   echo '<tr><td>'.($link?'<a href="'.esc_url($link).'">'.esc_html($name).'</a>':esc_html($name)).'<br><small>#'.$uid.'</small></td>';
+   echo '<td>'.esc_html((string)get_user_meta($uid,'meydan_role',true)).'</td>';
+   echo '<td>'.esc_html($cats?implode('، ',array_column($cats,'name')):'—').'</td>';
+   echo '<td>'.(get_user_meta($uid,'meydan_verified',true)?'✔':'—').'</td>';
+   echo '<td><form method="post" style="display:inline">';wp_nonce_field('meydan_admin_action');
+   echo '<input type="hidden" name="meydan_admin_action" value="speaker_demote"><input type="hidden" name="user_id" value="'.$uid.'"><button class="button">حذف نقش سخنران</button></form></td></tr>';
+  }
+  if(!$speakers)echo '<tr><td colspan="5"><em>هنوز سخنرانی ثبت نشده است.</em></td></tr>';
+  echo '</tbody></table></div>';
  }
  /**
   * Invitation queue. Reads the current model through
@@ -717,7 +560,8 @@ JS
   foreach($rows as $row){
    $d=SpeakerInvitationService::serialize($row,0); // viewer 0 => phone never included
    $speaker=$d['speaker'];
-   $speakerLink=$speaker&&get_post_type((int)($row['creator_id']??0))==='meydan_speaker'?get_edit_post_link((int)$row['creator_id']):'';
+   $speakerUserId=(int)(($row['speaker_user_id']??0)?:($row['creator_id']??0));
+   $speakerLink=$speaker&&$speakerUserId>0?get_edit_user_link($speakerUserId):'';
    $when=trim(((string)$d['requested_date']).' '.((string)$d['requested_time']));
    echo '<tr><td>'.(int)$d['id'].'</td>';
    echo '<td>'.($speaker?($speakerLink?'<a href="'.esc_url($speakerLink).'">'.esc_html($speaker['display_name']).'</a>':esc_html($speaker['display_name'])):'<em>حذف‌شده</em>').'</td>';
@@ -750,11 +594,37 @@ JS
  public function settings():void{SettingsPage::render();}
  public function audit():void{global $wpdb;$rows=$wpdb->get_results("SELECT * FROM {$wpdb->prefix}meydan_audit_log ORDER BY id DESC LIMIT 500",ARRAY_A);echo '<div class="wrap"><h1>گزارش تغییرات</h1>';$this->simpleTable('Audit Log',$rows);echo '</div>';}
  private function simpleTable(string $title,array $rows):void{echo '<h2>'.esc_html($title).'</h2>';if(!$rows){echo '<p>داده‌ای وجود ندارد.</p>';return;}$keys=array_keys($rows[0]);echo '<div style="overflow:auto"><table class="widefat striped"><thead><tr>';foreach($keys as $k)echo '<th>'.esc_html($k).'</th>';echo '</tr></thead><tbody>';foreach($rows as $r){echo '<tr>';foreach($keys as $k){$v=$r[$k];if(is_string($v)&&strlen($v)>160)$v=substr($v,0,160).'…';echo '<td><code>'.esc_html((string)$v).'</code></td>';}echo '</tr>';}echo '</tbody></table></div>';}
- public function userFields(\WP_User $u):void{if(!current_user_can('edit_user',$u->ID))return;echo '<h2>پروفایل میدان</h2><table class="form-table">';foreach(['account_type','full_name','headline','province_id','city_id','location_label','verified'] as $k){$v=get_user_meta($u->ID,'meydan_'.$k,true);echo '<tr><th>'.esc_html($k).'</th><td><input name="meydan_user_'.$k.'" value="'.esc_attr((string)$v).'" class="regular-text"></td></tr>';} $this->userAvatarField($u->ID);$this->userCoverField($u->ID); echo '<tr><th>About</th><td><textarea name="meydan_user_about" class="large-text">'.esc_textarea((string)get_user_meta($u->ID,'meydan_about',true)).'</textarea></td></tr><tr><th>Skills JSON</th><td><textarea name="meydan_user_skills" class="large-text code">'.esc_textarea(wp_json_encode((array)get_user_meta($u->ID,'meydan_skills',true),JSON_UNESCAPED_UNICODE)).'</textarea></td></tr></table><p>Username و password داخلی برای Login عمومی استفاده نمی‌شوند.</p>';}
+ public function userFields(\WP_User $u):void{if(!current_user_can('edit_user',$u->ID))return;echo '<h2>پروفایل میدان</h2><table class="form-table">';foreach(['account_type','full_name','headline','province_id','city_id','location_label','verified'] as $k){$v=get_user_meta($u->ID,'meydan_'.$k,true);echo '<tr><th>'.esc_html($k).'</th><td><input name="meydan_user_'.$k.'" value="'.esc_attr((string)$v).'" class="regular-text"></td></tr>';} $this->userAvatarField($u->ID);$this->userCoverField($u->ID); echo '<tr><th>About</th><td><textarea name="meydan_user_about" class="large-text">'.esc_textarea((string)get_user_meta($u->ID,'meydan_about',true)).'</textarea></td></tr><tr><th>Skills JSON</th><td><textarea name="meydan_user_skills" class="large-text code">'.esc_textarea(wp_json_encode((array)get_user_meta($u->ID,'meydan_skills',true),JSON_UNESCAPED_UNICODE)).'</textarea></td></tr></table>';$this->userSpeakerFields($u->ID);echo '<p>Username و password داخلی برای Login عمومی استفاده نمی‌شوند. نقش «Meydan Speaker» همین حساب را به سخنران تبدیل می‌کند.</p>';}
+ private function userSpeakerFields(int $uid):void
+ {
+  $slugs=array_map('sanitize_key',(array)get_user_meta($uid,'meydan_speaker_categories',true));
+  echo '<h2>پروفایل سخنران</h2><p class="description">این فیلدها روی همین حساب ذخیره می‌شوند و تنها برای حساب‌هایی معنا دارند که نقش «Meydan Speaker» دارند.</p><table class="form-table">';
+  foreach(['role'=>'نقش نمایشی','handle'=>'شناسه/نام کاربری','expertise'=>'حوزه تخصص','initials'=>'سرواژه'] as $key=>$label){echo '<tr><th><label for="meydan_speaker_'.$key.'">'.esc_html($label).'</label></th><td><input id="meydan_speaker_'.$key.'" name="meydan_speaker_'.$key.'" class="regular-text" value="'.esc_attr((string)get_user_meta($uid,'meydan_'.$key,true)).'"></td></tr>';}
+  echo '<tr><th>نشان تأییدشده</th><td><label><input type="checkbox" name="meydan_speaker_verified" value="1" '.checked((bool)get_user_meta($uid,'meydan_verified',true),true,false).'> نشان قرمز سخنران تأییدشده</label></td></tr>';
+  echo '<tr><th>دسته‌بندی موضوعی</th><td><fieldset>';
+  foreach(SpeakerService::categoryOptions() as $slug=>$label){echo '<label style="display:inline-block;margin-inline-end:12px"><input type="checkbox" name="meydan_speaker_categories[]" value="'.esc_attr($slug).'" '.checked(in_array($slug,$slugs,true),true,false).'> '.esc_html($label).'</label>';}
+  echo '</fieldset></td></tr>';
+  echo '<tr><th>Cities JSON</th><td><input name="meydan_speaker_cities" class="regular-text code" value="'.esc_attr(wp_json_encode(array_values(array_map('intval',(array)get_user_meta($uid,'meydan_cities',true))))).'"></td></tr>';
+  echo '<tr><th>Social links JSON</th><td><textarea name="meydan_speaker_social_links" class="large-text code" rows="3">'.esc_textarea(wp_json_encode(array_values((array)get_user_meta($uid,'meydan_social_links',true)),JSON_UNESCAPED_UNICODE)).'</textarea></td></tr>';
+  echo '</table>';
+ }
  private function userAvatarField(int $uid):void{$id=(int)get_user_meta($uid,'meydan_avatar_media_id',true);$image=$id&&wp_attachment_is_image($id)?wp_get_attachment_image($id,[96,96],false,['class'=>'meydan-user-avatar-preview','style'=>'display:block;max-width:96px;height:auto;margin-bottom:8px;border-radius:50%;']):'';echo '<tr><th><label for="meydan_user_avatar_media_id">آواتار کاربر</label></th><td><div id="meydan-user-avatar-preview">'.$image.'</div><input id="meydan_user_avatar_media_id" type="hidden" name="meydan_user_avatar_media_id" value="'.esc_attr((string)$id).'" /><button type="button" class="button" id="meydan-user-avatar-select">انتخاب یا آپلود تصویر</button> <button type="button" class="button" id="meydan-user-avatar-remove"'.($id?'':' disabled').'>حذف آواتار</button><p class="description">تصویر از Media Library انتخاب یا همان‌جا آپلود می‌شود.</p></td></tr>';}
  private function userCoverField(int $uid):void{$id=(int)get_user_meta($uid,'meydan_cover_media_id',true);$image=$id&&wp_attachment_is_image($id)?wp_get_attachment_image($id,'medium',false,['style'=>'display:block;max-width:320px;height:auto;margin-bottom:8px;border-radius:8px;']):'';echo '<tr><th><label for="meydan_user_cover_media_id">کاور کاربر</label></th><td><div id="meydan-user-cover-preview">'.$image.'</div><input id="meydan_user_cover_media_id" type="hidden" name="meydan_user_cover_media_id" value="'.esc_attr((string)$id).'" /><button type="button" class="button" id="meydan-user-cover-select">انتخاب یا آپلود تصویر</button> <button type="button" class="button" id="meydan-user-cover-remove"'.($id?'':' disabled').'>حذف کاور</button><p class="description">کاور در پروفایل کاربر و میدان متصل به او نمایش داده می‌شود.</p></td></tr>';}
- public function saveUser(int $uid):void{if(!current_user_can('edit_user',$uid))return;foreach(['account_type','full_name','headline','province_id','city_id','location_label','verified'] as $k)if(isset($_POST['meydan_user_'.$k]))update_user_meta($uid,'meydan_'.$k,sanitize_text_field(wp_unslash($_POST['meydan_user_'.$k])));foreach(['avatar','cover'] as $kind)if(isset($_POST['meydan_user_'.$kind.'_media_id'])){$id=(int)$_POST['meydan_user_'.$kind.'_media_id'];if($id===0||(wp_attachment_is_image($id)&&current_user_can('edit_post',$id)))update_user_meta($uid,'meydan_'.$kind.'_media_id',$id);}if(isset($_POST['meydan_user_about']))update_user_meta($uid,'meydan_about',wp_kses_post(wp_unslash($_POST['meydan_user_about'])));if(isset($_POST['meydan_user_skills'])){$v=json_decode(wp_unslash($_POST['meydan_user_skills']),true);if(is_array($v))update_user_meta($uid,'meydan_skills',array_map('sanitize_text_field',$v));}AuditLogger::log('user_profile_updated','user',$uid,null,['admin_edit'=>true]);}
- public function syncAccountTypeForRole(int $uid,string $role):void{if($role!=='meydan_square'){update_user_meta($uid,'meydan_account_type','user');return;}$sid=(int)get_user_meta($uid,'meydan_square_id',true);if(get_post_type($sid)!=='meydan_square'){$user=get_userdata($uid);$name=(string)get_user_meta($uid,'meydan_full_name',true);$sid=wp_insert_post(['post_type'=>'meydan_square','post_status'=>'pending','post_title'=>$name?:($user?->display_name?:'میدان'),'post_content'=>(string)get_user_meta($uid,'meydan_about',true),'post_author'=>$uid],true);if(is_wp_error($sid))return;update_user_meta($uid,'meydan_square_id',(int)$sid);update_post_meta($sid,'meydan_owner_user_id',$uid);update_post_meta($sid,'meydan_approval_status','pending_verification');update_post_meta($sid,'meydan_verified',0);AuditLogger::log('square_created_from_role_change','square',(int)$sid,null,['user_id'=>$uid]);}update_user_meta($uid,'meydan_account_type','square');}
+ public function saveUser(int $uid):void{if(!current_user_can('edit_user',$uid))return;foreach(['account_type','full_name','headline','province_id','city_id','location_label','verified'] as $k)if(isset($_POST['meydan_user_'.$k]))update_user_meta($uid,'meydan_'.$k,sanitize_text_field(wp_unslash($_POST['meydan_user_'.$k])));foreach(['avatar','cover'] as $kind)if(isset($_POST['meydan_user_'.$kind.'_media_id'])){$id=(int)$_POST['meydan_user_'.$kind.'_media_id'];if($id===0||(wp_attachment_is_image($id)&&current_user_can('edit_post',$id)))update_user_meta($uid,'meydan_'.$kind.'_media_id',$id);}if(isset($_POST['meydan_user_about']))update_user_meta($uid,'meydan_about',wp_kses_post(wp_unslash($_POST['meydan_user_about'])));if(isset($_POST['meydan_user_skills'])){$v=json_decode(wp_unslash($_POST['meydan_user_skills']),true);if(is_array($v))update_user_meta($uid,'meydan_skills',array_map('sanitize_text_field',$v));}$this->saveSpeakerUserMeta($uid);AuditLogger::log('user_profile_updated','user',$uid,null,['admin_edit'=>true]);}
+ /** Speaker profile fields on the user screen; only speaker accounts store them. */
+ private function saveSpeakerUserMeta(int $uid):void
+ {
+  $user=get_userdata($uid);
+  if(!$user||!in_array(SpeakerService::ROLE,(array)$user->roles,true))return;
+  $input=[];
+  foreach(['role','handle','expertise','initials'] as $key)if(isset($_POST['meydan_speaker_'.$key]))$input[$key]=sanitize_text_field(wp_unslash($_POST['meydan_speaker_'.$key]));
+  $input['verified']=isset($_POST['meydan_speaker_verified']);
+  $input['categories']=array_map('sanitize_key',(array)wp_unslash($_POST['meydan_speaker_categories']??[]));
+  if(isset($_POST['meydan_speaker_cities'])){$cities=json_decode(wp_unslash($_POST['meydan_speaker_cities']),true);if(is_array($cities))$input['cities']=$cities;}
+  if(isset($_POST['meydan_speaker_social_links'])){$links=json_decode(wp_unslash($_POST['meydan_speaker_social_links']),true);if(is_array($links))$input['social_links']=$links;}
+  SpeakerService::save($input,$uid);
+ }
+ public function syncAccountTypeForRole(int $uid,string $role):void{if($role==='meydan_speaker'){update_user_meta($uid,'meydan_account_type','speaker');return;}if($role!=='meydan_square'){update_user_meta($uid,'meydan_account_type','user');return;}$sid=(int)get_user_meta($uid,'meydan_square_id',true);if(get_post_type($sid)!=='meydan_square'){$user=get_userdata($uid);$name=(string)get_user_meta($uid,'meydan_full_name',true);$sid=wp_insert_post(['post_type'=>'meydan_square','post_status'=>'pending','post_title'=>$name?:($user?->display_name?:'میدان'),'post_content'=>(string)get_user_meta($uid,'meydan_about',true),'post_author'=>$uid],true);if(is_wp_error($sid))return;update_user_meta($uid,'meydan_square_id',(int)$sid);update_post_meta($sid,'meydan_owner_user_id',$uid);update_post_meta($sid,'meydan_approval_status','pending_verification');update_post_meta($sid,'meydan_verified',0);AuditLogger::log('square_created_from_role_change','square',(int)$sid,null,['user_id'=>$uid]);}update_user_meta($uid,'meydan_account_type','square');}
  public function assets(string $hook):void{if(!str_contains($hook,'meydan')&&!in_array(get_current_screen()?->post_type,['meydan_square','meydan_narrative','meydan_content','meydan_creator','meydan_media_outlet','meydan_initiative','meydan_campaign'],true))return;wp_enqueue_style('meydan-leaflet','https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',[], '1.9.4');wp_enqueue_script('meydan-leaflet','https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',[], '1.9.4',true);wp_add_inline_style('meydan-leaflet','.meydan-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px}.meydan-card{background:#fff;border:1px solid #ccd0d4;padding:18px}.meydan-card strong{display:block;font-size:28px}.meydan-inline-form{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.meydan-inline-form textarea{width:240px;height:38px}');wp_add_inline_script('meydan-leaflet',"document.addEventListener('DOMContentLoaded',()=>{if(!window.L)return;const box=document.getElementById('meydan-square-map');if(box){const lat=parseFloat(box.dataset.lat)||35.6892,lng=parseFloat(box.dataset.lng)||51.389;const m=L.map(box).setView([lat,lng],13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);const pin=L.marker([lat,lng],{draggable:true}).addTo(m);pin.on('dragend',e=>{const p=e.target.getLatLng();document.querySelector('[name=meydan_geo_lat]').value=p.lat.toFixed(7);document.querySelector('[name=meydan_geo_lng]').value=p.lng.toFixed(7);});}const all=document.getElementById('meydan-admin-map');if(all){const m=L.map(all).setView([32.4,53.7],5);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);(window.MEYDAN_MAP_POINTS||[]).forEach(p=>L.marker([parseFloat(p.latitude),parseFloat(p.longitude)]).addTo(m).bindPopup('<b>'+String(p.post_title).replace(/[<>]/g,'')+'</b><br>ID '+p.square_id));}}});");}
  private function input(string $name,string $label,string $value,string $type='text',string $step='1'):void{echo '<p><label><b>'.esc_html($label).'</b><br><input class="widefat" type="'.esc_attr($type).'" step="'.esc_attr($step).'" name="'.esc_attr($name).'" value="'.esc_attr($value).'"></label></p>';}
  private function textarea(string $name,string $label,string $value):void{echo '<p><label><b>'.esc_html($label).'</b><br><textarea class="widefat" rows="4" name="'.esc_attr($name).'">'.esc_textarea($value).'</textarea></label></p>';}

@@ -6,17 +6,8 @@ namespace Meydan\Core\Support;
 
 final class Actor
 {
-    /** Request-scoped cache of userId => linked creator post id (0 = not a speaker). */
-    private static array $speakerCreatorCache = [];
-
-    /** Drops the memoised speaker link for a user after it changes. */
-    public static function forgetSpeakerLink(int $userId): void
-    {
-        unset(self::$speakerCreatorCache[$userId]);
-    }
-
     /**
-     * Canonical account type for a user: `square` or `user`.
+     * Canonical account type for a user: `square`, `speaker` or `user`.
      *
      * The WordPress role is authoritative — administrators may change it
      * directly — so a stale `meydan_account_type` meta is repaired on read.
@@ -25,11 +16,30 @@ final class Actor
     {
         $stored = (string) get_user_meta($userId, 'meydan_account_type', true);
         $user = get_userdata($userId);
-        $type = $user && in_array('meydan_square', (array) $user->roles, true) ? 'square' : 'user';
+        $roles = $user ? (array) $user->roles : [];
+        if (in_array('meydan_square', $roles, true)) {
+            $type = 'square';
+        } elseif (in_array('meydan_speaker', $roles, true)) {
+            $type = 'speaker';
+        } else {
+            $type = 'user';
+        }
         if ($stored !== $type) {
             update_user_meta($userId, 'meydan_account_type', $type);
         }
         return $type;
+    }
+
+    /**
+     * Author/interaction actor type for a user: always `square` or `user`.
+     *
+     * A speaker is a *user* actor even though its account type is `speaker`:
+     * narratives, follows and affinity are keyed on `user|square`, so letting
+     * `speaker` leak into those tables would orphan its content.
+     */
+    public static function actorType(int $userId): string
+    {
+        return self::accountType($userId) === 'square' ? 'square' : 'user';
     }
 
     public static function isSquare(int $userId): bool
@@ -58,41 +68,25 @@ final class Actor
     }
 
     /**
-     * Resolves the speaker profile linked to a user, or 0.
+     * A speaker is a user account holding the `meydan_speaker` role.
      *
-     * Reads the current meta key, falling back to the pre-1.1.0 creator-era key
-     * and validating against `meydan_speaker`; the legacy key is resolved only
-     * when the migration has not run yet, so a stale link cannot revive a
-     * creator post as a speaker. Cached per request.
+     * There is no speaker post any more: the role is the single source of
+     * truth, so a user promoted in wp-admin is immediately invitable.
      */
-    public static function speakerCreatorId(int $userId): int
-    {
-        if (!array_key_exists($userId, self::$speakerCreatorCache)) {
-            $speakerId = (int) get_user_meta($userId, 'meydan_user_speaker_id', true);
-            if ($speakerId <= 0 || get_post_type($speakerId) !== 'meydan_speaker') {
-                $speakerId = 0;
-            }
-            self::$speakerCreatorCache[$userId] = $speakerId;
-        }
-        return self::$speakerCreatorCache[$userId];
-    }
-
-    /** A user is a speaker once a speaker profile is linked to their account. */
     public static function isSpeaker(int $userId): bool
     {
-        return self::speakerCreatorId($userId) > 0;
+        return self::accountType($userId) === 'speaker';
     }
 
-    /** Red speaker badge: speaker accounts verified on their linked profile. */
+    /** Red speaker badge: a speaker account verified on its own profile. */
     public static function isVerifiedSpeaker(int $userId): bool
     {
-        $speakerId = self::speakerCreatorId($userId);
-        return $speakerId > 0 && (bool) get_post_meta($speakerId, 'meydan_verified', true);
+        return self::isSpeaker($userId) && (bool) get_user_meta($userId, 'meydan_verified', true);
     }
 
     public static function forUser(int $userId): array
     {
-        $type = (string) get_user_meta($userId, 'meydan_account_type', true);
+        $type = self::accountType($userId);
         if ($type === 'square') {
             $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
             if ($squareId > 0) {
@@ -101,16 +95,20 @@ final class Actor
         }
 
         $user = get_userdata($userId);
-        $speakerCreatorId = self::speakerCreatorId($userId);
+        $isSpeaker = $type === 'speaker';
         return [
             'id' => 'usr_' . $userId,
             'type' => 'user',
+            'account_type' => $type,
             'display_name' => (string) get_user_meta($userId, 'meydan_full_name', true) ?: ($user?->display_name ?: 'کاربر میدان'),
             'avatar_url' => self::avatarUrl((int) get_user_meta($userId, 'meydan_avatar_media_id', true)),
             'verified' => self::isVerifiedUser($userId),
-            'is_speaker' => $speakerCreatorId > 0,
+            'is_speaker' => $isSpeaker,
             'verified_speaker' => self::isVerifiedSpeaker($userId),
-            'speaker_creator_id' => $speakerCreatorId ?: null,
+            // Both keys carry the user id now that a speaker *is* the account;
+            // `speaker_creator_id` is kept for client compatibility.
+            'speaker_user_id' => $isSpeaker ? $userId : null,
+            'speaker_creator_id' => $isSpeaker ? $userId : null,
         ];
     }
 

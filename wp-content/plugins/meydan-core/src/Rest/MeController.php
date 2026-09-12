@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Meydan\Core\Rest;
 
 use Meydan\Core\Audit\AuditLogger;
+use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Cursor;
 use Meydan\Core\Support\Response;
@@ -26,6 +27,17 @@ final class MeController extends BaseController
                 Response::ok([
                     'account_type' => 'square',
                     'square' => $this->squareProfile($sid),
+                ]),
+                'private, no-store'
+            );
+        }
+
+        if ($type === 'speaker') {
+            return Response::cache(
+                Response::ok([
+                    'account_type' => 'speaker',
+                    'profile' => $this->profile($uid),
+                    'speaker' => Serializer::speaker($uid),
                 ]),
                 'private, no-store'
             );
@@ -71,6 +83,23 @@ final class MeController extends BaseController
             update_user_meta($uid, 'meydan_cover_media_id', $coverId);
         }
 
+        // A speaker edits the speaker part of its own profile through the same
+        // endpoint; the account is the profile, so there is no second object.
+        if (Actor::isSpeaker($uid)) {
+            $speaker = [];
+            foreach (['role', 'handle', 'expertise', 'initials'] as $k) {
+                if (array_key_exists($k, $p)) $speaker[$k] = $p[$k];
+            }
+            if (array_key_exists('categories', $p)) $speaker['categories'] = (array) $p['categories'];
+            if (array_key_exists('speaker_categories', $p)) $speaker['categories'] = (array) $p['speaker_categories'];
+            if (array_key_exists('social_links', $p)) $speaker['social_links'] = $p['social_links'];
+            if (array_key_exists('cities', $p)) $speaker['cities'] = $p['cities'];
+            if ($speaker) {
+                $saved = SpeakerService::save($speaker, $uid);
+                if (is_wp_error($saved)) return $this->error($saved);
+            }
+        }
+
         if (isset($p['skills'])) {
             update_user_meta(
                 $uid,
@@ -101,7 +130,8 @@ final class MeController extends BaseController
     {
         if ($e = $this->guard()) return $e;
         $uid = get_current_user_id();
-        $type = $this->accountType($uid);
+        // Author actor type never carries `speaker`: it is a user actor.
+        $type = Actor::actorType($uid);
         $actorId = $type === 'square' ? (int) get_user_meta($uid, 'meydan_square_id', true) : $uid;
         return $this->actorNarratives($type, $actorId, $r);
     }
@@ -218,6 +248,32 @@ final class MeController extends BaseController
         return Response::ok(['deleted' => true]);
     }
 
+    /**
+     * Persists the programme order. The client has always called
+     * `PUT /me/square/schedule/order`, but the route was never registered, so
+     * reordering silently failed and the list snapped back.
+     */
+    public function reorderSchedule(WP_REST_Request $r)
+    {
+        if ($e = $this->guardSquare()) return $e;
+        $sid = (int) get_user_meta(get_current_user_id(), 'meydan_square_id', true);
+        $p = $this->json($r);
+        $ids = array_values(array_filter(array_map('intval', (array) ($p['schedule_ids'] ?? []))));
+        if (!$ids) return Response::error('validation_failed', 'فهرست برنامه‌ها الزامی است.', 422);
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_square_schedule';
+        foreach ($ids as $position => $id) {
+            $wpdb->update(
+                $table,
+                ['position' => $position, 'updated_at' => current_time('mysql', true)],
+                ['id' => $id, 'square_id' => $sid]
+            );
+        }
+        AuditLogger::log('schedule_reordered', 'schedule', $sid, null, ['ids' => $ids]);
+        return Response::ok(Serializer::squareSchedule($sid));
+    }
+
     private function writeSchedule(WP_REST_Request $r, int $id)
     {
         if ($e = $this->guardSquare()) return $e;
@@ -248,7 +304,7 @@ final class MeController extends BaseController
         }
         AuditLogger::log($before ? 'schedule_updated' : 'schedule_created', 'schedule', $id, $before, $data);
         $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}meydan_square_schedule WHERE id=%d", $id), ARRAY_A);
-        return Response::ok(Serializer::scheduleRow($row), $before ? 200 : 201);
+        return Response::ok(Serializer::scheduleRow($row), [], $before ? 200 : 201);
     }
 
     private function profile(int $uid): array
@@ -361,5 +417,5 @@ final class MeController extends BaseController
 
     private function guard(){return is_user_logged_in()?null:Response::error('unauthenticated','برای انجام این عملیات باید وارد شوید.',401);}
     private function guardSquare(){if($e=$this->guard())return $e;return Actor::isSquare((int)get_current_user_id())?null:Response::error('forbidden','این عملیات فقط برای حساب میدان مجاز است.',403);}
-    public function speakerRow(array $r):array{return ['id'=>(int)$r['id'],'creator_id'=>(int)$r['creator_id'],'venue'=>$r['venue'],'requested_at'=>gmdate(DATE_ATOM,strtotime($r['requested_at'].' UTC')),'note'=>$r['note'],'status'=>$r['status'],'created_at'=>gmdate(DATE_ATOM,strtotime($r['created_at'].' UTC'))];}
+    public function speakerRow(array $r):array{return ['id'=>(int)$r['id'],'creator_id'=>(int)$r['creator_id'],'speaker_user_id'=>(int)($r['speaker_user_id']??0)?:null,'venue'=>$r['venue'],'requested_at'=>gmdate(DATE_ATOM,strtotime($r['requested_at'].' UTC')),'note'=>$r['note'],'status'=>$r['status'],'created_at'=>gmdate(DATE_ATOM,strtotime($r['created_at'].' UTC'))];}
 }

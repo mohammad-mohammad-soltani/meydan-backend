@@ -4,16 +4,22 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Database;
 
+use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.1.0';
+    public const VERSION = '1.2.0';
 
-    /** Speaker postmeta holding the linked WordPress user id. */
+    /**
+     * Legacy speaker-post meta holding the linked user id.
+     *
+     * Pre-1.2.0 keys, read only by the speaker-to-user migration; speakers are
+     * users now, so the reverse user meta is deleted as part of that migration.
+     */
     public const SPEAKER_USER_META = 'meydan_speaker_user_id';
 
-    /** User meta mirroring the linked speaker post id, for reverse lookups. */
+    /** @deprecated Legacy user meta mirroring a speaker post id. */
     public const USER_SPEAKER_META = 'meydan_user_speaker_id';
 
     /**
@@ -31,17 +37,17 @@ final class Migrations
     }
 
     /**
-     * Data migrations that need a registered post type.
+     * Data migrations that need registered post types or roles.
      *
-     * `maybeRun()` fires on `plugins_loaded`, but post types are only
-     * registered on the later `init` hook — so `wp_insert_post` for a plugin
-     * post type silently fails there. This is hooked to `init` instead, after
-     * `Registrations::registerPostTypes()`.
+     * `maybeRun()` fires on `plugins_loaded`, but post types and the speaker
+     * role are only available on the later `init` hook, so `wp_insert_user` for
+     * a speaker account would fail there. This is hooked to `init` instead,
+     * after `Registrations`.
      */
     public static function runDeferred(): void
     {
-        // Guarded and cheap: migrateSpeakers() returns immediately once done.
-        self::migrateSpeakers();
+        // Guarded and cheap: migrateSpeakerUsers() returns immediately once done.
+        self::migrateSpeakerUsers();
     }
 
     public static function run(): void
@@ -374,121 +380,218 @@ final class Migrations
     }
 
     /**
-     * Moves existing speaker-tagged `meydan_creator` posts onto the dedicated
-     * `meydan_speaker` post type (1.1.0).
+     * Turns speaker posts into speaker accounts (1.2.0).
      *
-     * Only creators with no `meydan_content_creators` rows are moved: a creator
-     * cited by content is a content producer and must keep its post id, since
-     * that table stores bare ids with no foreign key. The `speaker` term is not
-     * a sufficient signal on its own — SeedData blanket-tagged every demo
-     * creator with it.
+     * A speaker is now a user holding the `meydan_speaker` role, so the curated
+     * profile moves off the post onto the account and the post type is retired.
+     * Two sources are handled: speaker posts left by the 1.1.0 split, and — on
+     * installs where that split never ran — the speaker-tagged creators with no
+     * `meydan_content_creators` rows. A creator cited by content is a content
+     * producer and must keep its post id, since that table stores bare ids.
      *
-     * Idempotent and replay-safe: `run()` re-executes on every version change.
+     * Idempotent and replay-safe: the recorded option short-circuits later runs.
+     *
+     * `$force` bypasses that guard so the seeder can import demo speakers after
+     * it has created the creators and their content links.
      */
-    private static function migrateSpeakers(): void
+    public static function migrateSpeakerUsers(bool $force = false): void
     {
-        if (get_option('meydan_speaker_split_done', null) !== null) {
+        if (!$force && get_option('meydan_speaker_users_migrated', null) !== null) {
             return;
         }
 
-        // Guard against running before the post type exists: `wp_insert_post`
-        // would fail and we would record a false "done". Deferred to `init`.
-        if (!post_type_exists('meydan_speaker')) {
-            return;
-        }
-
-        global $wpdb;
-        $creators = get_posts([
-            'post_type' => 'meydan_creator',
-            'post_status' => 'any',
-            'posts_per_page' => -1,
-            'fields' => 'ids',
-            'tax_query' => [[
-                'taxonomy' => 'meydan_creator_type',
-                'field' => 'slug',
-                'terms' => 'speaker',
-            ]],
-        ]);
-
-        $map = [];
-        foreach ($creators as $creatorId) {
-            $creatorId = (int) $creatorId;
-
-            $contentRefs = (int) $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->prefix}meydan_content_creators WHERE creator_id = %d",
-                $creatorId
-            ));
-            if ($contentRefs > 0) {
-                continue;
-            }
-
-            $source = get_post($creatorId);
-            if (!$source || $source->post_status === 'trash') {
-                continue;
-            }
-
-            $speakerId = wp_insert_post([
-                'post_type' => 'meydan_speaker',
-                'post_status' => 'publish',
-                'post_title' => $source->post_title,
-                'post_content' => $source->post_content,
-                'post_date' => $source->post_date,
-                'post_author' => (int) $source->post_author,
-            ], true);
-            if (is_wp_error($speakerId) || !$speakerId) {
-                continue;
-            }
-            $speakerId = (int) $speakerId;
-
-            foreach (['role', 'handle', 'expertise', 'initials', 'verified', 'cities', 'social_links', 'avatar_media_id'] as $key) {
-                $value = get_post_meta($creatorId, 'meydan_' . $key, true);
-                if ($value !== '' && $value !== null) {
-                    update_post_meta($speakerId, 'meydan_' . $key, $value);
-                }
-            }
-
-            $terms = wp_get_post_terms($creatorId, 'meydan_speaker_category', ['fields' => 'ids']);
-            if (!is_wp_error($terms) && $terms) {
-                wp_set_post_terms($speakerId, $terms, 'meydan_speaker_category');
-            }
-
-            $userId = (int) get_post_meta($creatorId, self::LEGACY_SPEAKER_USER_META, true);
-            if ($userId > 0 && get_userdata($userId)) {
-                update_post_meta($speakerId, self::SPEAKER_USER_META, $userId);
-            }
-
-            // The creator post is left untouched: content may still reference
-            // it, and the speaker now lives on the new entity.
-            $map[$creatorId] = $speakerId;
-        }
-
-        update_option('meydan_speaker_split_v1_map', $map, false);
-        update_option('meydan_speaker_split_done', 1, false);
-
-        // Runs exactly once, right after the posts exist, so the reverse
-        // usermeta mirror is populated without a per-request scan.
-        self::syncSpeakerLinks();
-    }
-
-    /**
-     * Mirrors the speaker -> user link onto the user so a logged-in speaker can
-     * resolve their own profile in one lookup instead of scanning posts.
-     */
-    private static function syncSpeakerLinks(): void
-    {
-        $speakerIds = get_posts([
+        $sources = get_posts([
             'post_type' => 'meydan_speaker',
             'post_status' => 'any',
             'posts_per_page' => -1,
             'fields' => 'ids',
         ]);
+        $legacyCreators = !$sources;
+        if ($legacyCreators) {
+            $sources = get_posts([
+                'post_type' => 'meydan_creator',
+                'post_status' => 'any',
+                'posts_per_page' => -1,
+                'fields' => 'ids',
+                'tax_query' => [[
+                    'taxonomy' => 'meydan_creator_type',
+                    'field' => 'slug',
+                    'terms' => 'speaker',
+                ]],
+            ]);
+        }
 
-        foreach ($speakerIds as $speakerId) {
-            $userId = (int) get_post_meta((int) $speakerId, self::SPEAKER_USER_META, true);
-            if ($userId > 0 && get_userdata($userId)) {
-                update_user_meta($userId, self::USER_SPEAKER_META, (int) $speakerId);
+        global $wpdb;
+        // Previous run's post => user map, so a forced re-run reuses the account
+        // it already created instead of minting a duplicate.
+        $existing = (array) get_option('meydan_speaker_user_map', []);
+        $map = [];
+        foreach ($sources as $postId) {
+            $postId = (int) $postId;
+            if ($legacyCreators) {
+                $contentRefs = (int) $wpdb->get_var($wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$wpdb->prefix}meydan_content_creators WHERE creator_id = %d",
+                    $postId
+                ));
+                if ($contentRefs > 0) {
+                    continue;
+                }
+            }
+
+            $source = get_post($postId);
+            if (!$source || $source->post_status === 'trash') {
+                continue;
+            }
+
+            $userId = (int) ($existing[$postId] ?? 0);
+            if ($userId <= 0 || !get_userdata($userId)) {
+                $userId = (int) get_post_meta($postId, self::SPEAKER_USER_META, true);
+            }
+            if ($userId <= 0 || !get_userdata($userId)) {
+                $userId = (int) get_post_meta($postId, self::LEGACY_SPEAKER_USER_META, true);
+            }
+            if ($userId <= 0 || !get_userdata($userId)) {
+                $userId = self::createSpeakerUser($source);
+            }
+            if ($userId <= 0) {
+                continue;
+            }
+
+            self::applySpeakerProfile($userId, $source);
+            $map[$postId] = $userId;
+        }
+
+        self::repointSpeakerRequests($map);
+        // Merge so a forced seeder run keeps the entries of an earlier run.
+        update_option('meydan_speaker_user_map', $map + $existing, false);
+        update_option('meydan_speaker_users_migrated', 1, false);
+    }
+
+    /** Creates the account that now backs a migrated speaker profile. */
+    private static function createSpeakerUser(\WP_Post $source): int
+    {
+        if (!function_exists('wp_insert_user')) {
+            require_once ABSPATH . 'wp-admin/includes/user.php';
+        }
+
+        $userId = wp_insert_user([
+            'user_login' => 'meydan_internal_' . strtolower(wp_generate_password(20, false, false)),
+            'user_pass' => wp_generate_password(64, true, true),
+            'display_name' => $source->post_title !== '' ? $source->post_title : 'سخنران',
+            'role' => SpeakerService::ROLE,
+        ]);
+
+        return is_wp_error($userId) ? 0 : (int) $userId;
+    }
+
+    /**
+     * Copies the curated post profile onto the account.
+     *
+     * Existing user meta wins, so a linked account that already filled a field
+     * in wp-admin is never overwritten by the older post copy.
+     */
+    private static function applySpeakerProfile(int $userId, \WP_Post $source): void
+    {
+        $user = get_userdata($userId);
+        $roles = $user ? (array) $user->roles : [];
+        // An administrator or square is never rewritten: the profile copy is
+        // still useful, but the account type must follow the role it keeps.
+        $eligible = $user && !in_array('administrator', $roles, true) && !in_array('meydan_square', $roles, true);
+        if ($eligible && !in_array(SpeakerService::ROLE, $roles, true)) {
+            $user->set_role(SpeakerService::ROLE);
+        }
+        if ($eligible) {
+            update_user_meta($userId, 'meydan_account_type', 'speaker');
+        }
+
+        if ((string) get_user_meta($userId, 'meydan_full_name', true) === '') {
+            update_user_meta($userId, 'meydan_full_name', $source->post_title !== '' ? $source->post_title : ($user?->display_name ?: 'سخنران'));
+        }
+        if ($source->post_content !== '' && (string) get_user_meta($userId, 'meydan_about', true) === '') {
+            update_user_meta($userId, 'meydan_about', wp_kses_post($source->post_content));
+        }
+
+        foreach (['role', 'handle', 'expertise', 'initials', 'verified', 'cities', 'social_links', 'avatar_media_id'] as $key) {
+            $value = get_post_meta($source->ID, 'meydan_' . $key, true);
+            if ($value !== '' && $value !== null && get_user_meta($userId, 'meydan_' . $key, true) === '') {
+                update_user_meta($userId, 'meydan_' . $key, $value);
             }
         }
+
+        $categories = self::sourceCategories($source->ID);
+        if ($categories && !get_user_meta($userId, 'meydan_speaker_categories', true)) {
+            update_user_meta($userId, 'meydan_speaker_categories', $categories);
+        }
+
+        // The reverse post link belonged to the post-backed model.
+        delete_user_meta($userId, self::USER_SPEAKER_META);
+        delete_user_meta($userId, self::LEGACY_USER_SPEAKER_META);
+    }
+
+    /**
+     * Category slugs of a legacy speaker post.
+     *
+     * Read with a direct query because the taxonomy is no longer registered by
+     * the time this migration runs.
+     *
+     * @return array<int,string>
+     */
+    private static function sourceCategories(int $postId): array
+    {
+        global $wpdb;
+        $slugs = $wpdb->get_col($wpdb->prepare(
+            "SELECT t.slug FROM {$wpdb->term_relationships} tr
+             INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+             INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+             WHERE tr.object_id = %d AND tt.taxonomy = %s",
+            $postId,
+            SpeakerService::SPEAKER_CATEGORY_TAXONOMY
+        ));
+
+        return array_values(array_filter(array_map('sanitize_key', $slugs ?: [])));
+    }
+
+    /**
+     * Repoints legacy request rows from the speaker post id to the account id.
+     *
+     * `creator_id` and `speaker_user_id` both hold the speaker user id once the
+     * row is migrated, matching the columns' meaning after 1.2.0.
+     *
+     * @param array<int,int> $map post id => user id
+     */
+    private static function repointSpeakerRequests(array $map): void
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_speaker_requests';
+        $rows = $wpdb->get_results("SELECT id, creator_id, speaker_user_id FROM {$table}", ARRAY_A);
+
+        foreach ($rows ?: [] as $row) {
+            $creatorId = (int) $row['creator_id'];
+            $speakerUserId = (int) $row['speaker_user_id'];
+            if ($speakerUserId > 0 && get_userdata($speakerUserId) && self::isSpeakerAccount($speakerUserId)) {
+                continue;
+            }
+
+            $userId = (int) ($map[$creatorId] ?? 0);
+            if ($userId <= 0 && self::isSpeakerAccount($creatorId)) {
+                $userId = $creatorId;
+            }
+            if ($userId <= 0) {
+                continue;
+            }
+
+            $wpdb->update($table, [
+                'creator_id' => $userId,
+                'speaker_user_id' => $userId,
+            ], ['id' => (int) $row['id']]);
+        }
+    }
+
+    /** Role-based speaker check that does not depend on the Actor helper. */
+    private static function isSpeakerAccount(int $userId): bool
+    {
+        $user = $userId > 0 ? get_userdata($userId) : false;
+        return (bool) ($user && in_array(SpeakerService::ROLE, (array) $user->roles, true));
     }
 
     private static function seedOptions(): void

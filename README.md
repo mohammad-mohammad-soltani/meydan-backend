@@ -33,7 +33,9 @@ For local development set `MEYDAN_DEV_OTP_CODE` in `.env`. The code is never sto
 
 ## WordPress admin
 
-The plugin adds a top-level **میدان** menu for dashboard, narratives, content, creators, squares/verification/map, initiatives, campaigns, speaker requests, media reflections, comments, notifications, stats, settings, geo data, sessions, and audit logs.
+The plugin adds a top-level **میدان** menu for dashboard, narratives, content, creators, speakers, squares/verification/map, initiatives, campaigns, speaker invitations, media reflections, comments, notifications, stats, settings, geo data, sessions, and audit logs.
+
+Speakers are **user accounts**, not a separate entity: a speaker is a WordPress user holding the `meydan_speaker` role (account type `speaker`). The «سخنرانان» menu opens the role-filtered users list, and the speaker profile (نمایشی role, expertise, handle, initials, categories, cities, social links, verified badge) is edited on the user edit screen under «پروفایل سخنران». Promoting an existing account is what makes it invitable; there is no public speaker registration.
 
 ## Source specification
 

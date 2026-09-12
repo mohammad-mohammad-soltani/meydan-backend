@@ -16,6 +16,8 @@ jobs:
         run: python3 tests/check-route-inventory.py
       - name: Notification event coverage
         run: python3 tests/check-notification-events.py
+      - name: Speaker role model
+        run: python3 tests/check-speaker-role.py
   docker-smoke:
     runs-on: ubuntu-latest
     needs: lint-and-inventory
