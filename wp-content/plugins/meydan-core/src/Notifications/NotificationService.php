@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Meydan\Core\Notifications;
 
 use Meydan\Core\Support\Actor;
+use Meydan\Core\Support\SoketiRealtime;
 
 final class NotificationService
 {
@@ -100,7 +101,9 @@ final class NotificationService
                     'read_at' => null,
                     'archived_at' => null,
                 ], ['id' => (int) $existing['id']]);
-                return (int) $existing['id'];
+                $id = (int) $existing['id'];
+                SoketiRealtime::publishToUser($recipientUserId, 'notification:updated', ['id' => (string) $id]);
+                return $id;
             }
         }
 
@@ -121,7 +124,19 @@ final class NotificationService
             'payload_json' => wp_json_encode($payload),
             'created_at' => current_time('mysql', true),
         ]);
-        return (int) $wpdb->insert_id;
+        $id = (int) $wpdb->insert_id;
+        if ($id > 0) {
+            SoketiRealtime::publishToUser($recipientUserId, 'notification:created', [
+                'id' => (string) $id,
+                'type' => sanitize_key($type),
+                'title' => sanitize_text_field($title),
+                'body' => sanitize_textarea_field($body),
+                'deep_link' => $deepLink ? esc_url_raw($deepLink) : null,
+                'created_at' => gmdate('c'),
+                'read_at' => null,
+            ]);
+        }
+        return $id;
     }
 
     public function fromTemplate(int $recipientUserId, string $type, ?string $actorType = null, ?int $actorId = null, ?string $entityType = null, ?int $entityId = null, ?string $deepLink = null, ?string $groupKey = null, bool $aggregate = false, array $payload = []): int

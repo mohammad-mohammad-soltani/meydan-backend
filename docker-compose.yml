@@ -37,8 +37,15 @@ services:
       MEYDAN_SMS_TOKEN: ${MEYDAN_SMS_TOKEN:-}
       MEYDAN_SMS_FROM_NUMBER: ${MEYDAN_SMS_FROM_NUMBER:-}
       MEYDAN_SMS_PATTERN_CODE: ${MEYDAN_SMS_PATTERN_CODE:-}
-      MEYDAN_CHAT_SOCKET_SECRET: ${MEYDAN_CHAT_SOCKET_SECRET:-dev-chat-secret-change-me}
-      MEYDAN_CHAT_SOCKET_URL: ${CHAT_PUBLIC_URL:-http://localhost:3001}
+      MEYDAN_SOKETI_APP_ID: ${MEYDAN_SOKETI_APP_ID:-}
+      MEYDAN_SOKETI_APP_KEY: ${MEYDAN_SOKETI_APP_KEY:-}
+      MEYDAN_SOKETI_APP_SECRET: ${MEYDAN_SOKETI_APP_SECRET:-}
+      MEYDAN_SOKETI_HOST: ${MEYDAN_SOKETI_HOST:-naghshman.ir}
+      MEYDAN_SOKETI_PORT: ${MEYDAN_SOKETI_PORT:-6001}
+      MEYDAN_SOKETI_SCHEME: ${MEYDAN_SOKETI_SCHEME:-http}
+      MEYDAN_SOKETI_PUBLIC_HOST: ${MEYDAN_SOKETI_PUBLIC_HOST:-naghshman.ir}
+      MEYDAN_SOKETI_PUBLIC_PORT: ${MEYDAN_SOKETI_PUBLIC_PORT:-6001}
+      MEYDAN_SOKETI_PUBLIC_SCHEME: ${MEYDAN_SOKETI_PUBLIC_SCHEME:-http}
       WORDPRESS_CONFIG_EXTRA: |
         if (!empty($$_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($$_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
             $$_SERVER['HTTPS'] = 'on';
@@ -66,26 +73,6 @@ services:
       - wp_data:/var/www/html
       - ./wp-content/plugins/meydan-core:/var/www/html/wp-content/plugins/meydan-core
       - ./docker/uploads.ini:/usr/local/etc/php/conf.d/zz-meydan-uploads.ini:ro
-
-  chat-realtime:
-    build:
-      context: ./realtime-chat
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    ports:
-      - "${CHAT_PORT:-3001}:3001"
-    environment:
-      PORT: 3001
-      DB_HOST: db
-      DB_PORT: 3306
-      DB_NAME: ${DB_NAME:-meydan}
-      DB_USER: ${DB_USER:-meydan}
-      DB_PASSWORD: ${DB_PASSWORD:-change-me}
-      DB_PREFIX: ${DB_PREFIX:-wp_}
-      MEYDAN_CHAT_SOCKET_SECRET: ${MEYDAN_CHAT_SOCKET_SECRET:-dev-chat-secret-change-me}
-      MEYDAN_CHAT_CORS_ORIGIN: ${MEYDAN_CHAT_CORS_ORIGIN:-*}
 
   wpcli:
     image: wordpress:cli-2.12.0-php8.4

@@ -3,15 +3,11 @@ import { Freestyle } from "freestyle";
 const slug = process.env.FREESTYLE_VM_SLUG;
 const domain = process.env.FREESTYLE_DOMAIN;
 const wordpressPort = process.env.WORDPRESS_PORT;
-const chatDomain = process.env.CHAT_DOMAIN;
-const chatPort = process.env.CHAT_PORT;
 
 for (const [name, value] of Object.entries({
   FREESTYLE_VM_SLUG: slug,
   FREESTYLE_DOMAIN: domain,
   WORDPRESS_PORT: wordpressPort,
-  CHAT_DOMAIN: chatDomain,
-  CHAT_PORT: chatPort,
 })) {
   if (!value) throw new Error(`${name} is required`);
 }
@@ -24,8 +20,6 @@ const command = [
   "/tmp/deploy-meydan-backend.sh",
   shellQuote(domain),
   shellQuote(wordpressPort),
-  shellQuote(chatDomain),
-  shellQuote(chatPort),
 ].join(" ");
 
 const result = await vm.exec({

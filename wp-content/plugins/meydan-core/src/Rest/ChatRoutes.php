@@ -19,11 +19,13 @@ final class ChatRoutes
         self::route('/chat/conversations/(?P<id>\d+)/search', 'GET', [$chat, 'search']);
         self::route('/chat/conversations/(?P<id>\d+)/mute', 'PUT', [$chat, 'mute']);
         self::route('/chat/conversations/(?P<id>\d+)/read', 'PUT', [$chat, 'read']);
+        self::route('/chat/conversations/(?P<id>\d+)/typing', 'POST', [$chat, 'typing']);
         self::route('/chat/messages/(?P<id>\d+)', 'PATCH', [$chat, 'edit']);
         self::route('/chat/messages/(?P<id>\d+)', 'DELETE', [$chat, 'delete']);
         self::route('/chat/messages/(?P<id>\d+)/reaction', 'PUT', [$chat, 'react']);
         self::route('/chat/messages/(?P<id>\d+)/reaction', 'DELETE', [$chat, 'unreact']);
-        self::route('/chat/socket-ticket', 'POST', [$chat, 'socketTicket']);
+        self::route('/chat/realtime/config', 'GET', [$chat, 'realtimeConfig']);
+        self::route('/chat/realtime/auth', 'POST', [$chat, 'realtimeAuth']);
     }
 
     private static function route(string $route, string $method, callable $callback): void
