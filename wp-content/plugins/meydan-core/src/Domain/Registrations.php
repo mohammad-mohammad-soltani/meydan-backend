@@ -115,12 +115,22 @@ final class Registrations
         self::taxonomy('meydan_narrative_tag', ['meydan_narrative'], 'برچسب‌های روایت', false);
         self::taxonomy('meydan_content_tag', ['meydan_content'], 'برچسب‌های محتوا', false);
         self::taxonomy('meydan_creator_type', ['meydan_creator'], 'نوع تولیدکننده', false);
+        self::taxonomy(CreatorService::SPEAKER_CATEGORY_TAXONOMY, ['meydan_creator'], 'دسته‌بندی موضوعی سخنرانان', false);
         self::taxonomy('meydan_topic', ['meydan_narrative', 'meydan_content'], 'موضوع‌ها', false);
 
         $types = ['speaker', 'reciter', 'writer', 'journalist', 'designer', 'media_team', 'institution', 'studio', 'other'];
         foreach ($types as $type) {
             if (!term_exists($type, 'meydan_creator_type')) {
                 wp_insert_term($type, 'meydan_creator_type', ['slug' => $type]);
+            }
+        }
+
+        // Seeded with Persian names (unlike creator types above, which pass only
+        // a slug and therefore render in English in wp-admin). Idempotent, and an
+        // admin rename is never overwritten because wp_insert_term is skipped.
+        foreach (CreatorService::SPEAKER_CATEGORIES as $slug => $name) {
+            if (!term_exists($slug, CreatorService::SPEAKER_CATEGORY_TAXONOMY)) {
+                wp_insert_term($name, CreatorService::SPEAKER_CATEGORY_TAXONOMY, ['slug' => $slug]);
             }
         }
     }

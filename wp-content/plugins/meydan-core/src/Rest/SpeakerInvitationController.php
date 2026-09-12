@@ -6,8 +6,10 @@ namespace Meydan\Core\Rest;
 
 use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Database\Migrations;
+use Meydan\Core\Domain\CreatorService;
 use Meydan\Core\Notifications\SpeakerInvitationService;
 use Meydan\Core\Support\Actor;
+use Meydan\Core\Support\ChatRepository;
 use Meydan\Core\Support\Response;
 use WP_REST_Request;
 
@@ -47,6 +49,11 @@ final class SpeakerInvitationController extends BaseController
             if ($userId <= 0 || !get_userdata($userId)) {
                 continue;
             }
+            // A square is an inviter, never an invitee; excluding them here also
+            // keeps a square from finding itself in the picker.
+            if (Actor::isSquare($userId)) {
+                continue;
+            }
 
             $actor = Actor::forUser($userId);
             $name = (string) ($actor['display_name'] ?? '');
@@ -64,7 +71,10 @@ final class SpeakerInvitationController extends BaseController
                 'actor' => $actor,
                 'role' => $role,
                 'expertise' => $expertise,
-                'categories' => is_wp_error($types) ? [] : array_values($types),
+                // Creator type (سخنران/مداح/…) and topical category are distinct
+                // axes; the picker filters on the latter.
+                'types' => is_wp_error($types) ? [] : array_values($types),
+                'speaker_categories' => CreatorService::categoriesOf($creatorId),
                 'verified_speaker' => Actor::isVerifiedSpeaker($userId),
             ];
         }
@@ -129,12 +139,18 @@ final class SpeakerInvitationController extends BaseController
             return Response::error('validation_failed', 'این کاربر سخنران نیست.', 422, ['speaker_user_id' => 'not_speaker']);
         }
 
-        $location = sanitize_text_field((string) ($p['location'] ?? ''));
+        // Only square accounts invite: the venue is their own registered
+        // address, so the client never supplies it.
+        if (!Actor::isSquare($viewerId)) {
+            return Response::error('forbidden', 'فقط حساب‌های میدان می‌توانند دعوت سخنرانی ارسال کنند.', 403);
+        }
+        $location = Actor::squareAddress(Actor::squareId($viewerId));
+        if ($location === '') {
+            return Response::error('validation_failed', 'نشانی میدان شما ثبت نشده است.', 422, ['location' => 'missing_square_address']);
+        }
+
         $date = sanitize_text_field((string) ($p['requested_date'] ?? ''));
         $time = sanitize_text_field((string) ($p['requested_time'] ?? ''));
-        if ($location === '') {
-            return Response::error('validation_failed', 'مکان برگزاری الزامی است.', 422, ['location' => 'required']);
-        }
         if (!$this->validDate($date)) {
             return Response::error('validation_failed', 'تاریخ درخواست معتبر نیست.', 422, ['requested_date' => 'invalid']);
         }
@@ -180,8 +196,54 @@ final class SpeakerInvitationController extends BaseController
             'requested_time' => $time,
         ]);
 
+        self::syncInvitationChat($id, $viewerId, $speakerUserId, $location, $date, $time, (string) ($p['message'] ?? ''));
+
         $row = $this->find($id);
         return Response::ok($row ? SpeakerInvitationService::serialize($row, $viewerId) : null, [], 201);
+    }
+
+    /**
+     * Posts the invitation into the inviter<->speaker direct conversation.
+     *
+     * Best-effort by design: the invitation row and its notification are already
+     * committed, so a chat failure must never fail the request or roll anything
+     * back. Failures are swallowed rather than surfaced.
+     */
+    private static function syncInvitationChat(
+        int $invitationId,
+        int $inviterId,
+        int $speakerId,
+        string $location,
+        string $date,
+        string $time,
+        string $note,
+    ): void {
+        try {
+            $chat = new ChatRepository();
+            // Both ids are user ids; the square's chat identity is its owner.
+            $conversation = $chat->createDirect($inviterId, $speakerId);
+            if (is_wp_error($conversation)) {
+                return;
+            }
+            $conversationId = (int) ($conversation['id'] ?? 0);
+            if ($conversationId <= 0) {
+                return;
+            }
+
+            $body = 'دعوت سخنرانی' . "\n" . 'تاریخ: ' . $date . '  ساعت: ' . $time . "\n" . 'مکان: ' . $location;
+            if (trim($note) !== '') {
+                $body .= "\n" . trim($note);
+            }
+
+            $chat->send($conversationId, $inviterId, [
+                // Deterministic key: the UNIQUE(sender_user_id, client_id) index
+                // makes a retried request update rather than double-post.
+                'client_id' => 'speaker-invitation:' . $invitationId,
+                'body' => $body,
+            ]);
+        } catch (\Throwable) {
+            // Chat is a side channel for the invitation; ignore any failure.
+        }
     }
 
     /** Speaker accepts or rejects; only the invited speaker may decide. */

@@ -16,6 +16,48 @@ final class Actor
     }
 
     /**
+     * Canonical account type for a user: `square` or `user`.
+     *
+     * The WordPress role is authoritative — administrators may change it
+     * directly — so a stale `meydan_account_type` meta is repaired on read.
+     */
+    public static function accountType(int $userId): string
+    {
+        $stored = (string) get_user_meta($userId, 'meydan_account_type', true);
+        $user = get_userdata($userId);
+        $type = $user && in_array('meydan_square', (array) $user->roles, true) ? 'square' : 'user';
+        if ($stored !== $type) {
+            update_user_meta($userId, 'meydan_account_type', $type);
+        }
+        return $type;
+    }
+
+    public static function isSquare(int $userId): bool
+    {
+        return self::accountType($userId) === 'square';
+    }
+
+    /** Square post owned by a user, or 0 when unset/not a square post. */
+    public static function squareId(int $userId): int
+    {
+        $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
+        return $squareId > 0 && get_post_type($squareId) === 'meydan_square' ? $squareId : 0;
+    }
+
+    /** Registered address of a square, used as the invitation venue. '' when unset. */
+    public static function squareAddress(int $squareId): string
+    {
+        if ($squareId <= 0) {
+            return '';
+        }
+        global $wpdb;
+        return (string) $wpdb->get_var($wpdb->prepare(
+            "SELECT address FROM {$wpdb->prefix}meydan_square_geo WHERE square_id = %d",
+            $squareId
+        ));
+    }
+
+    /**
      * Resolves the curated creator profile linked to a user, or 0.
      * Cached per request so list rendering does not repeat the lookup.
      */

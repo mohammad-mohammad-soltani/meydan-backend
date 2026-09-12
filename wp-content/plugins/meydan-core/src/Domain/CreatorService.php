@@ -22,6 +22,21 @@ final class CreatorService
         'other' => 'سایر',
     ];
 
+    /**
+     * Topical speaker categories (سیاسی، اقتصادی، …). Distinct from
+     * TYPE_LABELS, which describes *what* a creator is (سخنران، مداح، …).
+     * Terms are seeded from this map and remain admin-editable afterwards.
+     */
+    public const SPEAKER_CATEGORIES = [
+        'siyasi' => 'سیاسی',
+        'eqtesadi' => 'اقتصادی',
+        'maarif' => 'معارف',
+        'resanei' => 'رسانه‌ای',
+        'ejtemaei' => 'اجتماعی',
+    ];
+
+    public const SPEAKER_CATEGORY_TAXONOMY = 'meydan_speaker_category';
+
     public const SOCIAL_PLATFORMS = [
         'website' => 'وب‌سایت',
         'instagram' => 'اینستاگرام',
@@ -84,6 +99,16 @@ final class CreatorService
                 array_keys(self::TYPE_LABELS)
             ));
             wp_set_post_terms($id, $types, 'meydan_creator_type');
+        }
+
+        if (array_key_exists('categories', $input)) {
+            // Intersect against the seeded slugs so an unknown value cannot
+            // silently create a stray term. A speaker may hold several.
+            $categories = array_values(array_intersect(
+                array_map('sanitize_key', (array) $input['categories']),
+                array_keys(self::SPEAKER_CATEGORIES)
+            ));
+            wp_set_post_terms($id, $categories, self::SPEAKER_CATEGORY_TAXONOMY);
         }
 
         foreach (['role', 'handle', 'expertise', 'initials'] as $key) {
@@ -215,6 +240,53 @@ final class CreatorService
             }
         }
         return $known;
+    }
+
+    /**
+     * slug => Persian label for speaker categories.
+     *
+     * Live terms win over the const so an admin rename is reflected without a
+     * deploy; the const seeds them and covers the pre-seed window.
+     *
+     * @return array<string,string>
+     */
+    public static function categoryOptions(): array
+    {
+        $terms = get_terms(['taxonomy' => self::SPEAKER_CATEGORY_TAXONOMY, 'hide_empty' => false]);
+        $known = self::SPEAKER_CATEGORIES;
+        if (!is_wp_error($terms)) {
+            foreach ($terms as $term) {
+                $known[$term->slug] ??= $term->name;
+            }
+        }
+        return $known;
+    }
+
+    /** Category taxonomy terms resolved to the API shape used by clients. */
+    public static function categoryTerms(): array
+    {
+        $terms = get_terms(['taxonomy' => self::SPEAKER_CATEGORY_TAXONOMY, 'hide_empty' => false]);
+        if (is_wp_error($terms)) {
+            return [];
+        }
+        return array_map(static fn($term): array => [
+            'slug' => (string) $term->slug,
+            'name' => (string) $term->name,
+            'count' => (int) $term->count,
+        ], $terms);
+    }
+
+    /** Terms of one creator resolved to `{slug,name}` pairs. */
+    public static function categoriesOf(int $creatorId): array
+    {
+        $terms = wp_get_post_terms($creatorId, self::SPEAKER_CATEGORY_TAXONOMY);
+        if (is_wp_error($terms)) {
+            return [];
+        }
+        return array_map(static fn($term): array => [
+            'slug' => (string) $term->slug,
+            'name' => (string) $term->name,
+        ], $terms);
     }
 
     private static function toBool(mixed $value): bool

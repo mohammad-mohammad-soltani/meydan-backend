@@ -342,15 +342,10 @@ final class MeController extends BaseController
         return Response::ok(array_values(array_filter(array_map([Serializer::class, 'narrative'], $q->posts))));
     }
 
+    /** Canonical resolution lives on Actor so other controllers share it. */
     private function accountType(int $uid): string
     {
-        $stored = (string) get_user_meta($uid, 'meydan_account_type', true);
-        $user = get_userdata($uid);
-        // WordPress administrators may change the role directly. Keep the
-        // account identity in sync with that authoritative role on next use.
-        $type = $user && in_array('meydan_square', (array) $user->roles, true) ? 'square' : 'user';
-        if ($stored !== $type) update_user_meta($uid, 'meydan_account_type', $type);
-        return $type;
+        return Actor::accountType($uid);
     }
 
     private function profileImageMediaId(mixed $value, int $uid, string $purpose): int|\WP_Error
@@ -365,6 +360,6 @@ final class MeController extends BaseController
     }
 
     private function guard(){return is_user_logged_in()?null:Response::error('unauthenticated','برای انجام این عملیات باید وارد شوید.',401);}
-    private function guardSquare(){if($e=$this->guard())return $e;return $this->accountType((int)get_current_user_id())==='square'?null:Response::error('forbidden','این عملیات فقط برای حساب میدان مجاز است.',403);}
+    private function guardSquare(){if($e=$this->guard())return $e;return Actor::isSquare((int)get_current_user_id())?null:Response::error('forbidden','این عملیات فقط برای حساب میدان مجاز است.',403);}
     public function speakerRow(array $r):array{return ['id'=>(int)$r['id'],'creator_id'=>(int)$r['creator_id'],'venue'=>$r['venue'],'requested_at'=>gmdate(DATE_ATOM,strtotime($r['requested_at'].' UTC')),'note'=>$r['note'],'status'=>$r['status'],'created_at'=>gmdate(DATE_ATOM,strtotime($r['created_at'].' UTC'))];}
 }

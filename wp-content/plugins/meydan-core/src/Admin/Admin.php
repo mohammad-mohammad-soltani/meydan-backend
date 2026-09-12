@@ -90,8 +90,17 @@ final class Admin
   $this->field('meydan_creator_user_id','حساب کاربری متصل',(string)get_post_meta($id,'meydan_creator_user_id',true),'شناسه عددی کاربر وردپرس که این نمایه را مدیریت می‌کند. تا وقتی این مقدار خالی باشد، نمایه عمومی می‌ماند اما دعوت سخنرانی نمی‌گیرد.');
   echo '</div>';
   $this->creatorTypes($id);
+  $this->creatorCategories($id);
   $this->creatorCities($id);
   $this->socialLinks($id);
+ }
+ private function creatorCategories(int $id):void
+ {
+  $selected=wp_get_post_terms($id,CreatorService::SPEAKER_CATEGORY_TAXONOMY,['fields'=>'slugs']);
+  $selected=is_wp_error($selected)?[]:$selected;
+  echo '<div class="meydan-field"><span class="meydan-label">دسته‌بندی موضوعی</span><small>یک یا چند مورد انتخاب کنید؛ این دسته‌ها در فهرست سخنرانان و انتخابگر دعوت به‌عنوان فیلتر نمایش داده می‌شوند.</small><div class="meydan-chip-row">';
+  foreach(CreatorService::categoryOptions() as $slug=>$label){echo '<label class="meydan-chip"><input type="checkbox" name="meydan_speaker_categories[]" value="'.esc_attr($slug).'" '.checked(in_array($slug,$selected,true),true,false).'><span>'.esc_html($label).'</span></label>';}
+  echo '</div></div>';
  }
  private function field(string $name,string $label,string $value,string $description=''):void
  {
@@ -166,6 +175,7 @@ final class Admin
   foreach(['meydan_role'=>'role','meydan_handle'=>'handle','meydan_expertise'=>'expertise','meydan_initials'=>'initials'] as $field=>$key)if(isset($_POST[$field]))$input[$key]=sanitize_text_field(wp_unslash($_POST[$field]));
   $input['verified']=isset($_POST['meydan_verified']);
   if(isset($_POST['meydan_creator_types']))$input['types']=array_map('sanitize_key',(array)wp_unslash($_POST['meydan_creator_types']));
+  if(isset($_POST['meydan_speaker_categories']))$input['categories']=array_map('sanitize_key',(array)wp_unslash($_POST['meydan_speaker_categories']));
   if(isset($_POST['meydan_cities']))$input['cities']=array_map('intval',(array)wp_unslash($_POST['meydan_cities']));
   if(isset($_POST['meydan_avatar_media_id']))$input['avatar_media_id']=(int)$_POST['meydan_avatar_media_id'];
   if(isset($_POST['meydan_social_links_json'])){$links=json_decode(wp_unslash($_POST['meydan_social_links_json']),true);if(is_array($links))$input['social_links']=$links;}
