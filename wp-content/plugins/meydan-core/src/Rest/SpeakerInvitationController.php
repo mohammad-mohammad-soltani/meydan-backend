@@ -82,8 +82,11 @@ final class SpeakerInvitationController extends BaseController
         global $wpdb;
         $table = SpeakerInvitationService::table();
         if ($box === 'sent') {
+            // Legacy rows predate `inviter_user_id` and only populated
+            // `requester_user_id`, so both columns identify the sender.
             $rows = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM {$table} WHERE inviter_user_id = %d ORDER BY created_at DESC, id DESC LIMIT 100",
+                "SELECT * FROM {$table} WHERE inviter_user_id = %d OR requester_user_id = %d ORDER BY created_at DESC, id DESC LIMIT 100",
+                $viewerId,
                 $viewerId
             ), ARRAY_A);
         } else {

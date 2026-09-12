@@ -119,7 +119,7 @@ final class SpeakerInvitationService
             $actorUserId,
             'speaker_request',
             $invitationId,
-            '/speaker-requests/' . $invitationId,
+            '/speaker-invitations',
             $type . ':speaker_request:' . $invitationId,
             false,
             $payload,
