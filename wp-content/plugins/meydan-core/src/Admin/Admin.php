@@ -86,6 +86,9 @@ final class Admin
   $this->field('meydan_expertise','حوزه تخصص',(string)get_post_meta($id,'meydan_expertise',true),'کاربر در فهرست تولیدکنندگان این متن را می‌بیند.');
   $this->check('meydan_verified','نشان تأییدشده',(bool)get_post_meta($id,'meydan_verified',true));
   echo '</div>';
+  echo '<div class="meydan-creator-grid">';
+  $this->field('meydan_creator_user_id','حساب کاربری متصل',(string)get_post_meta($id,'meydan_creator_user_id',true),'شناسه عددی کاربر وردپرس که این نمایه را مدیریت می‌کند. تا وقتی این مقدار خالی باشد، نمایه عمومی می‌ماند اما دعوت سخنرانی نمی‌گیرد.');
+  echo '</div>';
   $this->creatorTypes($id);
   $this->creatorCities($id);
   $this->socialLinks($id);
@@ -166,6 +169,7 @@ final class Admin
   if(isset($_POST['meydan_cities']))$input['cities']=array_map('intval',(array)wp_unslash($_POST['meydan_cities']));
   if(isset($_POST['meydan_avatar_media_id']))$input['avatar_media_id']=(int)$_POST['meydan_avatar_media_id'];
   if(isset($_POST['meydan_social_links_json'])){$links=json_decode(wp_unslash($_POST['meydan_social_links_json']),true);if(is_array($links))$input['social_links']=$links;}
+  if(isset($_POST['meydan_creator_user_id']))$input['user_id']=(int)$_POST['meydan_creator_user_id'];
   CreatorService::save($input,$id);
  }
  private function saveOutletMeta(int $id):void

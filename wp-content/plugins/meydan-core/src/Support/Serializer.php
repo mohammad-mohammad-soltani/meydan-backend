@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Support;
 
+use Meydan\Core\Database\Migrations;
 use WP_Comment;
 use WP_Post;
 
@@ -129,6 +130,9 @@ final class Serializer
             'verified' => (bool) get_post_meta($id, 'meydan_verified', true),
             'cities' => array_values(array_filter(array_map('intval', (array) get_post_meta($id, 'meydan_cities', true)))),
             'social_links' => array_values(array_filter((array) get_post_meta($id, 'meydan_social_links', true), 'is_array')),
+            // Present only when the profile is backed by a real account; only
+            // such profiles can receive invitations.
+            'user_id' => (int) get_post_meta($id, Migrations::CREATOR_USER_META, true) ?: null,
         ];
     }
 

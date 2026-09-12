@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Domain;
 
+use Meydan\Core\Support\Actor;
 use WP_Error;
 
 /** Single write path for meydan_creator posts, shared by the metabox and REST. */
@@ -108,7 +109,52 @@ final class CreatorService
             update_post_meta($id, 'meydan_social_links', self::normalizeSocialLinks((array) $input['social_links']));
         }
 
+        if (array_key_exists('user_id', $input)) {
+            self::linkUser($id, (int) $input['user_id']);
+        }
+
         return $id;
+    }
+
+    /**
+     * Links a creator profile to the user account that owns it.
+     *
+     * The user becomes the source of truth for invitations, notifications and
+     * the revealed contact number; the creator post stays the public profile.
+     * Passing 0 unlinks, leaving the profile public but non-invitable.
+     */
+    public static function linkUser(int $creatorId, int $userId): void
+    {
+        if ($creatorId <= 0) {
+            return;
+        }
+
+        $previous = (int) get_post_meta($creatorId, 'meydan_creator_user_id', true);
+
+        if ($userId <= 0 || !get_userdata($userId)) {
+            delete_post_meta($creatorId, 'meydan_creator_user_id');
+            if ($previous > 0) {
+                delete_user_meta($previous, 'meydan_speaker_creator_id');
+                Actor::forgetSpeakerLink($previous);
+            }
+            return;
+        }
+
+        // A user backs at most one speaker profile, so drop any stale link.
+        if ($previous > 0 && $previous !== $userId) {
+            delete_user_meta($previous, 'meydan_speaker_creator_id');
+            Actor::forgetSpeakerLink($previous);
+        }
+
+        // Re-linking must detach whichever profile previously owned this user.
+        $existingCreator = (int) get_user_meta($userId, 'meydan_speaker_creator_id', true);
+        if ($existingCreator > 0 && $existingCreator !== $creatorId) {
+            delete_post_meta($existingCreator, 'meydan_creator_user_id');
+        }
+
+        update_post_meta($creatorId, 'meydan_creator_user_id', $userId);
+        update_user_meta($userId, 'meydan_speaker_creator_id', $creatorId);
+        Actor::forgetSpeakerLink($userId);
     }
 
     private static function applyAvatar(int $id, int $mediaId): void

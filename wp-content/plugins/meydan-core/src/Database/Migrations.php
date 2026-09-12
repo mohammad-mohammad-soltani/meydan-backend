@@ -8,7 +8,13 @@ use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.0.2';
+    public const VERSION = '1.0.3';
+
+    /** Creator postmeta holding the linked WordPress user id. */
+    public const CREATOR_USER_META = 'meydan_creator_user_id';
+
+    /** User meta mirroring the linked creator post id, for reverse lookups. */
+    public const USER_SPEAKER_META = 'meydan_speaker_creator_id';
 
     public static function maybeRun(): void
     {
@@ -162,12 +168,21 @@ final class Migrations
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             creator_id BIGINT UNSIGNED NOT NULL,
             requester_user_id BIGINT UNSIGNED NULL,
+            inviter_user_id BIGINT UNSIGNED NULL,
+            speaker_user_id BIGINT UNSIGNED NULL,
+            initiative_id BIGINT UNSIGNED NULL,
             requester_name VARCHAR(190) NULL,
             requester_phone VARCHAR(64) NULL,
             venue VARCHAR(255) NOT NULL,
             requested_at DATETIME NOT NULL,
+            requested_date DATE NULL,
+            requested_time VARCHAR(8) NULL,
+            location VARCHAR(255) NULL,
+            message TEXT NULL,
             note TEXT NULL,
             status VARCHAR(32) NOT NULL DEFAULT 'pending',
+            accepted_at DATETIME NULL,
+            decided_at DATETIME NULL,
             internal_note TEXT NULL,
             assigned_manager BIGINT UNSIGNED NULL,
             created_at DATETIME NOT NULL,
@@ -175,7 +190,9 @@ final class Migrations
             PRIMARY KEY (id),
             KEY creator_id (creator_id),
             KEY status (status),
-            KEY requester_user_id (requester_user_id)
+            KEY requester_user_id (requester_user_id),
+            KEY inviter_user_id (inviter_user_id),
+            KEY speaker_user_id (speaker_user_id)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}uploads (
@@ -332,7 +349,29 @@ final class Migrations
         }
 
         self::seedOptions();
+        self::syncSpeakerLinks();
         update_option('meydan_db_version', self::VERSION, false);
+    }
+
+    /**
+     * Mirrors the creator -> user link onto the user so a logged-in speaker can
+     * resolve their own profile in one lookup instead of scanning creator posts.
+     */
+    private static function syncSpeakerLinks(): void
+    {
+        $creatorIds = get_posts([
+            'post_type' => 'meydan_creator',
+            'post_status' => 'any',
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+        ]);
+
+        foreach ($creatorIds as $creatorId) {
+            $userId = (int) get_post_meta((int) $creatorId, self::CREATOR_USER_META, true);
+            if ($userId > 0 && get_userdata($userId)) {
+                update_user_meta($userId, self::USER_SPEAKER_META, (int) $creatorId);
+            }
+        }
     }
 
     private static function seedOptions(): void
