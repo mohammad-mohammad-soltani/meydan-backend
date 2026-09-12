@@ -25,7 +25,7 @@ const command = [
 const result = await vm.exec({
   command,
   linuxUser: "root",
-  timeoutMs: 900_000,
+  timeoutMs: 300_000,
 });
 
 if (result.stdout) process.stdout.write(result.stdout);
