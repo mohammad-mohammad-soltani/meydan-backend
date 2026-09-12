@@ -7,7 +7,30 @@ until [ -f wp-load.php ]; do
   sleep 2
 done
 
-until wp db check --quiet 2>/dev/null; do
+attempt=0
+until php -r '
+$raw = getenv("WORDPRESS_DB_HOST") ?: "db:3306";
+$host = $raw;
+$port = 3306;
+if (strpos($raw, ":") !== false) {
+    [$host, $rawPort] = explode(":", $raw, 2);
+    $port = (int) $rawPort ?: 3306;
+}
+$db = @mysqli_connect(
+    $host,
+    getenv("WORDPRESS_DB_USER") ?: "",
+    getenv("WORDPRESS_DB_PASSWORD") ?: "",
+    getenv("WORDPRESS_DB_NAME") ?: "",
+    $port
+);
+if (!$db) exit(1);
+mysqli_close($db);
+' 2>/dev/null; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 60 ]; then
+    echo "Database did not become reachable within 120 seconds." >&2
+    exit 1
+  fi
   echo "Waiting for database..."
   sleep 2
 done
