@@ -54,8 +54,13 @@ final class SmsProvider
             ]);
         }
 
+        $timeout = (int) ($settings['timeout'] ?? (defined('MEYDAN_SMS_TIMEOUT') ? (int) MEYDAN_SMS_TIMEOUT : 60));
+        if ($timeout < 5) {
+            $timeout = 5;
+        }
+
         $response = wp_remote_post($endpoint, [
-            'timeout' => 10,
+            'timeout' => $timeout,
             'headers' => array_filter([
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',

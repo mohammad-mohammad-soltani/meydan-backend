@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Database;
 
+use Meydan\Core\Notifications\NotificationService;
+
 final class Migrations
 {
-    public const VERSION = '1.0.1';
+    public const VERSION = '1.0.2';
 
     public static function maybeRun(): void
     {
@@ -386,25 +388,12 @@ final class Migrations
                 'manual' => [],
             ], '', false);
         }
-        if (get_option('meydan_notification_templates', null) === null) {
-            add_option('meydan_notification_templates', [
-                'like' => ['title' => 'پسند جدید', 'body' => '{actor} روایت شما را پسندید.'],
-                'repost' => ['title' => 'بازنشر جدید', 'body' => '{actor} روایت شما را بازنشر کرد.'],
-                'follow' => ['title' => 'دنبال‌کننده جدید', 'body' => '{actor} شما را دنبال کرد.'],
-                'comment' => ['title' => 'نظر جدید', 'body' => '{actor} برای روایت شما نظر گذاشت.'],
-                'comment_reply' => ['title' => 'پاسخ جدید', 'body' => '{actor} به نظر شما پاسخ داد.'],
-                'initiative_update' => ['title' => 'به‌روزرسانی ابتکار', 'body' => 'ابتکاری که در آن عضو هستید به‌روزرسانی شد.'],
-                'initiative_join_confirmed' => ['title' => 'عضویت در ابتکار', 'body' => 'عضویت شما در ابتکار ثبت شد.'],
-                'speaker_request_created' => ['title' => 'درخواست سخنران', 'body' => 'درخواست سخنران شما ثبت شد.'],
-                'speaker_request_status_changed' => ['title' => 'وضعیت درخواست سخنران', 'body' => 'وضعیت درخواست سخنران شما تغییر کرد.'],
-                'media_reflection_added' => ['title' => 'بازنشر رسانه‌ای', 'body' => 'یک بازنشر رسانه‌ای برای روایت شما ثبت شد.'],
-                'square_verified' => ['title' => 'تأیید میدان', 'body' => 'میدان شما تأیید شد.'],
-                'square_rejected' => ['title' => 'وضعیت میدان', 'body' => 'درخواست میدان شما رد شد.'],
-                'admin_notice' => ['title' => 'پیام میدان', 'body' => 'پیام جدیدی از مدیریت میدان دارید.'],
-                'system' => ['title' => 'اعلان سیستم', 'body' => 'یک اعلان سیستمی جدید دارید.'],
-                'mention' => ['title' => 'اشاره جدید', 'body' => '{actor} به شما اشاره کرد.'],
-                'content_published' => ['title' => 'محتوای جدید', 'body' => 'محتوای جدیدی منتشر شد.'],
-            ], '', false);
+        // Merge instead of guarding on null: an already-present but empty option
+        // (the state that produced generic «اعلان میدان» copy) must still be filled.
+        $existingTemplates = (array) get_option('meydan_notification_templates', []);
+        $missingTemplates = array_diff_key(NotificationService::TEMPLATES, $existingTemplates);
+        if ($missingTemplates) {
+            update_option('meydan_notification_templates', NotificationService::TEMPLATES + $existingTemplates, false);
         }
         if (get_option('meydan_api_settings', null) === null) {
             add_option('meydan_api_settings', [

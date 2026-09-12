@@ -41,6 +41,7 @@ final class SettingsPage
         self::text('sms_token', 'API Key', (string) ($sms['token'] ?? ''), 'کلید API به‌صورت کامل نمایش داده می‌شود؛ برای پاک کردن، گزینه پاک‌سازی را فعال کنید.', 'text');
         self::text('sms_from_number', 'شماره خط فرستنده', (string) ($sms['from_number'] ?? ''), 'شماره خط اختصاصی ایران‌پیامک که در درخواست با line_number ارسال می‌شود.', 'text');
         self::text('sms_pattern_code', 'کد الگوی پیامک', (string) ($sms['pattern_code'] ?? ''), 'شناسه الگو را از پنل ایران‌پیامک دریافت کنید؛ متغیر الگوی شما باید code باشد تا مقدار OTP با attributes.code ارسال شود.', 'text');
+        self::text('sms_timeout', 'مهلت انتظار پاسخ (ثانیه)', (string) ($sms['timeout'] ?? 60), 'اگر ایران‌پیامک پاسخ را با تأخیر بدهد، مقدار پیش‌فرض ۶۰ ثانیه مانع خطای «ارتباط ناموفق» می‌شود در حالی که پیامک ارسال شده است.', 'number');
         self::toggle('sms_clear_token', 'پاک‌سازی توکن ذخیره‌شده', false, 'برای حذف توکن فعلی؛ این گزینه بعد از ذخیره دوباره خاموش می‌شود.');
         echo '</div><p class="meydan-help"><strong>قرارداد ارسال:</strong> درخواست POST با هدرهای <code>Api-Key</code> و <code>Accept: application/json</code> به endpoint رسمی ارسال می‌شود. بدنه شامل <code>code</code> شناسه الگو، <code>attributes.code</code> مقدار OTP، <code>recipient</code>، <code>line_number</code> و <code>number_format=english</code> است.</p>';
         echo '<div class="meydan-sms-test"><div><strong>تست واقعی اتصال و الگو</strong><p>پس از ذخیره تنظیمات، یک شماره واقعی را وارد کنید. این دکمه حتی در محیط local مستقیماً با ایران‌پیامک تماس می‌گیرد و فقط پس از پذیرش درخواست توسط ارائه‌دهنده پیام موفقیت نشان می‌دهد.</p></div><div class="meydan-sms-test-form"><label class="meydan-field"><span class="meydan-label">شماره گیرنده تست</span><input type="tel" name="sms_test_phone" inputmode="tel" placeholder="09120000000" autocomplete="tel"><small>شماره با فرمت 09 یا +98 وارد شود.</small></label><button type="submit" name="meydan_admin_action" value="sms_test" class="button button-secondary">ارسال پیامک تست واقعی</button></div></div></section>';
@@ -68,6 +69,7 @@ final class SettingsPage
         $sms['endpoint'] = esc_url_raw((string) wp_unslash($_POST['sms_endpoint'] ?? '')) ?: 'https://api.iranpayamak.com/ws/v1/sms/pattern';
         $sms['from_number'] = sanitize_text_field(wp_unslash($_POST['sms_from_number'] ?? ''));
         $sms['pattern_code'] = sanitize_text_field(wp_unslash($_POST['sms_pattern_code'] ?? ''));
+        $sms['timeout'] = max(5, min(180, (int) ($_POST['sms_timeout'] ?? 60)));
         if (!empty($_POST['sms_clear_token'])) {
             unset($sms['token']);
         } elseif (isset($_POST['sms_token']) && trim((string) wp_unslash($_POST['sms_token'])) !== '') {

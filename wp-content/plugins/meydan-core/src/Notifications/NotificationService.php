@@ -8,6 +8,45 @@ use Meydan\Core\Support\Actor;
 
 final class NotificationService
 {
+    /**
+     * Built-in copy for every notification type. Admin overrides stored in the
+     * `meydan_notification_templates` option are layered on top per key, so a
+     * partial or empty option can never degrade a notification to generic text.
+     */
+    public const TEMPLATES = [
+        'like' => ['title' => 'پسند جدید', 'body' => '{actor} روایت شما را پسندید.'],
+        'repost' => ['title' => 'بازنشر جدید', 'body' => '{actor} روایت شما را بازنشر کرد.'],
+        'follow' => ['title' => 'دنبال‌کننده جدید', 'body' => '{actor} شما را دنبال کرد.'],
+        'comment' => ['title' => 'نظر جدید', 'body' => '{actor} روی روایت شما نظر گذاشت.'],
+        'comment_reply' => ['title' => 'پاسخ جدید', 'body' => '{actor} به نظر شما پاسخ داد.'],
+        'mention' => ['title' => 'اشاره جدید', 'body' => '{actor} شما را در یک روایت نام برد.'],
+        'initiative_join' => ['title' => 'عضو جدید در کار خوب', 'body' => '{actor} به کار خوب شما ملحق شد.'],
+        'initiative_update' => ['title' => 'به‌روزرسانی کار خوب', 'body' => 'کاری که در آن عضو هستید به‌روزرسانی شد.'],
+        'initiative_join_confirmed' => ['title' => 'عضویت در کار خوب', 'body' => 'عضویت شما در کار خوب ثبت شد.'],
+        'media_reflection_added' => ['title' => 'بازنشر رسانه‌ای', 'body' => 'یک بازنشر رسانه‌ای برای روایت شما ثبت شد.'],
+        'square_verified' => ['title' => 'تأیید میدان', 'body' => 'میدان شما تأیید شد.'],
+        'square_rejected' => ['title' => 'وضعیت میدان', 'body' => 'درخواست میدان شما رد شد.'],
+        'speaker_request_created' => ['title' => 'درخواست سخنران', 'body' => 'درخواست سخنران شما ثبت شد.'],
+        'speaker_request_status_changed' => ['title' => 'وضعیت درخواست سخنران', 'body' => 'وضعیت درخواست سخنران شما تغییر کرد.'],
+        'admin_notice' => ['title' => 'پیام میدان', 'body' => 'پیام جدیدی از مدیریت میدان دارید.'],
+        'system' => ['title' => 'اعلان سیستم', 'body' => 'یک اعلان سیستمی جدید دارید.'],
+        'content_published' => ['title' => 'محتوای جدید', 'body' => 'محتوای جدیدی منتشر شد.'],
+    ];
+
+    /** @return array{title: string, body: string} */
+    public static function template(string $type): array
+    {
+        $overrides = (array) get_option('meydan_notification_templates', []);
+        $key = sanitize_key($type);
+        $custom = (array) ($overrides[$key] ?? []);
+        $base = self::TEMPLATES[$key] ?? [];
+
+        return [
+            'title' => (string) ($custom['title'] ?? $base['title'] ?? 'اعلان میدان'),
+            'body' => (string) ($custom['body'] ?? $base['body'] ?? 'رویداد جدیدی در میدان ثبت شد.'),
+        ];
+    }
+
     public function create(
         int $recipientUserId,
         string $type,
@@ -84,12 +123,11 @@ final class NotificationService
 
     public function fromTemplate(int $recipientUserId, string $type, ?string $actorType = null, ?int $actorId = null, ?string $entityType = null, ?int $entityId = null, ?string $deepLink = null, ?string $groupKey = null, bool $aggregate = false, array $payload = []): int
     {
-        $templates = (array) get_option('meydan_notification_templates', []);
-        $tpl = (array) ($templates[$type] ?? []);
+        $tpl = self::template($type);
         $actor = ($actorType && $actorId) ? Actor::parse($actorType, $actorId) : null;
         $name = (string) ($actor['display_name'] ?? 'یک کاربر');
-        $title = (string) ($tpl['title'] ?? 'اعلان میدان');
-        $body = str_replace('{actor}', $name, (string) ($tpl['body'] ?? 'رویداد جدیدی در میدان ثبت شد.'));
+        $title = $tpl['title'];
+        $body = str_replace('{actor}', $name, $tpl['body']);
         return $this->create($recipientUserId, $type, $actorType, $actorId, $entityType, $entityId, $title, $body, $deepLink, $groupKey, $payload, null, null, $aggregate);
     }
 

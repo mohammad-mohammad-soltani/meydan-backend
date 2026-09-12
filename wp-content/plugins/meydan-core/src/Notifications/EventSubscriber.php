@@ -30,7 +30,12 @@ final class EventSubscriber
     {
         $recipient = Actor::ownerUserId($targetType, $targetId);
         if ($recipient <= 0 || $recipient === $actorUserId) return;
-        (new NotificationService())->fromTemplate($recipient, 'follow', 'user', $actorUserId, 'actor', $targetId, '/profile', 'follow:actor:' . $targetType . ':' . $targetId, true);
+        $actor = Actor::forUser($actorUserId);
+        $actorKind = (string) ($actor['type'] ?? 'user') === 'square' ? 'square' : 'user';
+        $actorRawId = (string) ($actor['id'] ?? 'usr_' . $actorUserId);
+        $actorNumericId = (int) substr($actorRawId, (int) strrpos($actorRawId, '_') + 1);
+        $deepLink = '/profile/' . $actorKind . '/' . ($actorNumericId > 0 ? $actorNumericId : $actorUserId);
+        (new NotificationService())->fromTemplate($recipient, 'follow', $actorKind, $actorUserId, 'actor', $targetId, $deepLink, 'follow:actor:' . $targetType . ':' . $targetId, true);
     }
 
     public static function comment(int $commentId): void
