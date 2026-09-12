@@ -56,6 +56,9 @@ final class Plugin
         add_action('init', [Registrations::class, 'registerPostTypes']);
         add_action('init', [Registrations::class, 'registerTaxonomies']);
         add_action('init', [Registrations::class, 'registerRolesAndCapabilities'], 20);
+        // Data migrations need the post types registered above, so they cannot
+        // run from maybeRun() on plugins_loaded.
+        add_action('init', [Migrations::class, 'runDeferred'], 25);
 
         add_filter('determine_current_user', [SessionService::class, 'authenticateBearer'], 30);
         add_action('init', [GuestSessionService::class, 'ensureGuestCookie'], 1);

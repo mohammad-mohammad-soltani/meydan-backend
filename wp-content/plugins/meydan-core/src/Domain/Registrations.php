@@ -27,6 +27,7 @@ final class Registrations
         add_role('meydan_support', 'Meydan Support', [
             'read' => true,
             'read_meydan' => true,
+            'manage_meydan_speakers' => true,
             'manage_meydan_speaker_requests' => true,
             'manage_meydan_notifications' => true,
         ]);
@@ -49,6 +50,7 @@ final class Registrations
             'moderate_meydan_narratives',
             'manage_meydan_content',
             'manage_meydan_creators',
+            'manage_meydan_speakers',
             'manage_meydan_squares',
             'verify_meydan_squares',
             'manage_meydan_initiatives',
@@ -66,6 +68,8 @@ final class Registrations
         self::postType('meydan_narrative', 'روایت‌ها', 'روایت', true, 'moderate_meydan_narratives', ['editor', 'author', 'thumbnail', 'comments']);
         self::postType('meydan_content', 'محتوا', 'محتوا', true, 'manage_meydan_content', ['title', 'editor', 'excerpt', 'thumbnail']);
         self::postType('meydan_creator', 'تولیدکنندگان', 'تولیدکننده', true, 'manage_meydan_creators', ['title', 'editor', 'thumbnail']);
+        // Speakers are their own entity, unrelated to content producers.
+        self::postType('meydan_speaker', 'سخنرانان', 'سخنران', true, 'manage_meydan_speakers', ['title', 'editor', 'thumbnail']);
         self::postType('meydan_media_outlet', 'رسانه‌ها', 'رسانه', true, 'manage_meydan_media_reflections', ['title', 'thumbnail']);
         self::postType('meydan_square', 'میدان‌ها', 'میدان', true, 'manage_meydan_squares', ['title', 'editor', 'thumbnail', 'author']);
         self::postType('meydan_initiative', 'ابتکارها', 'ابتکار', true, 'manage_meydan_initiatives', ['title', 'editor', 'thumbnail']);
@@ -115,7 +119,8 @@ final class Registrations
         self::taxonomy('meydan_narrative_tag', ['meydan_narrative'], 'برچسب‌های روایت', false);
         self::taxonomy('meydan_content_tag', ['meydan_content'], 'برچسب‌های محتوا', false);
         self::taxonomy('meydan_creator_type', ['meydan_creator'], 'نوع تولیدکننده', false);
-        self::taxonomy(CreatorService::SPEAKER_CATEGORY_TAXONOMY, ['meydan_creator'], 'دسته‌بندی موضوعی سخنرانان', false);
+        // Attached to the speaker entity only; speakers are not producers.
+        self::taxonomy(SpeakerService::SPEAKER_CATEGORY_TAXONOMY, ['meydan_speaker'], 'دسته‌بندی موضوعی سخنرانان', false);
         self::taxonomy('meydan_topic', ['meydan_narrative', 'meydan_content'], 'موضوع‌ها', false);
 
         $types = ['speaker', 'reciter', 'writer', 'journalist', 'designer', 'media_team', 'institution', 'studio', 'other'];
@@ -128,9 +133,9 @@ final class Registrations
         // Seeded with Persian names (unlike creator types above, which pass only
         // a slug and therefore render in English in wp-admin). Idempotent, and an
         // admin rename is never overwritten because wp_insert_term is skipped.
-        foreach (CreatorService::SPEAKER_CATEGORIES as $slug => $name) {
-            if (!term_exists($slug, CreatorService::SPEAKER_CATEGORY_TAXONOMY)) {
-                wp_insert_term($name, CreatorService::SPEAKER_CATEGORY_TAXONOMY, ['slug' => $slug]);
+        foreach (SpeakerService::SPEAKER_CATEGORIES as $slug => $name) {
+            if (!term_exists($slug, SpeakerService::SPEAKER_CATEGORY_TAXONOMY)) {
+                wp_insert_term($name, SpeakerService::SPEAKER_CATEGORY_TAXONOMY, ['slug' => $slug]);
             }
         }
     }

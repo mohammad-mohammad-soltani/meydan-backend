@@ -8,19 +8,40 @@ use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.0.3';
+    public const VERSION = '1.1.0';
 
-    /** Creator postmeta holding the linked WordPress user id. */
-    public const CREATOR_USER_META = 'meydan_creator_user_id';
+    /** Speaker postmeta holding the linked WordPress user id. */
+    public const SPEAKER_USER_META = 'meydan_speaker_user_id';
 
-    /** User meta mirroring the linked creator post id, for reverse lookups. */
-    public const USER_SPEAKER_META = 'meydan_speaker_creator_id';
+    /** User meta mirroring the linked speaker post id, for reverse lookups. */
+    public const USER_SPEAKER_META = 'meydan_user_speaker_id';
+
+    /**
+     * Pre-1.1.0 keys, when speakers were `meydan_creator` posts. Read as a
+     * fallback so an unmigrated install keeps working; never written.
+     */
+    public const LEGACY_SPEAKER_USER_META = 'meydan_creator_user_id';
+    public const LEGACY_USER_SPEAKER_META = 'meydan_speaker_creator_id';
 
     public static function maybeRun(): void
     {
         if ((string) get_option('meydan_db_version', '') !== self::VERSION) {
             self::run();
         }
+    }
+
+    /**
+     * Data migrations that need a registered post type.
+     *
+     * `maybeRun()` fires on `plugins_loaded`, but post types are only
+     * registered on the later `init` hook — so `wp_insert_post` for a plugin
+     * post type silently fails there. This is hooked to `init` instead, after
+     * `Registrations::registerPostTypes()`.
+     */
+    public static function runDeferred(): void
+    {
+        // Guarded and cheap: migrateSpeakers() returns immediately once done.
+        self::migrateSpeakers();
     }
 
     public static function run(): void
@@ -349,27 +370,123 @@ final class Migrations
         }
 
         self::seedOptions();
-        self::syncSpeakerLinks();
         update_option('meydan_db_version', self::VERSION, false);
     }
 
     /**
-     * Mirrors the creator -> user link onto the user so a logged-in speaker can
-     * resolve their own profile in one lookup instead of scanning creator posts.
+     * Moves existing speaker-tagged `meydan_creator` posts onto the dedicated
+     * `meydan_speaker` post type (1.1.0).
+     *
+     * Only creators with no `meydan_content_creators` rows are moved: a creator
+     * cited by content is a content producer and must keep its post id, since
+     * that table stores bare ids with no foreign key. The `speaker` term is not
+     * a sufficient signal on its own — SeedData blanket-tagged every demo
+     * creator with it.
+     *
+     * Idempotent and replay-safe: `run()` re-executes on every version change.
+     */
+    private static function migrateSpeakers(): void
+    {
+        if (get_option('meydan_speaker_split_done', null) !== null) {
+            return;
+        }
+
+        // Guard against running before the post type exists: `wp_insert_post`
+        // would fail and we would record a false "done". Deferred to `init`.
+        if (!post_type_exists('meydan_speaker')) {
+            return;
+        }
+
+        global $wpdb;
+        $creators = get_posts([
+            'post_type' => 'meydan_creator',
+            'post_status' => 'any',
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+            'tax_query' => [[
+                'taxonomy' => 'meydan_creator_type',
+                'field' => 'slug',
+                'terms' => 'speaker',
+            ]],
+        ]);
+
+        $map = [];
+        foreach ($creators as $creatorId) {
+            $creatorId = (int) $creatorId;
+
+            $contentRefs = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}meydan_content_creators WHERE creator_id = %d",
+                $creatorId
+            ));
+            if ($contentRefs > 0) {
+                continue;
+            }
+
+            $source = get_post($creatorId);
+            if (!$source || $source->post_status === 'trash') {
+                continue;
+            }
+
+            $speakerId = wp_insert_post([
+                'post_type' => 'meydan_speaker',
+                'post_status' => 'publish',
+                'post_title' => $source->post_title,
+                'post_content' => $source->post_content,
+                'post_date' => $source->post_date,
+                'post_author' => (int) $source->post_author,
+            ], true);
+            if (is_wp_error($speakerId) || !$speakerId) {
+                continue;
+            }
+            $speakerId = (int) $speakerId;
+
+            foreach (['role', 'handle', 'expertise', 'initials', 'verified', 'cities', 'social_links', 'avatar_media_id'] as $key) {
+                $value = get_post_meta($creatorId, 'meydan_' . $key, true);
+                if ($value !== '' && $value !== null) {
+                    update_post_meta($speakerId, 'meydan_' . $key, $value);
+                }
+            }
+
+            $terms = wp_get_post_terms($creatorId, 'meydan_speaker_category', ['fields' => 'ids']);
+            if (!is_wp_error($terms) && $terms) {
+                wp_set_post_terms($speakerId, $terms, 'meydan_speaker_category');
+            }
+
+            $userId = (int) get_post_meta($creatorId, self::LEGACY_SPEAKER_USER_META, true);
+            if ($userId > 0 && get_userdata($userId)) {
+                update_post_meta($speakerId, self::SPEAKER_USER_META, $userId);
+            }
+
+            // The creator post is left untouched: content may still reference
+            // it, and the speaker now lives on the new entity.
+            $map[$creatorId] = $speakerId;
+        }
+
+        update_option('meydan_speaker_split_v1_map', $map, false);
+        update_option('meydan_speaker_split_done', 1, false);
+
+        // Runs exactly once, right after the posts exist, so the reverse
+        // usermeta mirror is populated without a per-request scan.
+        self::syncSpeakerLinks();
+    }
+
+    /**
+     * Mirrors the speaker -> user link onto the user so a logged-in speaker can
+     * resolve their own profile in one lookup instead of scanning posts.
      */
     private static function syncSpeakerLinks(): void
     {
-        $creatorIds = get_posts([
-            'post_type' => 'meydan_creator',
+        $speakerIds = get_posts([
+            'post_type' => 'meydan_speaker',
             'post_status' => 'any',
             'posts_per_page' => -1,
             'fields' => 'ids',
         ]);
 
-        foreach ($creatorIds as $creatorId) {
-            $userId = (int) get_post_meta((int) $creatorId, self::CREATOR_USER_META, true);
+        foreach ($speakerIds as $speakerId) {
+            $userId = (int) get_post_meta((int) $speakerId, self::SPEAKER_USER_META, true);
             if ($userId > 0 && get_userdata($userId)) {
-                update_user_meta($userId, self::USER_SPEAKER_META, (int) $creatorId);
+                update_user_meta($userId, self::USER_SPEAKER_META, (int) $speakerId);
             }
         }
     }

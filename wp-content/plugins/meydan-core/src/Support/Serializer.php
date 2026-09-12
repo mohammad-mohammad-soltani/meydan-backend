@@ -6,6 +6,7 @@ namespace Meydan\Core\Support;
 
 use Meydan\Core\Database\Migrations;
 use Meydan\Core\Domain\CreatorService;
+use Meydan\Core\Domain\SpeakerService;
 use WP_Comment;
 use WP_Post;
 
@@ -131,10 +132,35 @@ final class Serializer
             'verified' => (bool) get_post_meta($id, 'meydan_verified', true),
             'cities' => array_values(array_filter(array_map('intval', (array) get_post_meta($id, 'meydan_cities', true)))),
             'social_links' => array_values(array_filter((array) get_post_meta($id, 'meydan_social_links', true), 'is_array')),
-            'categories' => CreatorService::categoriesOf($id),
+        ];
+    }
+
+    /**
+     * A speaker profile (`meydan_speaker`).
+     *
+     * Speakers are a separate entity from content producers; this mirrors
+     * `creator()` so existing clients see the same field names.
+     */
+    public static function speaker(int|WP_Post $post): ?array
+    {
+        $post = $post instanceof WP_Post ? $post : get_post($post);
+        if (!$post || $post->post_type !== SpeakerService::POST_TYPE || $post->post_status !== 'publish') {
+            return null;
+        }
+        $id = (int) $post->ID;
+        return [
+            'id' => $id,
+            'name' => get_the_title($post),
+            'role' => (string) get_post_meta($id, 'meydan_role', true),
+            'bio' => $post->post_content,
+            'avatar_url' => Actor::avatarUrl((int) get_post_meta($id, 'meydan_avatar_media_id', true)),
+            'verified' => (bool) get_post_meta($id, 'meydan_verified', true),
+            'cities' => array_values(array_filter(array_map('intval', (array) get_post_meta($id, 'meydan_cities', true)))),
+            'social_links' => array_values(array_filter((array) get_post_meta($id, 'meydan_social_links', true), 'is_array')),
+            'categories' => SpeakerService::categoriesOf($id),
             // Present only when the profile is backed by a real account; only
             // such profiles can receive invitations.
-            'user_id' => (int) get_post_meta($id, Migrations::CREATOR_USER_META, true) ?: null,
+            'user_id' => (int) get_post_meta($id, Migrations::SPEAKER_USER_META, true) ?: null,
         ];
     }
 

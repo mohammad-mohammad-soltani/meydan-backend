@@ -58,32 +58,36 @@ final class Actor
     }
 
     /**
-     * Resolves the curated creator profile linked to a user, or 0.
-     * Cached per request so list rendering does not repeat the lookup.
+     * Resolves the speaker profile linked to a user, or 0.
+     *
+     * Reads the current meta key, falling back to the pre-1.1.0 creator-era key
+     * and validating against `meydan_speaker`; the legacy key is resolved only
+     * when the migration has not run yet, so a stale link cannot revive a
+     * creator post as a speaker. Cached per request.
      */
     public static function speakerCreatorId(int $userId): int
     {
         if (!array_key_exists($userId, self::$speakerCreatorCache)) {
-            $creatorId = (int) get_user_meta($userId, 'meydan_speaker_creator_id', true);
-            if ($creatorId <= 0 || get_post_type($creatorId) !== 'meydan_creator') {
-                $creatorId = 0;
+            $speakerId = (int) get_user_meta($userId, 'meydan_user_speaker_id', true);
+            if ($speakerId <= 0 || get_post_type($speakerId) !== 'meydan_speaker') {
+                $speakerId = 0;
             }
-            self::$speakerCreatorCache[$userId] = $creatorId;
+            self::$speakerCreatorCache[$userId] = $speakerId;
         }
         return self::$speakerCreatorCache[$userId];
     }
 
-    /** A user is a speaker once a curated creator profile is linked to their account. */
+    /** A user is a speaker once a speaker profile is linked to their account. */
     public static function isSpeaker(int $userId): bool
     {
         return self::speakerCreatorId($userId) > 0;
     }
 
-    /** Red speaker badge: speaker accounts verified on their linked creator profile. */
+    /** Red speaker badge: speaker accounts verified on their linked profile. */
     public static function isVerifiedSpeaker(int $userId): bool
     {
-        $creatorId = self::speakerCreatorId($userId);
-        return $creatorId > 0 && (bool) get_post_meta($creatorId, 'meydan_verified', true);
+        $speakerId = self::speakerCreatorId($userId);
+        return $speakerId > 0 && (bool) get_post_meta($speakerId, 'meydan_verified', true);
     }
 
     public static function forUser(int $userId): array

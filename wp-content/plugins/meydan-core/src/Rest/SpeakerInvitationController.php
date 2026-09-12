@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace Meydan\Core\Rest;
 
 use Meydan\Core\Audit\AuditLogger;
-use Meydan\Core\Database\Migrations;
-use Meydan\Core\Domain\CreatorService;
+use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Notifications\SpeakerInvitationService;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\ChatRepository;
@@ -33,8 +32,8 @@ final class SpeakerInvitationController extends BaseController
     public function speakers(WP_REST_Request $r): \WP_REST_Response
     {
         $search = sanitize_text_field((string) $r->get_param('q'));
-        $creatorIds = get_posts([
-            'post_type' => 'meydan_creator',
+        $speakerIds = get_posts([
+            'post_type' => SpeakerService::POST_TYPE,
             'post_status' => 'publish',
             'posts_per_page' => -1,
             'fields' => 'ids',
@@ -42,10 +41,10 @@ final class SpeakerInvitationController extends BaseController
         ]);
 
         $items = [];
-        foreach ($creatorIds as $creatorId) {
-            $creatorId = (int) $creatorId;
-            $userId = (int) get_post_meta($creatorId, Migrations::CREATOR_USER_META, true);
-            // Unlinked creator profiles stay public but cannot receive invitations.
+        foreach ($speakerIds as $speakerId) {
+            $speakerId = (int) $speakerId;
+            $userId = SpeakerService::linkedUserId($speakerId);
+            // Unlinked profiles stay public but cannot receive invitations.
             if ($userId <= 0 || !get_userdata($userId)) {
                 continue;
             }
@@ -61,20 +60,15 @@ final class SpeakerInvitationController extends BaseController
                 continue;
             }
 
-            $types = wp_get_post_terms($creatorId, 'meydan_creator_type', ['fields' => 'slugs']);
-            $role = (string) get_post_meta($creatorId, 'meydan_role', true);
-            $expertise = (string) get_post_meta($creatorId, 'meydan_expertise', true);
-
             $items[] = [
                 'user_id' => $userId,
-                'creator_id' => $creatorId,
+                // Kept for client compatibility; now the speaker post id.
+                'speaker_id' => $speakerId,
+                'creator_id' => $speakerId,
                 'actor' => $actor,
-                'role' => $role,
-                'expertise' => $expertise,
-                // Creator type (سخنران/مداح/…) and topical category are distinct
-                // axes; the picker filters on the latter.
-                'types' => is_wp_error($types) ? [] : array_values($types),
-                'speaker_categories' => CreatorService::categoriesOf($creatorId),
+                'role' => (string) get_post_meta($speakerId, 'meydan_role', true),
+                'expertise' => (string) get_post_meta($speakerId, 'meydan_expertise', true),
+                'speaker_categories' => SpeakerService::categoriesOf($speakerId),
                 'verified_speaker' => Actor::isVerifiedSpeaker($userId),
             ];
         }
@@ -159,12 +153,12 @@ final class SpeakerInvitationController extends BaseController
         }
 
         $initiativeId = (int) ($p['initiative_id'] ?? 0);
-        $creatorId = (int) get_user_meta($speakerUserId, Migrations::USER_SPEAKER_META, true);
+        $speakerId = Actor::speakerCreatorId($speakerUserId);
         $now = current_time('mysql', true);
 
         global $wpdb;
         $inserted = $wpdb->insert(SpeakerInvitationService::table(), [
-            'creator_id' => $creatorId,
+            'creator_id' => $speakerId,
             'requester_user_id' => $viewerId,
             'inviter_user_id' => $viewerId,
             'speaker_user_id' => $speakerUserId,
