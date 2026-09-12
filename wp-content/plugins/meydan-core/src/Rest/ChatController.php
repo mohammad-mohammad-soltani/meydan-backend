@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Meydan\Core\Rest;
 
 use Meydan\Core\Support\ChatRepository;
-use Meydan\Core\Support\ChatSocketTicket;
 use Meydan\Core\Support\Response;
+use Meydan\Core\Support\SoketiRealtime;
 use WP_Error;
 use WP_REST_Request;
 
@@ -28,7 +28,9 @@ final class ChatController extends BaseController
     {
         $input = $this->json($request);
         $result = $this->chat->createDirect(get_current_user_id(), (int) ($input['participant_user_id'] ?? 0));
-        return $result instanceof WP_Error ? $this->error($result) : Response::ok($result, [], 201);
+        if ($result instanceof WP_Error) return $this->error($result);
+        SoketiRealtime::publishToConversation((int) $result['id'], 'conversation:updated', ['conversationId' => (string) $result['id']]);
+        return Response::ok($result, [], 201);
     }
 
     public function conversation(WP_REST_Request $request): mixed
@@ -72,50 +74,117 @@ final class ChatController extends BaseController
 
     public function send(WP_REST_Request $request): mixed
     {
-        $result = $this->chat->send((int) $request['id'], get_current_user_id(), $this->json($request));
-        return $result instanceof WP_Error ? $this->error($result) : Response::ok($result, [], 201);
+        $conversationId = (int) $request['id'];
+        $result = $this->chat->send($conversationId, get_current_user_id(), $this->json($request));
+        if ($result instanceof WP_Error) return $this->error($result);
+        SoketiRealtime::publishToConversation($conversationId, 'message:created', $result);
+        SoketiRealtime::publishToConversation($conversationId, 'conversation:updated', [
+            'conversationId' => (string) $conversationId,
+            'message' => $result,
+        ]);
+        return Response::ok($result, [], 201);
     }
 
     public function edit(WP_REST_Request $request): mixed
     {
         $input = $this->json($request);
         $result = $this->chat->edit((int) $request['id'], get_current_user_id(), (string) ($input['body'] ?? ''));
-        return $result instanceof WP_Error ? $this->error($result) : Response::ok($result);
+        if ($result instanceof WP_Error) return $this->error($result);
+        SoketiRealtime::publishToConversation((int) $result['conversation_id'], 'message:updated', $result);
+        return Response::ok($result);
     }
 
     public function delete(WP_REST_Request $request): mixed
     {
-        $result = $this->chat->delete((int) $request['id'], get_current_user_id());
-        return $result instanceof WP_Error ? $this->error($result) : Response::ok(['deleted' => true]);
+        $messageId = (int) $request['id'];
+        $userId = get_current_user_id();
+        $existing = $this->chat->message($messageId, $userId);
+        if ($existing instanceof WP_Error) return $this->error($existing);
+        $result = $this->chat->delete($messageId, $userId);
+        if ($result instanceof WP_Error) return $this->error($result);
+        SoketiRealtime::publishToConversation((int) $existing['conversation_id'], 'message:deleted', [
+            'messageId' => (string) $messageId,
+            'conversationId' => (string) $existing['conversation_id'],
+        ]);
+        return Response::ok(['deleted' => true]);
     }
 
     public function react(WP_REST_Request $request): mixed
     {
         $input = $this->json($request);
         $result = $this->chat->react((int) $request['id'], get_current_user_id(), (string) ($input['reaction'] ?? ''), true);
-        return $result instanceof WP_Error ? $this->error($result) : Response::ok($result);
+        if ($result instanceof WP_Error) return $this->error($result);
+        $this->publishReaction($result);
+        return Response::ok($result);
     }
 
     public function unreact(WP_REST_Request $request): mixed
     {
         $input = $this->json($request);
         $result = $this->chat->react((int) $request['id'], get_current_user_id(), (string) ($input['reaction'] ?? ''), false);
-        return $result instanceof WP_Error ? $this->error($result) : Response::ok($result);
+        if ($result instanceof WP_Error) return $this->error($result);
+        $this->publishReaction($result);
+        return Response::ok($result);
     }
 
     public function read(WP_REST_Request $request): mixed
     {
         $input = $this->json($request);
-        $result = $this->chat->markRead((int) $request['id'], get_current_user_id(), max(0, (int) ($input['message_id'] ?? 0)));
-        return $result instanceof WP_Error ? $this->error($result) : Response::ok(['read' => true]);
+        $conversationId = (int) $request['id'];
+        $messageId = max(0, (int) ($input['message_id'] ?? 0));
+        $userId = get_current_user_id();
+        $result = $this->chat->markRead($conversationId, $userId, $messageId);
+        if ($result instanceof WP_Error) return $this->error($result);
+        SoketiRealtime::publishToConversation($conversationId, 'receipt:read', [
+            'conversationId' => (string) $conversationId,
+            'messageId' => (string) $messageId,
+            'userId' => (string) $userId,
+        ]);
+        return Response::ok(['read' => true]);
     }
 
-    public function socketTicket(): mixed
+    public function realtimeConfig(): mixed
     {
-        try {
-            return Response::ok(ChatSocketTicket::issue(get_current_user_id()));
-        } catch (\RuntimeException $e) {
-            return Response::error('chat_realtime_unavailable', $e->getMessage(), 503);
+        return Response::ok([
+            ...SoketiRealtime::publicConfig(),
+            'user_id' => (string) get_current_user_id(),
+        ]);
+    }
+
+    public function realtimeAuth(WP_REST_Request $request): mixed
+    {
+        $input = $this->json($request);
+        $result = SoketiRealtime::authorize(
+            sanitize_text_field((string) ($input['socket_id'] ?? '')),
+            sanitize_text_field((string) ($input['channel_name'] ?? '')),
+            get_current_user_id()
+        );
+        return $result instanceof WP_Error ? $this->error($result) : Response::ok($result);
+    }
+
+    public function typing(WP_REST_Request $request): mixed
+    {
+        $input = $this->json($request);
+        $conversationId = (int) $request['id'];
+        $userId = get_current_user_id();
+        if (!$this->chat->isMember($conversationId, $userId)) {
+            return $this->error(new WP_Error('chat_not_found', 'گفتگو پیدا نشد.', ['status' => 404]));
         }
+        $typing = filter_var($input['typing'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        SoketiRealtime::publishToConversation($conversationId, 'typing:changed', [
+            'conversationId' => (string) $conversationId,
+            'userId' => (string) $userId,
+            'typing' => $typing,
+        ]);
+        return Response::ok(['typing' => $typing]);
+    }
+
+    private function publishReaction(array $message): void
+    {
+        SoketiRealtime::publishToConversation((int) $message['conversation_id'], 'message:reaction', [
+            'messageId' => (string) $message['id'],
+            'conversationId' => (string) $message['conversation_id'],
+            'reactions' => array_values((array) ($message['reactions'] ?? [])),
+        ]);
     }
 }
