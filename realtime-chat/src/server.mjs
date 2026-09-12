@@ -3,11 +3,13 @@ import mysql from "mysql2/promise";
 import { Server } from "socket.io";
 import { attachmentForStorage, normalizeAttachment } from "./attachments.mjs";
 import { verifySocketTicket } from "./auth.mjs";
+import { notificationForSocket, notificationRowsAfter } from "./notifications.mjs";
 
 const port = Number(process.env.PORT || 3001);
 const prefix = process.env.DB_PREFIX || "wp_";
 if (!/^[A-Za-z0-9_]+$/.test(prefix)) throw new Error("invalid DB_PREFIX");
 const table = (name) => `${prefix}meydan_chat_${name}`;
+const notificationsTable = `${prefix}meydan_notifications`;
 const socketSecret = process.env.MEYDAN_CHAT_SOCKET_SECRET || "";
 if (!socketSecret) throw new Error("MEYDAN_CHAT_SOCKET_SECRET is required");
 
@@ -40,6 +42,7 @@ const io = new Server(server, {
 });
 
 const presence = new Map();
+const notificationCursors = new Map();
 const room = (conversationId) => `conversation:${conversationId}`;
 const userRoom = (userId) => `user:${userId}`;
 const asId = (value) => {
@@ -63,6 +66,35 @@ async function notifyConversationUsers(conversationId, event, payload) {
   );
   for (const participant of rows) io.to(userRoom(participant.user_id)).emit(event, payload);
 }
+
+async function latestNotificationId(userId) {
+  const [rows] = await pool.execute(
+    `SELECT COALESCE(MAX(id),0) AS id FROM ${notificationsTable} WHERE recipient_user_id=?`,
+    [userId],
+  );
+  return Number(rows[0]?.id || 0);
+}
+
+async function flushUserNotifications(userId) {
+  const cursor = notificationCursors.get(userId);
+  if (cursor === undefined || cursor === null) return;
+  const [rows] = await pool.execute(
+    `SELECT id,type,title,body,deep_link,created_at,read_at FROM ${notificationsTable} WHERE recipient_user_id=? AND id>? ORDER BY id ASC LIMIT 100`,
+    [userId, cursor],
+  );
+  const fresh = notificationRowsAfter(rows, cursor);
+  for (const row of fresh) io.to(userRoom(userId)).emit("notification:created", notificationForSocket(row));
+  if (fresh.length) notificationCursors.set(userId, Number(fresh[fresh.length - 1].id));
+}
+
+async function flushNotifications() {
+  for (const userId of presence.keys()) await flushUserNotifications(userId);
+}
+
+const notificationTimer = setInterval(() => {
+  void flushNotifications().catch((error) => console.error("notification:poll", error));
+}, 2000);
+notificationTimer.unref?.();
 
 async function messageById(messageId) {
   const [rows] = await pool.execute(`SELECT * FROM ${table("messages")} WHERE id=? LIMIT 1`, [messageId]);
@@ -118,6 +150,17 @@ io.use((socket, next) => {
 io.on("connection", (socket) => {
   const userId = socket.data.userId;
   socket.join(userRoom(userId));
+  if (!notificationCursors.has(userId)) {
+    notificationCursors.set(userId, null);
+    void latestNotificationId(userId)
+      .then((id) => {
+        if (presence.has(userId)) notificationCursors.set(userId, id);
+      })
+      .catch((error) => {
+        notificationCursors.delete(userId);
+        console.error("notification:cursor", error);
+      });
+  }
   presence.set(userId, (presence.get(userId) || 0) + 1);
   io.emit("presence:changed", { userId: String(userId), online: true });
 
@@ -236,6 +279,7 @@ io.on("connection", (socket) => {
     if (remaining) presence.set(userId, remaining);
     else {
       presence.delete(userId);
+      notificationCursors.delete(userId);
       io.emit("presence:changed", { userId: String(userId), online: false });
     }
   });
@@ -244,6 +288,7 @@ io.on("connection", (socket) => {
 server.listen(port, "0.0.0.0", () => console.log(`meydan realtime chat listening on :${port}`));
 
 async function shutdown() {
+  clearInterval(notificationTimer);
   io.close();
   server.close();
   await pool.end();
