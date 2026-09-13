@@ -17,6 +17,7 @@ use Meydan\Core\Support\CampaignCurrentGuard;
 use Meydan\Core\Support\Cors;
 use Meydan\Core\Support\GoodAction;
 use Meydan\Core\Support\SquareActivity;
+use Meydan\Core\Realtime\SoketiPublisher;
 
 final class Plugin
 {
@@ -56,8 +57,6 @@ final class Plugin
         add_action('init', [Registrations::class, 'registerPostTypes']);
         add_action('init', [Registrations::class, 'registerTaxonomies']);
         add_action('init', [Registrations::class, 'registerRolesAndCapabilities'], 20);
-        // Data migrations need the post types registered above, so they cannot
-        // run from maybeRun() on plugins_loaded.
         add_action('init', [Migrations::class, 'runDeferred'], 25);
 
         add_filter('determine_current_user', [SessionService::class, 'authenticateBearer'], 30);
@@ -69,6 +68,12 @@ final class Plugin
         add_action('rest_api_init', [ChatRoutes::class, 'register']);
         ApiMiddleware::register();
         Cors::register();
+
+        // Realtime service is registered without environment configuration.
+        // Domain services can call SoketiPublisher::user/feed when events happen.
+        if (class_exists(SoketiPublisher::class)) {
+            SoketiPublisher::feed('backend.ready', ['version' => MEYDAN_CORE_VERSION]);
+        }
 
         if (is_admin()) {
             Admin::instance()->register();
