@@ -4,36 +4,31 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Realtime;
 
+use Meydan\Core\Support\SoketiRealtime;
+
+/**
+ * Backwards-compatible facade. All realtime traffic is delegated to the
+ * single SoketiRealtime transport used by chat and other Meydan features.
+ */
 final class SoketiPublisher
 {
     public static function publish(string $channel, string $event, array $payload = []): void
     {
-        $appUrl = 'https://naghshman.ir/socket/app/naghsh-b5a7e6394b1c637cfee7eb2d7762a156';
-
-        if ($appUrl === '') {
-            return;
-        }
-
-        wp_remote_post($appUrl, [
-            'timeout' => 2,
-            'headers' => [
-                'Content-Type' => 'application/json',
-            ],
-            'body' => wp_json_encode([
-                'channel' => $channel,
-                'name' => $event,
-                'data' => wp_json_encode($payload),
-            ]),
-        ]);
+        SoketiRealtime::publish([$channel], $event, $payload);
     }
 
     public static function user(string $userId, string $event, array $payload = []): void
     {
-        self::publish('private-user-' . $userId, $event, $payload);
+        $id = (int) $userId;
+        if ($id <= 0) {
+            return;
+        }
+
+        SoketiRealtime::publishToUser($id, $event, $payload);
     }
 
     public static function feed(string $event, array $payload = []): void
     {
-        self::publish('public-feed', $event, $payload);
+        SoketiRealtime::publish(['public-feed'], $event, $payload);
     }
 }
