@@ -10,6 +10,9 @@ use Meydan\Core\Auth\GuestSessionService;
 use Meydan\Core\Database\ChatMigrations;
 use Meydan\Core\Database\Migrations;
 use Meydan\Core\Domain\Registrations;
+use Meydan\Core\Integrations\Eitaa\AdminPage;
+use Meydan\Core\Integrations\Eitaa\Migrations as EitaaMigrations;
+use Meydan\Core\Integrations\Eitaa\SquareChannelField;
 use Meydan\Core\Rest\ChatRoutes;
 use Meydan\Core\Rest\Routes;
 use Meydan\Core\Support\ApiMiddleware;
@@ -32,6 +35,7 @@ final class Plugin
     {
         Migrations::run();
         ChatMigrations::run();
+        EitaaMigrations::run();
         Registrations::registerRolesAndCapabilities();
         Registrations::registerPostTypes();
         Registrations::registerTaxonomies();
@@ -52,6 +56,7 @@ final class Plugin
 
         Migrations::maybeRun();
         ChatMigrations::maybeRun();
+        EitaaMigrations::maybeRun();
 
         add_action('init', [Registrations::class, 'registerPostTypes']);
         add_action('init', [Registrations::class, 'registerTaxonomies']);
@@ -67,11 +72,14 @@ final class Plugin
         GoodAction::register();
         add_action('rest_api_init', [Routes::class, 'register']);
         add_action('rest_api_init', [ChatRoutes::class, 'register']);
+        add_action('rest_api_init', static fn() => \Meydan\Core\Integrations\Eitaa\Controller::register());
         ApiMiddleware::register();
         Cors::register();
 
         if (is_admin()) {
             Admin::instance()->register();
+            AdminPage::register();
+            SquareChannelField::register();
             SquareActivity::registerAdmin();
         }
 
