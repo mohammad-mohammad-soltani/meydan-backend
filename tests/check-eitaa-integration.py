@@ -9,11 +9,10 @@ def text(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 migrations = text(src / "Integrations/Eitaa/Migrations.php")
-admin = text(src / "Admin/Admin.php")
-routes = text(src / "Rest/Routes.php")
 plugin = text(src / "Plugin.php")
 auth = text(src / "Integrations/Eitaa/Auth.php")
 bindings = text(src / "Integrations/Eitaa/BindingService.php")
+field = text(src / "Integrations/Eitaa/SquareChannelField.php")
 importer = text(src / "Integrations/Eitaa/ImportService.php")
 controller = text(src / "Integrations/Eitaa/Controller.php")
 uploads = text(src / "Integrations/Eitaa/IntegrationUploadService.php")
@@ -23,8 +22,8 @@ page = text(src / "Integrations/Eitaa/AdminPage.php")
 assert "meydan_eitaa_imports" in migrations, "Eitaa import mapping table must be migrated"
 assert "UNIQUE KEY source_key" in migrations, "source_key must be protected by a DB unique index"
 assert "last_success_at" in migrations, "per-square checkpoint must be stored"
-assert "meydan_eitaa_channel" in admin, "Square profile must expose the Eitaa channel field"
-assert "meydan_square" in admin, "channel field must be guarded to Square accounts"
+assert "meydan_eitaa_channel" in field, "Square profile must expose the Eitaa channel field"
+assert "meydan_square" in field, "channel field must be guarded to Square accounts"
 
 for needle in ["X-Meydan-Eitaa-Timestamp", "X-Meydan-Eitaa-Nonce", "X-Meydan-Eitaa-Signature", "hash_equals", "hash_hmac('sha256'"]:
     assert needle in auth, f"integration auth missing {needle}"
@@ -33,11 +32,12 @@ assert "set_transient" in auth and "nonce" in auth.lower(), "nonce replay protec
 
 for route in [
     "/integrations/eitaa/squares",
+    "/integrations/eitaa/known",
     "/integrations/eitaa/import",
     "/integrations/eitaa/checkpoint",
     "/integrations/eitaa/uploads",
 ]:
-    assert route in routes, f"missing integration route {route}"
+    assert route in controller, f"missing integration route {route}"
 
 assert "meydan_eitaa_channel" in bindings and "last_success_at" in bindings
 assert "post_date_gmt" in importer and "meydan_author_actor_type" in importer
@@ -50,6 +50,8 @@ assert "همگام‌سازی ایتا" in page, "admin page must exist in Persi
 assert "send-code" in worker and "verify-code" in worker and "status" in worker
 assert "check_admin_referer" in page and "manage_options" in page
 assert "AdminPage::register" in plugin, "plugin bootstrap must register Eitaa admin page"
+assert "SquareChannelField::register" in plugin
 assert "Migrations::maybeRun" in plugin and "Integrations\\Eitaa\\Migrations" in plugin
+assert "Controller::register" in plugin, "REST integration routes must be registered independently"
 
 print("eitaa integration contract ok")
