@@ -8,7 +8,7 @@ src = root / "wp-content/plugins/meydan-core/src"
 def text(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
-migrations = text(src / "Database/Migrations.php")
+migrations = text(src / "Integrations/Eitaa/Migrations.php")
 admin = text(src / "Admin/Admin.php")
 routes = text(src / "Rest/Routes.php")
 plugin = text(src / "Plugin.php")
@@ -50,5 +50,6 @@ assert "همگام‌سازی ایتا" in page, "admin page must exist in Persi
 assert "send-code" in worker and "verify-code" in worker and "status" in worker
 assert "check_admin_referer" in page and "manage_options" in page
 assert "AdminPage::register" in plugin, "plugin bootstrap must register Eitaa admin page"
+assert "Migrations::maybeRun" in plugin and "Integrations\\Eitaa\\Migrations" in plugin
 
 print("eitaa integration contract ok")
