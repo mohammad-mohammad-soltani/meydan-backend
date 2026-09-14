@@ -26,13 +26,13 @@ final class AdminPage
         if (!current_user_can('manage_options')) wp_die('دسترسی کافی ندارید.');
         $notice = get_transient(self::noticeKey());
         delete_transient(self::noticeKey());
-        $status = (new WorkerClient())->status();
+        $status = (new EitaaServiceClient())->status();
         $authorized = !is_wp_error($status) && !empty($status['authorized']);
         $phone = !is_wp_error($status) ? (string) ($status['phone'] ?? '') : '';
         $username = !is_wp_error($status) ? (string) ($status['username'] ?? '') : '';
 
         echo '<div class="wrap"><h1>همگام‌سازی ایتا</h1>';
-        echo '<p>احراز هویت روی سرور EitaaUserBot انجام می‌شود و توکن/session ایتا وارد وردپرس نمی‌شود.</p>';
+        echo '<p>احراز هویت روی سرویس EitaaUserBot انجام می‌شود و توکن/session ایتا وارد وردپرس نمی‌شود.</p>';
         if (is_array($notice)) {
             echo '<div class="notice notice-' . esc_attr((string) ($notice['type'] ?? 'info')) . ' is-dismissible"><p>' . esc_html((string) ($notice['message'] ?? '')) . '</p></div>';
         }
@@ -76,7 +76,7 @@ final class AdminPage
     {
         self::guard('meydan_eitaa_send_code');
         $phone = sanitize_text_field((string) wp_unslash($_POST['phone'] ?? ''));
-        self::finish((new WorkerClient())->sendCode($phone), 'کد ورود ایتا ارسال شد.');
+        self::finish((new EitaaServiceClient())->sendCode($phone), 'کد ورود ایتا ارسال شد.');
     }
 
     public static function verifyCode(): void
@@ -84,13 +84,13 @@ final class AdminPage
         self::guard('meydan_eitaa_verify_code');
         $code = sanitize_text_field((string) wp_unslash($_POST['code'] ?? ''));
         $password = (string) wp_unslash($_POST['password'] ?? '');
-        self::finish((new WorkerClient())->verifyCode($code, $password), 'حساب ایتا با موفقیت احراز هویت شد.');
+        self::finish((new EitaaServiceClient())->verifyCode($code, $password), 'حساب ایتا با موفقیت احراز هویت شد.');
     }
 
     public static function logout(): void
     {
         self::guard('meydan_eitaa_logout');
-        self::finish((new WorkerClient())->logout(), 'Session ایتا حذف شد.');
+        self::finish((new EitaaServiceClient())->logout(), 'Session ایتا حذف شد.');
     }
 
     private static function guard(string $action): void

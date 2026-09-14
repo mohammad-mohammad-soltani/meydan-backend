@@ -38,7 +38,7 @@ services:
       MEYDAN_SMS_FROM_NUMBER: ${MEYDAN_SMS_FROM_NUMBER:-}
       MEYDAN_SMS_PATTERN_CODE: ${MEYDAN_SMS_PATTERN_CODE:-}
       MEYDAN_EITAA_SYNC_SECRET: ${MEYDAN_EITAA_SYNC_SECRET:-}
-      EITAA_WORKER_URL: ${EITAA_WORKER_URL:-}
+      EITAA_SERVICE_URL: ${EITAA_SERVICE_URL:-http://eitaa-api:3000}
       WORDPRESS_CONFIG_EXTRA: |
         if (!empty($$_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($$_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
             $$_SERVER['HTTPS'] = 'on';
@@ -55,6 +55,8 @@ services:
         define('MEYDAN_DEV_OTP_CODE', getenv('MEYDAN_DEV_OTP_CODE') ?: '');
         define('MEYDAN_SMS_ENDPOINT', getenv('MEYDAN_SMS_ENDPOINT') ?: '');
         define('MEYDAN_SMS_TOKEN', getenv('MEYDAN_SMS_TOKEN') ?: '');
+        define('MEYDAN_EITAA_SYNC_SECRET', getenv('MEYDAN_EITAA_SYNC_SECRET') ?: '');
+        define('EITAA_SERVICE_URL', getenv('EITAA_SERVICE_URL') ?: '');
         define('DISALLOW_FILE_EDIT', true);
         define('FORCE_SSL_ADMIN', (getenv('WP_ENVIRONMENT_TYPE') ?: 'local') === 'production');
         define('COOKIE_DOMAIN', '');
@@ -66,6 +68,9 @@ services:
       - wp_data:/var/www/html
       - ./wp-content/plugins/meydan-core:/var/www/html/wp-content/plugins/meydan-core
       - ./docker/uploads.ini:/usr/local/etc/php/conf.d/zz-meydan-uploads.ini:ro
+    networks:
+      - default
+      - meydan_internal
 
   wpcli:
     image: wordpress:cli-2.12.0-php8.4
@@ -95,3 +100,8 @@ services:
 volumes:
   db_data:
   wp_data:
+
+networks:
+  meydan_internal:
+    external: true
+    name: ${MEYDAN_DOCKER_NETWORK:-meydan_internal}
