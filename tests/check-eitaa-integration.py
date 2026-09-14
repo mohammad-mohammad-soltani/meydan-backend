@@ -16,8 +16,9 @@ field = text(src / "Integrations/Eitaa/SquareChannelField.php")
 importer = text(src / "Integrations/Eitaa/ImportService.php")
 controller = text(src / "Integrations/Eitaa/Controller.php")
 uploads = text(src / "Integrations/Eitaa/IntegrationUploadService.php")
-worker = text(src / "Integrations/Eitaa/WorkerClient.php")
+service = text(src / "Integrations/Eitaa/EitaaServiceClient.php")
 page = text(src / "Integrations/Eitaa/AdminPage.php")
+compose = text(root / "docker-compose.yml")
 
 assert "meydan_eitaa_imports" in migrations, "Eitaa import mapping table must be migrated"
 assert "UNIQUE KEY source_key" in migrations, "source_key must be protected by a DB unique index"
@@ -47,7 +48,11 @@ assert "IntegrationUploadService" in controller and "Auth::verify" in controller
 assert "ChunkedUploadService" in uploads or "meydan_uploads" in uploads
 
 assert "همگام‌سازی ایتا" in page, "admin page must exist in Persian UI"
-assert "send-code" in worker and "verify-code" in worker and "status" in worker
+assert "send-code" in service and "verify-code" in service and "status" in service
+assert "EITAA_SERVICE_URL" in service, "service client must use EITAA_SERVICE_URL"
+assert "EITAA_WORKER_URL" not in service, "legacy worker URL must be removed"
+assert "EITAA_SERVICE_URL" in compose and "http://eitaa-api:3000" in compose
+assert "meydan_internal" in compose, "WordPress must join the shared Eitaa Docker network"
 assert "check_admin_referer" in page and "manage_options" in page
 assert "AdminPage::register" in plugin, "plugin bootstrap must register Eitaa admin page"
 assert "SquareChannelField::register" in plugin
