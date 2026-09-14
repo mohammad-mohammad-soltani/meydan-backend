@@ -6,7 +6,7 @@ namespace Meydan\Core\Integrations\Eitaa;
 
 use WP_Error;
 
-final class WorkerClient
+final class EitaaServiceClient
 {
     public function status(): array|WP_Error { return $this->request('GET', '/meydan-admin/eitaa/status'); }
     public function sendCode(string $phone): array|WP_Error { return $this->request('POST', '/meydan-admin/eitaa/send-code', ['phone' => $phone]); }
@@ -16,10 +16,10 @@ final class WorkerClient
     /** @return array<string,mixed>|WP_Error */
     private function request(string $method, string $path, array $payload = []): array|WP_Error
     {
-        $base = rtrim(self::workerUrl(), '/');
+        $base = rtrim(self::serviceUrl(), '/');
         $secret = Auth::secret();
         if ($base === '' || $secret === '') {
-            return new WP_Error('eitaa_worker_unconfigured', 'آدرس worker یا کلید اتصال ایتا تنظیم نشده است.');
+            return new WP_Error('eitaa_service_unconfigured', 'آدرس سرویس یا کلید اتصال ایتا تنظیم نشده است.');
         }
         $body = $method === 'GET' ? '' : (wp_json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}');
         $timestamp = (string) time();
@@ -46,24 +46,24 @@ final class WorkerClient
         $status = (int) wp_remote_retrieve_response_code($response);
         $decoded = json_decode((string) wp_remote_retrieve_body($response), true);
         if (!is_array($decoded)) {
-            return new WP_Error('eitaa_worker_bad_response', 'پاسخ worker معتبر نیست.');
+            return new WP_Error('eitaa_service_bad_response', 'پاسخ سرویس ایتا معتبر نیست.');
         }
         if ($status < 200 || $status >= 300 || empty($decoded['ok'])) {
             return new WP_Error(
-                (string) ($decoded['error'] ?? 'eitaa_worker_error'),
-                (string) ($decoded['message'] ?? 'عملیات worker ناموفق بود.'),
+                (string) ($decoded['error'] ?? 'eitaa_service_error'),
+                (string) ($decoded['message'] ?? 'عملیات سرویس ایتا ناموفق بود.'),
                 ['status' => $status ?: 502]
             );
         }
         return $decoded;
     }
 
-    private static function workerUrl(): string
+    private static function serviceUrl(): string
     {
-        if (defined('EITAA_WORKER_URL')) {
-            $value = trim((string) constant('EITAA_WORKER_URL'));
+        if (defined('EITAA_SERVICE_URL')) {
+            $value = trim((string) constant('EITAA_SERVICE_URL'));
             if ($value !== '') return $value;
         }
-        return trim((string) getenv('EITAA_WORKER_URL'));
+        return trim((string) getenv('EITAA_SERVICE_URL'));
     }
 }
