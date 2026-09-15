@@ -10,14 +10,13 @@ use WP_Error;
  * Single Pusher-compatible realtime transport for Meydan.
  *
  * Browser clients connect through:
- *   wss://naghshman.ir/socket/app/{APP_KEY}
+ *   wss://socket.naghshman.ir/app/{APP_KEY}
  *
- * Server-side event publishing uses the same public reverse proxy through:
- *   https://naghshman.ir/socket/apps/{APP_ID}/events
+ * Server-side event publishing uses the same public Soketi endpoint through:
+ *   https://socket.naghshman.ir/apps/{APP_ID}/events
  *
- * The /socket prefix is a reverse-proxy prefix. Soketi itself receives the
- * canonical Pusher paths (/app/... and /apps/...), so signatures are generated
- * against the canonical path without the proxy prefix.
+ * Soketi is exposed directly on the socket.naghshman.ir subdomain, so the
+ * canonical Pusher paths (/app/... and /apps/...) are used without a prefix.
  */
 final class SoketiRealtime
 {
@@ -25,10 +24,10 @@ final class SoketiRealtime
     private const APP_KEY = 'naghsh-b5a7e6394b1c637cfee7eb2d7762a156';
     private const APP_SECRET = 'naghsh-34e3ad5bfe824c98885f91ebc1cec44e';
 
-    private const HOST = 'naghshman.ir';
+    private const HOST = 'socket.naghshman.ir';
     private const PORT = 443;
     private const SCHEME = 'https';
-    private const SOCKET_PATH = '/socket';
+    private const SOCKET_PATH = '';
 
     /**
      * Public configuration safe to return to authenticated browser clients.
@@ -159,8 +158,6 @@ final class SoketiRealtime
             return;
         }
 
-        // Pusher signs the canonical upstream path. /socket is only the public
-        // reverse-proxy prefix and must not be part of the signature input.
         $canonicalPath = '/apps/' . rawurlencode(self::APP_ID) . '/events';
         $params = [
             'auth_key' => self::APP_KEY,
