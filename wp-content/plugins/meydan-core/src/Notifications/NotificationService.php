@@ -90,6 +90,7 @@ final class NotificationService
         ?string $parentEntityType = null,
         ?int $parentEntityId = null,
         bool $aggregate = false,
+        bool $sendPush = true,
     ): int {
         if ($recipientUserId <= 0 || ($actorType && $actorId && Actor::ownerUserId($actorType, $actorId) === $recipientUserId)) {
             return 0;
@@ -127,6 +128,15 @@ final class NotificationService
                 ], ['id' => (int) $existing['id']]);
                 $id = (int) $existing['id'];
                 SoketiRealtime::publishToUser($recipientUserId, 'notification:updated', ['id' => (string) $id]);
+                if ($sendPush) {
+                    PusheWebPush::sendToUser(
+                        $recipientUserId,
+                        (string) ($existing['title'] ?: $title),
+                        $newBody,
+                        (string) ($existing['deep_link'] ?: $deepLink),
+                        self::iconUrl($type, $actorType, $actorId),
+                    );
+                }
                 return $id;
             }
         }
@@ -150,16 +160,20 @@ final class NotificationService
         ]);
         $id = (int) $wpdb->insert_id;
         if ($id > 0) {
+            $iconUrl = self::iconUrl($type, $actorType, $actorId);
             SoketiRealtime::publishToUser($recipientUserId, 'notification:created', [
                 'id' => (string) $id,
                 'type' => sanitize_key($type),
                 'title' => sanitize_text_field($title),
                 'body' => sanitize_textarea_field($body),
-                'icon_url' => self::iconUrl($type, $actorType, $actorId),
+                'icon_url' => $iconUrl,
                 'deep_link' => $deepLink ? esc_url_raw($deepLink) : null,
                 'created_at' => gmdate('c'),
                 'read_at' => null,
             ]);
+            if ($sendPush) {
+                PusheWebPush::sendToUser($recipientUserId, $title, $body, $deepLink, $iconUrl);
+            }
         }
         return $id;
     }
@@ -177,10 +191,18 @@ final class NotificationService
     public function broadcast(string $title, string $body, array $audience, ?string $deepLink = null): int
     {
         $users = $this->resolveAudience($audience);
+        $pushUsers = [];
         $count = 0;
         foreach ($users as $userId) {
-            $id = $this->create((int) $userId, 'admin_notice', null, null, 'broadcast', null, $title, $body, $deepLink, null, ['audience' => $audience]);
-            if ($id > 0) $count++;
+            $uid = (int) $userId;
+            $id = $this->create($uid, 'admin_notice', null, null, 'broadcast', null, $title, $body, $deepLink, null, ['audience' => $audience], null, null, false, false);
+            if ($id > 0) {
+                $count++;
+                $pushUsers[] = $uid;
+            }
+        }
+        if ($pushUsers) {
+            PusheWebPush::sendToUsers($pushUsers, $title, $body, $deepLink, self::iconUrl('admin_notice'));
         }
         return $count;
     }

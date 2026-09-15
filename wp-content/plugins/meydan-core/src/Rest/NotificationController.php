@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Meydan\Core\Rest;
 
 use Meydan\Core\Notifications\NotificationService;
+use Meydan\Core\Notifications\PusheWebPush;
 use Meydan\Core\Support\Cursor;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\Serializer;
@@ -50,6 +51,19 @@ final class NotificationController extends BaseController
             get_current_user_id()
         ));
         return Response::cache(Response::ok(['count' => $n]), 'private, no-store');
+    }
+
+    public function pushConfig()
+    {
+        if (!is_user_logged_in()) {
+            return Response::error('unauthenticated', 'فعال‌سازی اعلان مرورگر نیاز به ورود دارد.', 401);
+        }
+        return Response::cache(Response::ok([
+            'provider' => 'pushe',
+            'enabled' => PusheWebPush::isConfigured(),
+            'app_id' => PusheWebPush::appId(),
+            'custom_id' => PusheWebPush::customId(get_current_user_id()),
+        ]), 'private, no-store');
     }
 
     public function read(WP_REST_Request $r)
