@@ -23,6 +23,7 @@ use Meydan\Core\Support\ApiMiddleware;
 use Meydan\Core\Support\CampaignCurrentGuard;
 use Meydan\Core\Support\Cors;
 use Meydan\Core\Support\GoodAction;
+use Meydan\Core\Support\RootResponse;
 use Meydan\Core\Support\SquareActivity;
 
 final class Plugin
@@ -74,6 +75,7 @@ final class Plugin
 
         CampaignCurrentGuard::register();
         GoodAction::register();
+        RootResponse::register();
         add_action('rest_api_init', [Routes::class, 'register']);
         add_action('rest_api_init', [ChatRoutes::class, 'register']);
         add_action('rest_api_init', static fn() => \Meydan\Core\Integrations\Eitaa\Controller::register());
