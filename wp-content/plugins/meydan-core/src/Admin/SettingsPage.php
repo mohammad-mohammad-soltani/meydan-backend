@@ -6,6 +6,7 @@ namespace Meydan\Core\Admin;
 
 use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Integrations\Bale\Settings;
+use Meydan\Core\Notifications\NotificationService;
 
 final class SettingsPage
 {
@@ -15,7 +16,29 @@ final class SettingsPage
         'ranking' => ['رتبه‌بندی Timeline', 'وزن‌ها و قواعد رتبه‌بندی محتوا. فقط در صورت آشنایی با مدل امتیازدهی ویرایش کنید.', 9],
         'timeline' => ['Timeline', 'تنظیمات صفحه Timeline مانند اندازه صفحه، تنوع و کش.', 9],
         'trends' => ['روندها و ترندها', 'تنظیمات محاسبه موضوعات محبوب و بازه زمانی آن‌ها.', 8],
-        'notification_templates' => ['قالب اعلان‌ها', 'قالب‌های متنی اعلان‌ها با کلیدهای قابل استفاده در سرویس اعلان.', 12],
+    ];
+
+    private const NOTIFICATION_LABELS = [
+        'like' => 'پسند روایت',
+        'repost' => 'بازنشر روایت',
+        'follow' => 'دنبال‌کردن',
+        'comment' => 'نظر جدید',
+        'comment_reply' => 'پاسخ به نظر',
+        'mention' => 'اشاره به کاربر',
+        'initiative_join' => 'پیوستن به کار خوب',
+        'initiative_update' => 'به‌روزرسانی کار خوب',
+        'initiative_join_confirmed' => 'تأیید عضویت در کار خوب',
+        'media_reflection_added' => 'بازتاب رسانه‌ای',
+        'square_verified' => 'تأیید میدان',
+        'square_rejected' => 'رد میدان',
+        'speaker_request_created' => 'ثبت درخواست سخنران',
+        'speaker_request_status_changed' => 'تغییر وضعیت درخواست سخنران',
+        'speaker_invitation' => 'دعوت سخنرانی',
+        'speaker_invitation_accepted' => 'پذیرش دعوت سخنرانی',
+        'speaker_invitation_rejected' => 'رد دعوت سخنرانی',
+        'admin_notice' => 'پیام مدیریت',
+        'system' => 'اعلان سیستم',
+        'content_published' => 'انتشار محتوا',
     ];
 
     public static function render(): void
@@ -32,7 +55,7 @@ final class SettingsPage
         echo '<div class="wrap meydan-admin meydan-settings" dir="rtl">';
         echo '<div class="meydan-page-header"><div><span class="meydan-eyebrow">مرکز کنترل</span><h1>تنظیمات میدان</h1><p>تنظیمات اتصال، تجربه کاربری و رفتار API را از یک محل مدیریت کنید. هر بخش توضیح کوتاه و راهنمای ویرایش دارد.</p></div><div class="meydan-header-mark" aria-hidden="true">M</div></div>';
         settings_errors('meydan');
-        echo '<form method="post" class="meydan-settings-form">';
+        echo '<form method="post" enctype="multipart/form-data" class="meydan-settings-form">';
         wp_nonce_field('meydan_admin_action');
         echo '<input type="hidden" name="meydan_admin_action" value="settings_save">';
 
@@ -53,8 +76,9 @@ final class SettingsPage
 
         self::renderBale();
         self::renderEitaa();
+        self::renderNotificationTemplates();
 
-        echo '<section class="meydan-panel"><div class="meydan-panel-heading"><div><span class="meydan-section-kicker">پیشرفته</span><h2>تنظیمات تخصصی</h2><p>این گزینه‌ها برای مدیر فنی هستند. ساختار JSON را معتبر نگه دارید؛ خطای JSON باعث ذخیره نشدن همان بخش می‌شود.</p></div></div><div class="meydan-advanced-grid">';
+        echo '<section class="meydan-panel"><div class="meydan-panel-heading"><div><span class="meydan-section-kicker">پیشرفته</span><h2>تنظیمات تخصصی</h2><p>این گزینه‌ها برای مدیر فنی هستند. ساختار JSON را معتبر نگه دارید؛ خطای JSON باعث ذخیره نشدن همان بخش می‌شود. قالب اعلان‌ها از بخش اختصاصی بالا مدیریت می‌شوند.</p></div></div><div class="meydan-advanced-grid">';
         foreach (self::JSON_SECTIONS as $key => [$label, $description, $rows]) {
             $value = wp_json_encode(get_option('meydan_' . $key, []), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
             echo '<details class="meydan-advanced-card"><summary><span>' . esc_html($label) . '</span><small>' . esc_html($description) . '</small></summary><label class="meydan-field meydan-json-field"><span class="meydan-label">JSON</span><textarea class="large-text code" rows="' . (int) $rows . '" name="meydan_' . esc_attr($key) . '_json" spellcheck="false">' . esc_textarea((string) $value) . '</textarea></label></details>';
@@ -117,6 +141,8 @@ final class SettingsPage
             }
         }
 
+        self::saveNotificationTemplates();
+
         $saved = [];
         foreach (array_keys(self::JSON_SECTIONS) as $key) {
             $field = 'meydan_' . $key . '_json';
@@ -131,8 +157,84 @@ final class SettingsPage
                 add_settings_error('meydan', 'invalid_json_' . $key, sprintf('بخش «%s» ذخیره نشد؛ JSON معتبر نیست.', $key), 'error');
             }
         }
-        AuditLogger::log('settings_updated', 'settings', null, null, ['keys' => array_merge(['sms_settings', 'api_settings', 'bale_settings'], $saved)]);
+        AuditLogger::log('settings_updated', 'settings', null, null, ['keys' => array_merge(['sms_settings', 'api_settings', 'bale_settings', 'notification_templates'], $saved)]);
         add_settings_error('meydan', 'settings_saved', 'تنظیمات میدان با موفقیت ذخیره شد.', 'updated');
+    }
+
+    private static function renderNotificationTemplates(): void
+    {
+        $overrides = (array) get_option('meydan_notification_templates', []);
+
+        echo '<section class="meydan-panel"><div class="meydan-panel-heading"><div><span class="meydan-section-kicker">مرکز اعلان‌ها</span><h2>قالب اعلان‌ها</h2><p>عنوان، متن و آیکن هر اعلان را بدون ویرایش JSON مدیریت کنید. برای اعلان‌های کاربرمحور مثل لایک، نظر و دعوت سخنران، آواتار کاربر اولویت دارد و فایل آپلودشده فقط fallback است.</p></div></div>';
+        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">';
+        foreach (NotificationService::TEMPLATES as $type => $defaults) {
+            $custom = (array) ($overrides[$type] ?? []);
+            $title = (string) ($custom['title'] ?? $defaults['title']);
+            $body = (string) ($custom['body'] ?? $defaults['body']);
+            $iconMediaId = (int) ($custom['icon_media_id'] ?? 0);
+            $iconUrl = $iconMediaId > 0 ? wp_get_attachment_image_url($iconMediaId, 'thumbnail') : false;
+            if (!$iconUrl && $iconMediaId > 0) {
+                $iconUrl = wp_get_attachment_url($iconMediaId);
+            }
+            $label = self::NOTIFICATION_LABELS[$type] ?? $type;
+
+            echo '<div class="meydan-advanced-card" style="padding:16px">';
+            echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px"><div><strong style="display:block">' . esc_html($label) . '</strong><code>' . esc_html($type) . '</code></div>';
+            if ($iconUrl) {
+                echo '<img src="' . esc_url((string) $iconUrl) . '" alt="" style="width:52px;height:52px;border-radius:14px;object-fit:cover">';
+            }
+            echo '</div>';
+            echo '<label class="meydan-field"><span class="meydan-label">عنوان</span><input type="text" name="meydan_notification_templates[' . esc_attr($type) . '][title]" value="' . esc_attr($title) . '"></label>';
+            echo '<label class="meydan-field" style="margin-top:10px"><span class="meydan-label">متن</span><textarea rows="3" name="meydan_notification_templates[' . esc_attr($type) . '][body]">' . esc_textarea($body) . '</textarea><small>برای نام کاربر می‌توانید از <code>{actor}</code> استفاده کنید.</small></label>';
+            echo '<label class="meydan-field" style="margin-top:10px"><span class="meydan-label">آیکن اعلان</span><input type="file" name="meydan_notification_icon_' . esc_attr($type) . '" accept="image/*"><small>اگر اعلان actor داشته باشد، مثل سخنران، لایک یا نظر، آواتار همان actor نمایش داده می‌شود و این فایل fallback است.</small></label>';
+            if ($iconMediaId > 0) {
+                echo '<label style="display:flex;align-items:center;gap:8px;margin-top:10px"><input type="checkbox" name="meydan_notification_icon_remove[' . esc_attr($type) . ']" value="1"> حذف آیکن فعلی</label>';
+            }
+            echo '</div>';
+        }
+        echo '</div></section>';
+    }
+
+    private static function saveNotificationTemplates(): void
+    {
+        $posted = isset($_POST['meydan_notification_templates'])
+            ? (array) wp_unslash($_POST['meydan_notification_templates'])
+            : [];
+        $templates = (array) get_option('meydan_notification_templates', []);
+        $remove = isset($_POST['meydan_notification_icon_remove'])
+            ? (array) wp_unslash($_POST['meydan_notification_icon_remove'])
+            : [];
+
+        foreach (NotificationService::TEMPLATES as $type => $defaults) {
+            $row = (array) ($posted[$type] ?? []);
+            $current = (array) ($templates[$type] ?? []);
+            $current['title'] = sanitize_text_field((string) ($row['title'] ?? $current['title'] ?? $defaults['title']));
+            $current['body'] = sanitize_textarea_field((string) ($row['body'] ?? $current['body'] ?? $defaults['body']));
+
+            if (!empty($remove[$type])) {
+                unset($current['icon_media_id']);
+            }
+
+            $fileField = 'meydan_notification_icon_' . $type;
+            $uploadError = isset($_FILES[$fileField]['error']) ? (int) $_FILES[$fileField]['error'] : UPLOAD_ERR_NO_FILE;
+            if ($uploadError === UPLOAD_ERR_OK) {
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+                require_once ABSPATH . 'wp-admin/includes/media.php';
+                require_once ABSPATH . 'wp-admin/includes/image.php';
+                $attachmentId = media_handle_upload($fileField, 0);
+                if (is_wp_error($attachmentId)) {
+                    add_settings_error('meydan', 'notification_icon_' . $type, sprintf('آیکن اعلان «%s» ذخیره نشد: %s', self::NOTIFICATION_LABELS[$type] ?? $type, $attachmentId->get_error_message()), 'error');
+                } else {
+                    $current['icon_media_id'] = (int) $attachmentId;
+                }
+            } elseif ($uploadError !== UPLOAD_ERR_NO_FILE) {
+                add_settings_error('meydan', 'notification_icon_upload_' . $type, sprintf('آپلود آیکن اعلان «%s» با خطا مواجه شد.', self::NOTIFICATION_LABELS[$type] ?? $type), 'error');
+            }
+
+            $templates[$type] = $current;
+        }
+
+        update_option('meydan_notification_templates', $templates, false);
     }
 
     /** Renders the Bale bot configuration panel. */
@@ -143,7 +245,6 @@ final class SettingsPage
 
         echo '<section class="meydan-panel meydan-panel-accent"><div class="meydan-panel-heading"><div><span class="meydan-section-kicker">ربات بله</span><h2>پیکربندی ربات بله</h2><p>همه گزینه‌های ربات از همین صفحه تنظیم می‌شود؛ نیازی به ویرایش فایل یا تنظیم متغیر محیطی نیست. ربات از چت مقصد برای اطلاع‌رسانی خطاهای پروژه، خطاهای همگام‌سازی ایتا و اعلان میدان‌های در انتظار تأیید استفاده می‌کند.</p></div><span class="meydan-status-dot">' . ($configured ? 'فعال' : 'غیرفعال') . '</span></div>';
 
-        // --- Connection -----------------------------------------------------
         echo '<h3 class="meydan-section-kicker" style="margin:18px 0 6px">اتصال</h3><div class="meydan-form-grid">';
         self::toggle('bale_enabled', 'فعال‌سازی اعلان‌های بله', $bale['enabled'], 'با خاموش کردن این گزینه هیچ پیامی به بله ارسال نمی‌شود، هرچند توکن ذخیره بماند.');
         $hasToken = $bale['token'] !== '';
@@ -154,7 +255,6 @@ final class SettingsPage
         self::toggle('bale_clear_token', 'پاک‌سازی توکن ذخیره‌شده', false, 'برای حذف توکن فعلی؛ بعد از ذخیره خودش خاموش می‌شود.');
         echo '</div>';
 
-        // --- What gets reported --------------------------------------------
         echo '<h3 class="meydan-section-kicker" style="margin:22px 0 6px">مواردی که گزارش می‌شود</h3><div class="meydan-form-grid">';
         self::toggle('bale_error_reporting', 'گزارش خطاهای پروژه', $bale['error_reporting'], 'کلید اصلی گزارش خطا. با خاموش کردن آن، هیچ خطای PHP یا استثنایی ارسال نمی‌شود.');
         self::toggle('bale_report_fatals', 'خطاهای مرگبار و استثناها', $bale['report_fatals'], 'خطاهایی که اجرای برنامه را متوقف می‌کنند، همراه با فایل و شماره خط.');
@@ -165,13 +265,11 @@ final class SettingsPage
         self::toggle('bale_include_site_label', 'درج نام سایت در پیام‌ها', $bale['include_site_label'], 'برای وقتی چند محیط (تست/اصلی) به یک چت گزارش می‌دهند، مفید است.');
         echo '</div>';
 
-        // --- Flood control --------------------------------------------------
         echo '<h3 class="meydan-section-kicker" style="margin:22px 0 6px">کنترل حجم پیام</h3><div class="meydan-form-grid">';
         self::text('bale_rate_limit', 'حداکثر پیام در دقیقه', (string) $bale['rate_limit'], 'سقف ارسال برای جلوگیری از سرریز چت هنگام بروز خطای تکرارشونده. بین ۱ تا ۱۲۰.', 'number');
         self::text('bale_throttle_window', 'پنجره تکرارنشدن پیام یکسان (ثانیه)', (string) $bale['throttle_window'], 'اگر خطای یکسانی دوباره رخ دهد، تا این مدت دوباره ارسال نمی‌شود. بین ۳۰ تا ۳۶۰۰ ثانیه.', 'number');
         echo '</div>';
 
-        // --- Webhook --------------------------------------------------------
         echo '<h3 class="meydan-section-kicker" style="margin:22px 0 6px">وبهوک دکمه‌های تأیید</h3>';
         self::text('bale_webhook_secret', 'کلید امنیتی وبهوک', $bale['webhook_secret'], 'بله این کلید را در هر درخواست برمی‌گرداند تا درخواست‌های جعلی رد شوند. اگر خالی باشد هنگام اولین استفاده ساخته می‌شود.', 'text');
         echo '<p class="meydan-help">با تغییر این کلید، باید وبهوک را دوباره ثبت کنید؛ دکمه «تولید کلید امنیتی جدید» خودش این کار را انجام می‌دهد.</p>';
