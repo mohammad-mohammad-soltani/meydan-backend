@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Meydan\Core;
 
 use Meydan\Core\Admin\Admin;
-use Meydan\Core\Admin\NotificationTemplateSettings;
 use Meydan\Core\Auth\SessionService;
 use Meydan\Core\Auth\GuestSessionService;
 use Meydan\Core\Database\ChatMigrations;
@@ -92,7 +91,6 @@ final class Plugin
 
         if (is_admin()) {
             Admin::instance()->register();
-            NotificationTemplateSettings::register();
             AdminPage::register();
             SquareChannelField::register();
             SquareActivity::registerAdmin();
