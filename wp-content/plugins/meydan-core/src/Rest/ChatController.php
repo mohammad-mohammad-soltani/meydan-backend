@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Rest;
 
+use Meydan\Core\Notifications\NativeWebPush;
+use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\ChatRepository;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\SoketiRealtime;
@@ -75,13 +77,15 @@ final class ChatController extends BaseController
     public function send(WP_REST_Request $request): mixed
     {
         $conversationId = (int) $request['id'];
-        $result = $this->chat->send($conversationId, get_current_user_id(), $this->json($request));
+        $senderId = get_current_user_id();
+        $result = $this->chat->send($conversationId, $senderId, $this->json($request));
         if ($result instanceof WP_Error) return $this->error($result);
         SoketiRealtime::publishToConversation($conversationId, 'message:created', $result);
         SoketiRealtime::publishToConversation($conversationId, 'conversation:updated', [
             'conversationId' => (string) $conversationId,
             'message' => $result,
         ]);
+        $this->pushMessage($conversationId, $senderId, $result);
         return Response::ok($result, [], 201);
     }
 
@@ -177,6 +181,46 @@ final class ChatController extends BaseController
             'typing' => $typing,
         ]);
         return Response::ok(['typing' => $typing]);
+    }
+
+    /** @param array<string,mixed> $message */
+    private function pushMessage(int $conversationId, int $senderId, array $message): void
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_chat_participants';
+        $recipients = array_map('intval', $wpdb->get_col($wpdb->prepare(
+            "SELECT user_id FROM {$table} WHERE conversation_id=%d AND user_id<>%d AND archived_at IS NULL AND notifications_muted=0",
+            $conversationId,
+            $senderId,
+        )) ?: []);
+        if (!$recipients) {
+            return;
+        }
+
+        $actor = Actor::forUser($senderId);
+        $name = trim((string) ($actor['display_name'] ?? 'کاربر میدان'));
+        $avatar = trim((string) ($actor['avatar_url'] ?? ''));
+        $body = trim(wp_strip_all_tags((string) ($message['body'] ?? '')));
+        if ($body === '') {
+            $attachment = is_array($message['attachment'] ?? null) ? $message['attachment'] : [];
+            $fileName = trim((string) ($attachment['name'] ?? ''));
+            $body = $fileName !== '' ? 'فایل: ' . $fileName : 'یک پیام جدید برای شما ارسال شد.';
+        }
+
+        NativeWebPush::sendToUsers(
+            $recipients,
+            $name,
+            mb_substr($body, 0, 500),
+            '/chat/' . $conversationId,
+            $avatar !== '' ? $avatar : null,
+            [
+                'type' => 'chat_message',
+                'conversation_id' => (string) $conversationId,
+                'message_id' => (string) ($message['id'] ?? ''),
+                'sender_id' => (string) $senderId,
+                'tag' => 'chat-' . $conversationId,
+            ],
+        );
     }
 
     private function publishReaction(array $message): void

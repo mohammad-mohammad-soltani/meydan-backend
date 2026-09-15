@@ -129,12 +129,13 @@ final class NotificationService
                 $id = (int) $existing['id'];
                 SoketiRealtime::publishToUser($recipientUserId, 'notification:updated', ['id' => (string) $id]);
                 if ($sendPush) {
-                    PusheWebPush::sendToUser(
+                    NativeWebPush::sendToUser(
                         $recipientUserId,
                         (string) ($existing['title'] ?: $title),
                         $newBody,
                         (string) ($existing['deep_link'] ?: $deepLink),
                         self::iconUrl($type, $actorType, $actorId),
+                        ['type' => sanitize_key($type), 'notification_id' => (string) $id, 'tag' => 'notification-' . sanitize_key($type)],
                     );
                 }
                 return $id;
@@ -172,7 +173,14 @@ final class NotificationService
                 'read_at' => null,
             ]);
             if ($sendPush) {
-                PusheWebPush::sendToUser($recipientUserId, $title, $body, $deepLink, $iconUrl);
+                NativeWebPush::sendToUser(
+                    $recipientUserId,
+                    $title,
+                    $body,
+                    $deepLink,
+                    $iconUrl,
+                    ['type' => sanitize_key($type), 'notification_id' => (string) $id, 'tag' => 'notification-' . sanitize_key($type)],
+                );
             }
         }
         return $id;
@@ -202,7 +210,14 @@ final class NotificationService
             }
         }
         if ($pushUsers) {
-            PusheWebPush::sendToUsers($pushUsers, $title, $body, $deepLink, self::iconUrl('admin_notice'));
+            NativeWebPush::sendToUsers(
+                $pushUsers,
+                $title,
+                $body,
+                $deepLink,
+                self::iconUrl('admin_notice'),
+                ['type' => 'admin_notice', 'tag' => 'admin-notice'],
+            );
         }
         return $count;
     }
