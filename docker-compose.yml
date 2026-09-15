@@ -39,6 +39,9 @@ services:
       MEYDAN_SMS_PATTERN_CODE: ${MEYDAN_SMS_PATTERN_CODE:-}
       MEYDAN_EITAA_SYNC_SECRET: ${MEYDAN_EITAA_SYNC_SECRET:-}
       EITAA_SERVICE_URL: ${EITAA_SERVICE_URL:-http://eitaa-api:3000}
+      MEYDAN_PUSHE_APP_ID: ${MEYDAN_PUSHE_APP_ID:-}
+      MEYDAN_PUSHE_TOKEN: ${MEYDAN_PUSHE_TOKEN:-}
+      MEYDAN_FRONTEND_URL: ${MEYDAN_FRONTEND_URL:-}
       WORDPRESS_CONFIG_EXTRA: |
         if (!empty($$_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($$_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
             $$_SERVER['HTTPS'] = 'on';
@@ -57,6 +60,9 @@ services:
         define('MEYDAN_SMS_TOKEN', getenv('MEYDAN_SMS_TOKEN') ?: '');
         define('MEYDAN_EITAA_SYNC_SECRET', getenv('MEYDAN_EITAA_SYNC_SECRET') ?: '');
         define('EITAA_SERVICE_URL', getenv('EITAA_SERVICE_URL') ?: '');
+        define('MEYDAN_PUSHE_APP_ID', getenv('MEYDAN_PUSHE_APP_ID') ?: '');
+        define('MEYDAN_PUSHE_TOKEN', getenv('MEYDAN_PUSHE_TOKEN') ?: '');
+        define('MEYDAN_FRONTEND_URL', getenv('MEYDAN_FRONTEND_URL') ?: '');
         define('DISALLOW_FILE_EDIT', true);
         define('FORCE_SSL_ADMIN', (getenv('WP_ENVIRONMENT_TYPE') ?: 'local') === 'production');
         define('COOKIE_DOMAIN', '');
