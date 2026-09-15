@@ -23,6 +23,10 @@ compose = text(root / "docker-compose.yml")
 assert "meydan_eitaa_imports" in migrations, "Eitaa import mapping table must be migrated"
 assert "UNIQUE KEY source_key" in migrations, "source_key must be protected by a DB unique index"
 assert "last_success_at" in migrations, "per-square checkpoint must be stored"
+assert "private const VERSION = '1.1.0'" in migrations, "Eitaa migration version must advance for newline repair"
+assert "repairImportedLineBreaks" in migrations, "migration must repair already-imported Eitaa narratives"
+assert "meydan_import_source" in migrations and "eitaa" in migrations, "repair must be scoped to Eitaa imports only"
+assert "<br>\\n" in migrations or "<br />\\n" in migrations or "preg_replace" in migrations, "repair must collapse legacy br + raw newline pairs"
 assert "meydan_eitaa_channel" in field, "Square profile must expose the Eitaa channel field"
 assert "meydan_square" in field, "channel field must be guarded to Square accounts"
 
