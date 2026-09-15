@@ -13,6 +13,9 @@ use Meydan\Core\Domain\Registrations;
 use Meydan\Core\Integrations\Eitaa\AdminPage;
 use Meydan\Core\Integrations\Eitaa\Migrations as EitaaMigrations;
 use Meydan\Core\Integrations\Eitaa\SquareChannelField;
+use Meydan\Core\Integrations\Bale\ErrorReporter as BaleErrorReporter;
+use Meydan\Core\Integrations\Bale\EventSubscriber as BaleEventSubscriber;
+use Meydan\Core\Integrations\Bale\WebhookController as BaleWebhookController;
 use Meydan\Core\Rest\ChatRoutes;
 use Meydan\Core\Rest\Routes;
 use Meydan\Core\Support\ApiMiddleware;
@@ -73,8 +76,16 @@ final class Plugin
         add_action('rest_api_init', [Routes::class, 'register']);
         add_action('rest_api_init', [ChatRoutes::class, 'register']);
         add_action('rest_api_init', static fn() => \Meydan\Core\Integrations\Eitaa\Controller::register());
+        add_action('rest_api_init', [BaleWebhookController::class, 'register']);
         ApiMiddleware::register();
         Cors::register();
+
+        // Bale operational alerting: project errors (requirement 2) and
+        // pending-square approval buttons (requirement 3). The reporter is
+        // armed early so it also captures errors raised later in this request.
+        BaleErrorReporter::register();
+        BaleEventSubscriber::register();
+        add_action('meydan_bale_pending_square', [BaleEventSubscriber::class, 'notifyPending'], 10, 1);
 
         if (is_admin()) {
             Admin::instance()->register();

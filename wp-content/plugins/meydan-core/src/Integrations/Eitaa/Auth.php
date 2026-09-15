@@ -54,8 +54,19 @@ final class Auth
         return true;
     }
 
+    /**
+     * Shared HMAC secret between this site and the Eitaa service.
+     *
+     * The panel value wins so an operator can set it from wp-admin; the
+     * constant and environment variable remain as deployment fallbacks for a
+     * value the panel has not set yet.
+     */
     public static function secret(): string
     {
+        $option = trim((string) get_option('meydan_eitaa_sync_secret', ''));
+        if ($option !== '') {
+            return $option;
+        }
         if (defined('MEYDAN_EITAA_SYNC_SECRET')) {
             $constant = trim((string) constant('MEYDAN_EITAA_SYNC_SECRET'));
             if ($constant !== '') {

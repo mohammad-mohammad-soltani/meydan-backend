@@ -37,6 +37,22 @@ The plugin adds a top-level **میدان** menu for dashboard, narratives, conte
 
 Speakers are **user accounts**, not a separate entity: a speaker is a WordPress user holding the `meydan_speaker` role (account type `speaker`). The «سخنرانان» menu opens the role-filtered users list, and the speaker profile (نمایشی role, expertise, handle, initials, categories, cities, social links, verified badge) is edited on the user edit screen under «پروفایل سخنران». Promoting an existing account is what makes it invitable; there is no public speaker registration.
 
+## Bale bot (ربات بله)
+
+The plugin can report operational events to a Bale chat. Everything is configured in **میدان → تنظیمات** — no code or `.env` edit is required. Enter the bot token (from Bale's `@BotFather`) and the numeric `chat_id` of the destination group or channel, then press «ثبت وبهوک و ارسال پیام تست» to verify the token, register the webhook, and send a confirmation message. Optional deployment constants (`MEYDAN_BALE_BOT_TOKEN`, `MEYDAN_BALE_CHAT_ID`, `MEYDAN_BALE_BASE_URL`) act only as fallbacks until the panel sets a value; the panel always wins.
+
+Three things are delivered to that chat:
+
+1. **Eitaa sync failures** — any error returned by the Eitaa service client or the content import is forwarded with its method, path, and HTTP status.
+2. **Project errors** — fatals, exceptions, warnings, and notices, each with its own on/off toggle, including file and line.
+3. **Pending squares** — each square entering `pending_verification` is announced with its link and two inline buttons (✅ تأیید / ❌ لغو). Pressing one applies the same code path as the wp-admin approvals screen.
+
+Other panel controls: request timeout, an alerts on/off master switch, per-severity reporting toggles, whether to stamp the site name on each message, the per-minute alert ceiling, and the de-duplication window for repeated identical alerts. The panel also manages the webhook directly — view its live status at Bale (`getWebhookInfo`, including pending updates and the last delivery error), remove it, or rotate the webhook secret.
+
+The Eitaa connection is editable in the same screen: the shared sync secret and the service URL are stored as options and take precedence over `MEYDAN_EITAA_SYNC_SECRET` / `EITAA_SERVICE_URL`.
+
+**Webhook requirements:** Bale must be able to reach this site, so the webhook needs a public HTTPS URL. It does not work on `localhost`, and Bale only allows webhook ports 443 and 88 behind TLS. The endpoint is public by necessity, so it verifies Bale's `X-Telegram-Bot-Api-Secret-Token` header, restricts updates to the configured `chat_id`, and requires a signed callback payload before it changes any square. Alerts other than the approval buttons work without a webhook.
+
 ## Source specification
 
 The implementation target is preserved in [`SPEC.md`](./SPEC.md).

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Meydan\Core\Admin;
 
 use Meydan\Core\Audit\AuditLogger;
+use Meydan\Core\Integrations\Bale\Settings;
 
 final class SettingsPage
 {
@@ -50,6 +51,9 @@ final class SettingsPage
         self::textarea('api_allowed_origins', 'Originهای مجاز CORS', implode("\n", array_map('strval', (array) (($data = (array) get_option('meydan_api_settings', []))['allowed_origins'] ?? []))), 'مثال: https://app.example.com');
         echo '</section>';
 
+        self::renderBale();
+        self::renderEitaa();
+
         echo '<section class="meydan-panel"><div class="meydan-panel-heading"><div><span class="meydan-section-kicker">پیشرفته</span><h2>تنظیمات تخصصی</h2><p>این گزینه‌ها برای مدیر فنی هستند. ساختار JSON را معتبر نگه دارید؛ خطای JSON باعث ذخیره نشدن همان بخش می‌شود.</p></div></div><div class="meydan-advanced-grid">';
         foreach (self::JSON_SECTIONS as $key => [$label, $description, $rows]) {
             $value = wp_json_encode(get_option('meydan_' . $key, []), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
@@ -81,6 +85,38 @@ final class SettingsPage
         $api['allowed_origins'] = array_values(array_filter(array_map(static fn($origin): string => esc_url_raw(trim((string) $origin)), preg_split('/\R/', (string) wp_unslash($_POST['api_allowed_origins'] ?? '')) ?: [])));
         update_option('meydan_api_settings', $api, false);
 
+        if (isset($_POST['bale_chat_id']) || isset($_POST['bale_token']) || isset($_POST['bale_enabled']) || isset($_POST['bale_webhook_secret'])) {
+            $raw = [];
+            foreach ([
+                'enabled', 'token', 'chat_id', 'base_url', 'timeout', 'clear_token',
+                'error_reporting', 'report_fatals', 'report_warnings', 'report_notices',
+                'report_eitaa', 'pending_squares', 'rate_limit', 'throttle_window',
+                'include_site_label', 'webhook_secret',
+            ] as $field) {
+                $raw[$field] = wp_unslash($_POST['bale_' . $field] ?? '');
+            }
+
+            $result = Settings::sanitize($raw);
+            foreach ($result['errors'] as $message) {
+                add_settings_error('meydan', 'bale_invalid_' . md5($message), $message, 'error');
+            }
+            if ($result['values']) {
+                Settings::update($result['values']);
+            }
+        }
+
+        if (isset($_POST['eitaa_sync_secret']) || isset($_POST['eitaa_service_url'])) {
+            update_option('meydan_eitaa_service_url', esc_url_raw(trim((string) wp_unslash($_POST['eitaa_service_url'] ?? ''))), false);
+            if (!empty($_POST['eitaa_clear_secret'])) {
+                update_option('meydan_eitaa_sync_secret', '', false);
+            } else {
+                $secret = trim((string) wp_unslash($_POST['eitaa_sync_secret'] ?? ''));
+                if ($secret !== '') {
+                    update_option('meydan_eitaa_sync_secret', $secret, false);
+                }
+            }
+        }
+
         $saved = [];
         foreach (array_keys(self::JSON_SECTIONS) as $key) {
             $field = 'meydan_' . $key . '_json';
@@ -95,8 +131,80 @@ final class SettingsPage
                 add_settings_error('meydan', 'invalid_json_' . $key, sprintf('بخش «%s» ذخیره نشد؛ JSON معتبر نیست.', $key), 'error');
             }
         }
-        AuditLogger::log('settings_updated', 'settings', null, null, ['keys' => array_merge(['sms_settings', 'api_settings'], $saved)]);
+        AuditLogger::log('settings_updated', 'settings', null, null, ['keys' => array_merge(['sms_settings', 'api_settings', 'bale_settings'], $saved)]);
         add_settings_error('meydan', 'settings_saved', 'تنظیمات میدان با موفقیت ذخیره شد.', 'updated');
+    }
+
+    /** Renders the Bale bot configuration panel. */
+    private static function renderBale(): void
+    {
+        $bale = Settings::get();
+        $configured = Settings::isReady();
+
+        echo '<section class="meydan-panel meydan-panel-accent"><div class="meydan-panel-heading"><div><span class="meydan-section-kicker">ربات بله</span><h2>پیکربندی ربات بله</h2><p>همه گزینه‌های ربات از همین صفحه تنظیم می‌شود؛ نیازی به ویرایش فایل یا تنظیم متغیر محیطی نیست. ربات از چت مقصد برای اطلاع‌رسانی خطاهای پروژه، خطاهای همگام‌سازی ایتا و اعلان میدان‌های در انتظار تأیید استفاده می‌کند.</p></div><span class="meydan-status-dot">' . ($configured ? 'فعال' : 'غیرفعال') . '</span></div>';
+
+        // --- Connection -----------------------------------------------------
+        echo '<h3 class="meydan-section-kicker" style="margin:18px 0 6px">اتصال</h3><div class="meydan-form-grid">';
+        self::toggle('bale_enabled', 'فعال‌سازی اعلان‌های بله', $bale['enabled'], 'با خاموش کردن این گزینه هیچ پیامی به بله ارسال نمی‌شود، هرچند توکن ذخیره بماند.');
+        $hasToken = $bale['token'] !== '';
+        self::secret('bale_token', 'توکن ربات بله', $hasToken, 'توکن را از BotFather بله بگیرید؛ قالب آن شبیه 123456789:ABCdef... است. برای حفظ توکن فعلی خالی بگذارید.');
+        self::text('bale_chat_id', 'شناسه چت مقصد (chat_id)', $bale['chat_id'], 'شناسه عددی گروه یا کانال مقصد، مانند -1001234567890. ربات باید عضو آن گروه/کانال باشد.', 'text');
+        self::text('bale_base_url', 'آدرس پایه API بله', $bale['base_url'], 'پیش‌فرض https://tapi.bale.ai است؛ فقط در صورت استفاده از پروکسی تغییر دهید.', 'url');
+        self::text('bale_timeout', 'مهلت انتظار پاسخ (ثانیه)', (string) $bale['timeout'], 'بین ۵ تا ۶۰ ثانیه. برای شبکه‌های کند مقدار بیشتری بگذارید.', 'number');
+        self::toggle('bale_clear_token', 'پاک‌سازی توکن ذخیره‌شده', false, 'برای حذف توکن فعلی؛ بعد از ذخیره خودش خاموش می‌شود.');
+        echo '</div>';
+
+        // --- What gets reported --------------------------------------------
+        echo '<h3 class="meydan-section-kicker" style="margin:22px 0 6px">مواردی که گزارش می‌شود</h3><div class="meydan-form-grid">';
+        self::toggle('bale_error_reporting', 'گزارش خطاهای پروژه', $bale['error_reporting'], 'کلید اصلی گزارش خطا. با خاموش کردن آن، هیچ خطای PHP یا استثنایی ارسال نمی‌شود.');
+        self::toggle('bale_report_fatals', 'خطاهای مرگبار و استثناها', $bale['report_fatals'], 'خطاهایی که اجرای برنامه را متوقف می‌کنند، همراه با فایل و شماره خط.');
+        self::toggle('bale_report_warnings', 'هشدارها (Warnings)', $bale['report_warnings'], 'هشدارهای PHP. برای پیگیری مشکلات پنهان مفید است ولی حجم پیام را بیشتر می‌کند.');
+        self::toggle('bale_report_notices', 'نوتیس‌ها و Deprecated', $bale['report_notices'], 'معمولاً پرحجم و کم‌اهمیت؛ فقط برای عیب‌یابی موقت روشن کنید.');
+        self::toggle('bale_report_eitaa', 'خطاهای همگام‌سازی ایتا', $bale['report_eitaa'], 'هر خطای سرویس ایتا یا ورود محتوا، همراه با متد، مسیر و کد HTTP.');
+        self::toggle('bale_pending_squares', 'اعلان میدان‌های در انتظار تأیید', $bale['pending_squares'], 'لینک میدان همراه دو دکمه «تأیید» و «لغو» به چت ارسال می‌شود.');
+        self::toggle('bale_include_site_label', 'درج نام سایت در پیام‌ها', $bale['include_site_label'], 'برای وقتی چند محیط (تست/اصلی) به یک چت گزارش می‌دهند، مفید است.');
+        echo '</div>';
+
+        // --- Flood control --------------------------------------------------
+        echo '<h3 class="meydan-section-kicker" style="margin:22px 0 6px">کنترل حجم پیام</h3><div class="meydan-form-grid">';
+        self::text('bale_rate_limit', 'حداکثر پیام در دقیقه', (string) $bale['rate_limit'], 'سقف ارسال برای جلوگیری از سرریز چت هنگام بروز خطای تکرارشونده. بین ۱ تا ۱۲۰.', 'number');
+        self::text('bale_throttle_window', 'پنجره تکرارنشدن پیام یکسان (ثانیه)', (string) $bale['throttle_window'], 'اگر خطای یکسانی دوباره رخ دهد، تا این مدت دوباره ارسال نمی‌شود. بین ۳۰ تا ۳۶۰۰ ثانیه.', 'number');
+        echo '</div>';
+
+        // --- Webhook --------------------------------------------------------
+        echo '<h3 class="meydan-section-kicker" style="margin:22px 0 6px">وبهوک دکمه‌های تأیید</h3>';
+        self::text('bale_webhook_secret', 'کلید امنیتی وبهوک', $bale['webhook_secret'], 'بله این کلید را در هر درخواست برمی‌گرداند تا درخواست‌های جعلی رد شوند. اگر خالی باشد هنگام اولین استفاده ساخته می‌شود.', 'text');
+        echo '<p class="meydan-help">با تغییر این کلید، باید وبهوک را دوباره ثبت کنید؛ دکمه «تولید کلید امنیتی جدید» خودش این کار را انجام می‌دهد.</p>';
+        echo '<p class="meydan-help"><strong>نکته امنیتی:</strong> برای کار کردن دکمه‌های تأیید و لغو، بله باید بتواند به این سایت درخواست بدهد؛ پس آدرس وبهوک باید روی دامنه عمومی و با HTTPS باشد. روی محیط local این قابلیت کار نمی‌کند (بقیه اعلان‌ها کار می‌کنند).</p>';
+        echo '<div class="meydan-sms-test"><div><strong>مدیریت وبهوک و تست اتصال</strong><p>ابتدا تنظیمات را ذخیره کنید، سپس یکی از دکمه‌های زیر را بزنید.</p><div class="meydan-sms-test-form"><button type="submit" name="meydan_admin_action" value="bale_test" class="button button-secondary">ثبت وبهوک و ارسال پیام تست</button><button type="submit" name="meydan_admin_action" value="bale_webhook_info" class="button">مشاهده وضعیت وبهوک</button><button type="submit" name="meydan_admin_action" value="bale_webhook_remove" class="button button-link-delete">حذف وبهوک</button><button type="submit" name="meydan_admin_action" value="bale_rotate_secret" class="button">تولید کلید امنیتی جدید</button></div></div>';
+        if ($configured) {
+            echo '<p class="meydan-help">آدرس وبهوک این سایت: <code>' . esc_html(self::webhookUrl()) . '</code></p>';
+        } else {
+            echo '<p class="meydan-help">آدرس وبهوک این سایت (پس از تکمیل توکن و شناسه چت فعال می‌شود): <code>' . esc_html(self::webhookUrl()) . '</code></p>';
+        }
+        echo '</section>';
+    }
+
+    public static function webhookUrl(): string
+    {
+        return rest_url('meydan/v1/integrations/bale/webhook');
+    }
+
+    /** Eitaa sync connection, editable here instead of only via constants. */
+    private static function renderEitaa(): void
+    {
+        $secret = (string) get_option('meydan_eitaa_sync_secret', '');
+        $serviceUrl = (string) get_option('meydan_eitaa_service_url', '');
+        if ($serviceUrl === '') {
+            $serviceUrl = defined('EITAA_SERVICE_URL') ? (string) constant('EITAA_SERVICE_URL') : (string) getenv('EITAA_SERVICE_URL');
+        }
+        $secretSet = $secret !== '' || trim((string) \Meydan\Core\Integrations\Eitaa\Auth::secret()) !== '';
+
+        echo '<section class="meydan-panel"><div class="meydan-panel-heading"><div><span class="meydan-section-kicker">همگام‌سازی ایتا</span><h2>اتصال سرویس ایتا</h2><p>کلید مشترک بین این سایت و سرویس EitaaUserBot. این مقدار باید در هر دو طرف یکی باشد؛ در غیر این صورت درخواست‌های همگام‌سازی با خطای امضا رد می‌شوند.</p></div><span class="meydan-status-dot">' . ($secretSet ? 'تنظیم شده' : 'تنظیم نشده') . '</span></div><div class="meydan-form-grid">';
+        self::text('eitaa_service_url', 'آدرس سرویس ایتا', $serviceUrl, 'آدرس داخلی سرویس EitaaUserBot، مثلاً http://eitaa-api:3000.', 'url');
+        self::secret('eitaa_sync_secret', 'کلید همگام‌سازی (Sync Secret)', \Meydan\Core\Integrations\Eitaa\Auth::secret() !== '', 'باید با کلید سرویس EitaaUserBot یکسان باشد. برای حفظ مقدار فعلی خالی بگذارید.');
+        self::toggle('eitaa_clear_secret', 'پاک‌سازی کلید ذخیره‌شده', false, 'برای حذف کلید فعلی؛ بعد از ذخیره خودش خاموش می‌شود.');
+        echo '</div><p class="meydan-help">اگر این دو فیلد خالی بمانند، مقادیر <code>MEYDAN_EITAA_SYNC_SECRET</code> و <code>EITAA_SERVICE_URL</code> از تنظیمات محیطی خوانده می‌شوند. نقاط ورود همگام‌سازی زیر مسیر <code>/wp-json/meydan/v1/integrations/eitaa/</code> هستند.</p></section>';
     }
 
     private static function text(string $name, string $label, string $value, string $help, string $type): void

@@ -462,7 +462,69 @@ JS
   if($action==='geo_import'&&current_user_can('manage_options')){$ok=GeoManager::importFromApi();wp_safe_redirect(add_query_arg(['page'=>'meydan-geo','meydan_geo_import'=>$ok?'success':'error'],admin_url('admin.php')));exit;}
   if($action==='settings_save'&&current_user_can('manage_options')){SettingsPage::save();return;}
   if($action==='sms_test'&&current_user_can('manage_options')){$phone=OtpService::normalizePhone((string)wp_unslash($_POST['sms_test_phone']??''));if($phone===''){add_settings_error('meydan','sms_test_invalid_phone','شماره گیرنده تست معتبر نیست.','error');return;}try{$result=(new SmsProvider())->sendTest($phone,(string)random_int(100000,999999));if(is_wp_error($result)){add_settings_error('meydan','sms_test_failed','ارسال پیامک تست ناموفق بود: '.sanitize_text_field($result->get_error_message()),'error');}else{AuditLogger::log('sms_test_sent','sms',null,null,['recipient_hash'=>wp_hash($phone)]);add_settings_error('meydan','sms_test_sent','ایران‌پیامک ارسال آزمایشی را با موفقیت پذیرفت.','updated');}}catch(\Throwable $e){add_settings_error('meydan','sms_test_failed','ارسال پیامک تست ناموفق بود.','error');}return;}
-  if($action==='square_status'&&current_user_can('verify_meydan_squares')){$id=(int)$_POST['id'];$status=sanitize_key(wp_unslash($_POST['status']));$before=Serializer::square($id);update_post_meta($id,'meydan_approval_status',$status);update_post_meta($id,'meydan_admin_note',sanitize_textarea_field(wp_unslash($_POST['admin_note']??'')));if($status==='approved'){update_post_meta($id,'meydan_verified',1);wp_update_post(['ID'=>$id,'post_status'=>'publish']);}elseif($status==='rejected'){update_post_meta($id,'meydan_verified',0);wp_update_post(['ID'=>$id,'post_status'=>'pending']);}elseif($status==='suspended'){update_post_meta($id,'meydan_verified',0);wp_update_post(['ID'=>$id,'post_status'=>'draft']);}AuditLogger::log('square_'.$status,'square',$id,$before,Serializer::square($id));$owner=(int)get_post_meta($id,'meydan_owner_user_id',true);if($owner&&(in_array($status,['approved','rejected'],true)))(new NotificationService())->fromTemplate($owner,$status==='approved'?'square_verified':'square_rejected',null,null,'square',$id,'/profile');}
+  if($action==='bale_test'&&current_user_can('manage_options')){
+   $url=SettingsPage::webhookUrl();
+   $client=new \Meydan\Core\Integrations\Bale\BaleClient();
+   $me=$client->getMe();
+   if(is_wp_error($me)){
+    add_settings_error('meydan','bale_test_failed','اتصال به بله ناموفق بود: '.sanitize_text_field($me->get_error_message()),'error');
+    return;
+   }
+   $secret=\Meydan\Core\Integrations\Bale\Settings::webhookSecret();
+   $hook=$client->setWebhook($url,$secret);
+   if(is_wp_error($hook)){
+    add_settings_error('meydan','bale_webhook_failed','ثبت وب‌هوک ناموفق بود: '.sanitize_text_field($hook->get_error_message()),'error');
+    return;
+   }
+   $alert=\Meydan\Core\Integrations\Bale\ErrorReporter::testAlert();
+   if(is_wp_error($alert)){
+    add_settings_error('meydan','bale_alert_failed','ارسال پیام تست ناموفق بود: '.sanitize_text_field($alert->get_error_message()),'error');
+    return;
+   }
+   AuditLogger::log('bale_test_ok','settings',null,null,['bot'=>$me['username']??null,'webhook'=>$url]);
+   add_settings_error('meydan','bale_test_ok','اتصال بله برقرار شد، وب‌هوک ثبت شد و پیام تست ارسال گردید.','updated');
+   return;
+  }
+  if($action==='bale_webhook_info'&&current_user_can('manage_options')){
+   $info=(new \Meydan\Core\Integrations\Bale\BaleClient())->getWebhookInfo();
+   if(is_wp_error($info)){
+    add_settings_error('meydan','bale_info_failed','دریافت وضعیت وب‌هوک ناموفق بود: '.sanitize_text_field($info->get_error_message()),'error');
+    return;
+   }
+   $url=(string)($info['url']??'');
+   $expected=SettingsPage::webhookUrl();
+   $pending=(int)($info['pending_update_count']??0);
+   $lastError=(string)($info['last_error_message']??'');
+   $parts=['آدرس ثبت‌شده: '.($url!==''?$url:'(خالی — وب‌هوکی ثبت نشده است)'),'تعداد به‌روزرسانی‌های در انتظار: '.$pending];
+   if($lastError!==''){$parts[]='آخرین خطای بله: '.$lastError;}
+   if($url!==''&&$url!==$expected){$parts[]='هشدار: آدرس ثبت‌شده با آدرس این سایت یکسان نیست.';}
+   $type=($url===$expected&&$lastError==='')?'updated':'warning';
+   add_settings_error('meydan','bale_info_ok',implode(' | ',array_map('sanitize_text_field',$parts)),$type);
+   return;
+  }
+  if($action==='bale_webhook_remove'&&current_user_can('manage_options')){
+   $result=(new \Meydan\Core\Integrations\Bale\BaleClient())->deleteWebhook();
+   if(is_wp_error($result)){
+    add_settings_error('meydan','bale_remove_failed','حذف وب‌هوک ناموفق بود: '.sanitize_text_field($result->get_error_message()),'error');
+   }else{
+    AuditLogger::log('bale_webhook_removed','settings',null,null,null);
+    add_settings_error('meydan','bale_remove_ok','وب‌هوک بله حذف شد. دکمه‌های تأیید تا ثبت دوباره کار نمی‌کنند.','updated');
+   }
+   return;
+  }
+  if($action==='bale_rotate_secret'&&current_user_can('manage_options')){
+   \Meydan\Core\Integrations\Bale\Settings::rotateWebhookSecret();
+   // Bale must be told the new secret, otherwise every callback fails auth.
+   $hook=(new \Meydan\Core\Integrations\Bale\BaleClient())->setWebhook(SettingsPage::webhookUrl(),\Meydan\Core\Integrations\Bale\Settings::webhookSecret());
+   AuditLogger::log('bale_webhook_secret_rotated','settings',null,null,null);
+   if(is_wp_error($hook)){
+    add_settings_error('meydan','bale_rotate_warn','کلید امنیتی جدید ساخته شد اما ثبت دوباره وب‌هوک ناموفق بود: '.sanitize_text_field($hook->get_error_message()).' — دکمه «ثبت وب‌هوک» را بزنید.','error');
+   }else{
+    add_settings_error('meydan','bale_rotate_ok','کلید امنیتی وب‌هوک نو شد و وب‌هوک با کلید جدید ثبت گردید.','updated');
+   }
+   return;
+  }
+  if($action==='square_status'&&current_user_can('verify_meydan_squares')){$id=(int)$_POST['id'];$status=sanitize_key(wp_unslash($_POST['status']));self::applySquareStatus($id,$status,sanitize_textarea_field(wp_unslash($_POST['admin_note']??'')));}
   if($action==='speaker_promote'&&current_user_can('manage_meydan_speakers')){$uid=(int)($_POST['user_id']??0);$result=SpeakerService::promote($uid);AuditLogger::log('speaker_promoted','speaker',$uid,null,['user_id'=>$uid,'ok'=>!is_wp_error($result)]);wp_safe_redirect(admin_url('admin.php?page=meydan-speakers'));exit;}
   if($action==='speaker_demote'&&current_user_can('manage_meydan_speakers')){$uid=(int)($_POST['user_id']??0);$before=Serializer::speaker($uid);$result=SpeakerService::demote($uid);AuditLogger::log('speaker_demoted','speaker',$uid,$before,['user_id'=>$uid,'ok'=>!is_wp_error($result)]);wp_safe_redirect(admin_url('admin.php?page=meydan-speakers'));exit;}
   if($action==='speaker_invitation_status'&&current_user_can('manage_meydan_speakers')){
@@ -491,6 +553,28 @@ JS
   if($action==='settings_save'&&current_user_can('manage_options')){foreach(['feature_flags','quick_actions','ranking','timeline','trends','notification_templates','api_settings'] as $key){$field='meydan_'.$key.'_json';if(isset($_POST[$field])){$v=json_decode(wp_unslash($_POST[$field]),true);if(is_array($v))update_option('meydan_'.$key,$v,false);}}AuditLogger::log('settings_updated','settings',null,null,['keys'=>array_keys($_POST)]);}
   if($action==='stats_correct'&&current_user_can('manage_meydan_stats')){$type=sanitize_key(wp_unslash($_POST['entity_type']));$id=(int)$_POST['entity_id'];$values=[];foreach(['views','likes','comments','reposts','shares','downloads','bookmarks'] as $k)if(isset($_POST[$k])&&$_POST[$k]!=='')$values[$k]=max(0,(int)$_POST[$k]);$before=$type==='content'?Stats::content($id):Stats::narrative($id);Stats::correct($type,$id,$values);AuditLogger::log('stats_adjusted',$type,$id,$before,$values);}
   wp_safe_redirect(wp_get_referer()?:admin_url('admin.php?page=meydan'));exit;
+ }
+ /**
+  * Single source of truth for a square approval decision.
+  *
+  * Both the wp-admin approvals screen and the Bale inline buttons call this, so
+  * the two entry points cannot drift apart. Note this performs no capability
+  * check: callers are responsible for authorizing (wp-admin checks
+  * verify_meydan_squares, the Bale webhook checks its signed callback payload).
+  */
+ public static function applySquareStatus(int $id,string $status,string $adminNote=''):void
+ {
+  if(get_post_type($id)!=='meydan_square'){return;}
+  if(!in_array($status,['approved','rejected','suspended','pending_verification'],true)){return;}
+  $before=Serializer::square($id);
+  update_post_meta($id,'meydan_approval_status',$status);
+  if($adminNote!==''){update_post_meta($id,'meydan_admin_note',$adminNote);}
+  if($status==='approved'){update_post_meta($id,'meydan_verified',1);wp_update_post(['ID'=>$id,'post_status'=>'publish']);}
+  elseif($status==='rejected'){update_post_meta($id,'meydan_verified',0);wp_update_post(['ID'=>$id,'post_status'=>'pending']);}
+  elseif($status==='suspended'){update_post_meta($id,'meydan_verified',0);wp_update_post(['ID'=>$id,'post_status'=>'draft']);}
+  AuditLogger::log('square_'.$status,'square',$id,$before,Serializer::square($id));
+  $owner=(int)get_post_meta($id,'meydan_owner_user_id',true);
+  if($owner&&(in_array($status,['approved','rejected'],true)))(new NotificationService())->fromTemplate($owner,$status==='approved'?'square_verified':'square_rejected',null,null,'square',$id,'/profile');
  }
  public function squareApprovals():void{global $wpdb;$q=new \WP_Query(['post_type'=>'meydan_square','post_status'=>['pending','publish','draft'],'posts_per_page'=>100,'meta_key'=>'meydan_approval_status','orderby'=>'date','order'=>'DESC']);echo '<div class="wrap"><h1>درخواست‌های تأیید میدان</h1><table class="widefat striped"><thead><tr><th>ID</th><th>نام</th><th>وضعیت</th><th>موقعیت</th><th>عملیات</th></tr></thead><tbody>';foreach($q->posts as $p){$s=Serializer::square($p);$g=$s['location']??[];echo '<tr><td>'.$p->ID.'</td><td><a href="'.esc_url(get_edit_post_link($p->ID)).'">'.esc_html($p->post_title).'</a></td><td>'.esc_html($s['approval_status']).'</td><td>'.esc_html(($g['address']??'').' '.($g['latitude']??'').' '.($g['longitude']??'')).'</td><td><form method="post">';wp_nonce_field('meydan_admin_action');echo '<input type="hidden" name="meydan_admin_action" value="square_status"><input type="hidden" name="id" value="'.$p->ID.'"><select name="status"><option value="approved">Approve</option><option value="rejected">Reject</option><option value="suspended">Suspend</option><option value="pending_verification">Restore pending</option></select><input name="admin_note" placeholder="Admin note"><button class="button">اعمال</button></form></td></tr>';}echo '</tbody></table></div>';}
  public function map():void{global $wpdb;$rows=$wpdb->get_results("SELECT g.*,p.post_title FROM {$wpdb->prefix}meydan_square_geo g JOIN {$wpdb->posts} p ON p.ID=g.square_id WHERE p.post_type='meydan_square'",ARRAY_A);echo '<div class="wrap"><h1>نقشه میدان‌ها</h1><div id="meydan-admin-map" style="height:70vh"></div><script>window.MEYDAN_MAP_POINTS='.wp_json_encode($rows).';</script></div>';}

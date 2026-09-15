@@ -20,6 +20,8 @@ jobs:
         run: python3 tests/check-speaker-role.py
       - name: Eitaa integration contract
         run: python3 tests/check-eitaa-integration.py
+      - name: Bale bot integration contract
+        run: python3 tests/check-bale-integration.py
   docker-smoke:
     runs-on: ubuntu-latest
     needs: lint-and-inventory
