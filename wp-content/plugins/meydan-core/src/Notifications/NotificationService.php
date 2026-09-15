@@ -37,7 +37,7 @@ final class NotificationService
         'content_published' => ['title' => 'محتوای جدید', 'body' => 'محتوای جدیدی منتشر شد.'],
     ];
 
-    /** @return array{title: string, body: string} */
+    /** @return array{title: string, body: string, icon_media_id: int} */
     public static function template(string $type): array
     {
         $overrides = (array) get_option('meydan_notification_templates', []);
@@ -48,7 +48,31 @@ final class NotificationService
         return [
             'title' => (string) ($custom['title'] ?? $base['title'] ?? 'اعلان میدان'),
             'body' => (string) ($custom['body'] ?? $base['body'] ?? 'رویداد جدیدی در میدان ثبت شد.'),
+            'icon_media_id' => max(0, (int) ($custom['icon_media_id'] ?? 0)),
         ];
+    }
+
+    public static function iconUrl(string $type, ?string $actorType = null, ?int $actorId = null): ?string
+    {
+        if ($actorType && $actorId) {
+            $actor = Actor::parse($actorType, $actorId);
+            $avatar = trim((string) ($actor['avatar_url'] ?? ''));
+            if ($avatar !== '') {
+                return $avatar;
+            }
+        }
+
+        $template = self::template($type);
+        $mediaId = (int) ($template['icon_media_id'] ?? 0);
+        if ($mediaId <= 0) {
+            return null;
+        }
+
+        $url = wp_get_attachment_image_url($mediaId, 'thumbnail');
+        if (!$url) {
+            $url = wp_get_attachment_url($mediaId);
+        }
+        return $url ? (string) $url : null;
     }
 
     public function create(
@@ -131,6 +155,7 @@ final class NotificationService
                 'type' => sanitize_key($type),
                 'title' => sanitize_text_field($title),
                 'body' => sanitize_textarea_field($body),
+                'icon_url' => self::iconUrl($type, $actorType, $actorId),
                 'deep_link' => $deepLink ? esc_url_raw($deepLink) : null,
                 'created_at' => gmdate('c'),
                 'read_at' => null,
