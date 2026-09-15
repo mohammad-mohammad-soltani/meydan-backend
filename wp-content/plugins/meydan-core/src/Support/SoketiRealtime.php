@@ -29,10 +29,6 @@ final class SoketiRealtime
     private const SCHEME = 'https';
     private const SOCKET_PATH = '';
 
-    /**
-     * Public configuration safe to return to authenticated browser clients.
-     * APP_SECRET is intentionally never exposed.
-     */
     public static function publicConfig(): array
     {
         $socketUrl = sprintf(
@@ -99,18 +95,13 @@ final class SoketiRealtime
 
     public static function publishToUser(int $userId, string $event, array $payload): void
     {
-        if ($userId <= 0) {
-            return;
-        }
-
+        if ($userId <= 0) return;
         self::publish(['private-user-' . $userId], $event, $payload);
     }
 
     public static function publishToConversation(int $conversationId, string $event, array $payload): void
     {
-        if ($conversationId <= 0) {
-            return;
-        }
+        if ($conversationId <= 0) return;
 
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_chat_participants';
@@ -122,9 +113,7 @@ final class SoketiRealtime
             )) ?: []
         ))));
 
-        if (!$userIds) {
-            return;
-        }
+        if (!$userIds) return;
 
         self::publish(
             array_map(static fn(int $id): string => 'private-user-' . $id, $userIds),
@@ -133,19 +122,11 @@ final class SoketiRealtime
         );
     }
 
-    /**
-     * Publish an event through Soketi's Pusher-compatible HTTP API.
-     *
-     * @param string[] $channels
-     */
     public static function publish(array $channels, string $event, array $payload): void
     {
         $channels = array_values(array_unique(array_filter(array_map('strval', $channels))));
         $event = trim($event);
-
-        if (!$channels || $event === '') {
-            return;
-        }
+        if (!$channels || $event === '') return;
 
         $body = (string) wp_json_encode([
             'name' => $event,
@@ -168,18 +149,12 @@ final class SoketiRealtime
         ksort($params);
 
         $query = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
-        $signature = hash_hmac(
-            'sha256',
-            "POST\n{$canonicalPath}\n{$query}",
-            self::APP_SECRET
-        );
-
-        $publicPath = self::SOCKET_PATH . $canonicalPath;
+        $signature = hash_hmac('sha256', "POST\n{$canonicalPath}\n{$query}", self::APP_SECRET);
         $url = sprintf(
             '%s://%s%s?%s&auth_signature=%s',
             self::SCHEME,
             self::HOST,
-            $publicPath,
+            $canonicalPath,
             $query,
             rawurlencode($signature)
         );
