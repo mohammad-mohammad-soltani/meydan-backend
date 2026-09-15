@@ -39,6 +39,8 @@ jobs:
         run: docker compose up -d db wordpress
       - name: Install WordPress and plugin
         run: docker compose run --rm wpcli
+      - name: Root JSON response
+        run: bash tests/check-root-http.sh
       - name: Smoke test API
         run: tests/smoke.sh
       - name: Logs on failure
