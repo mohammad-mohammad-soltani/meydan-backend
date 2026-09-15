@@ -6,7 +6,7 @@ namespace Meydan\Core\Integrations\Eitaa;
 
 final class Migrations
 {
-    private const VERSION = '1.0.0';
+    private const VERSION = '1.1.0';
     private const OPTION = 'meydan_eitaa_db_version';
 
     public static function maybeRun(): void
@@ -53,6 +53,51 @@ final class Migrations
             KEY last_success_at (last_success_at)
         ) {$charset};");
 
+        self::repairImportedLineBreaks();
         update_option(self::OPTION, self::VERSION, false);
+    }
+
+    /**
+     * Repairs HTML produced by the old Eitaa renderer.
+     *
+     * nl2br(false) inserted <br> but kept the source newline, so the stored
+     * value contained pairs such as "<br>\n". The frontend converts <br> back
+     * to a newline, which made every source line break appear twice. Restrict
+     * this one-time repair to narratives explicitly marked as Eitaa imports.
+     */
+    private static function repairImportedLineBreaks(): void
+    {
+        global $wpdb;
+
+        $posts = $wpdb->posts;
+        $meta = $wpdb->postmeta;
+
+        $wpdb->query(
+            "UPDATE {$posts} AS p
+             INNER JOIN {$meta} AS pm
+                ON pm.post_id = p.ID
+               AND pm.meta_key = 'meydan_import_source'
+               AND pm.meta_value = 'eitaa'
+             SET p.post_content =
+                 REPLACE(
+                   REPLACE(
+                     REPLACE(
+                       REPLACE(
+                         REPLACE(
+                           REPLACE(p.post_content,
+                             CONCAT('<br>', CHAR(13), CHAR(10)), '<br>'),
+                           CONCAT('<br>', CHAR(10)), '<br>'),
+                         CONCAT('<br>', CHAR(13)), '<br>'),
+                       CONCAT('<br />', CHAR(13), CHAR(10)), '<br />'),
+                     CONCAT('<br />', CHAR(10)), '<br />'),
+                   CONCAT('<br />', CHAR(13)), '<br />')
+             WHERE p.post_type = 'meydan_narrative'
+               AND (
+                    p.post_content LIKE CONCAT('%<br>', CHAR(10), '%')
+                 OR p.post_content LIKE CONCAT('%<br>', CHAR(13), '%')
+                 OR p.post_content LIKE CONCAT('%<br />', CHAR(10), '%')
+                 OR p.post_content LIKE CONCAT('%<br />', CHAR(13), '%')
+               )"
+        );
     }
 }
