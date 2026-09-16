@@ -319,12 +319,42 @@ final class ChunkedUploadService
     private function cleanup(string $id): void
     {
         $dir = $this->dir($id);
-        foreach (glob($dir . '/*') ?: [] as $file) {
-            if (is_file($file)) {
-                @unlink($file);
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        // A failed/retried upload may leave nested temporary entries. Remove
+        // them recursively, then remove the directory only when it is empty;
+        // this avoids noisy PHP warnings when cleanup races another request.
+        $entries = array_merge(glob($dir . '/*') ?: [], glob($dir . '/.?*') ?: []);
+        foreach ($entries as $entry) {
+            $base = basename($entry);
+            if ($base === '.' || $base === '..') {
+                continue;
+            }
+            if (is_dir($entry)) {
+                $this->removeDirectory($entry);
+            } else {
+                @unlink($entry);
             }
         }
-        @rmdir($dir);
+        if (is_dir($dir) && !glob($dir . '/*') && !glob($dir . '/.?*')) {
+            @rmdir($dir);
+        }
+    }
+
+    private function removeDirectory(string $dir): void
+    {
+        foreach (array_merge(glob($dir . '/*') ?: [], glob($dir . '/.?*') ?: []) as $entry) {
+            $base = basename($entry);
+            if ($base === '.' || $base === '..') {
+                continue;
+            }
+            is_dir($entry) ? $this->removeDirectory($entry) : @unlink($entry);
+        }
+        if (is_dir($dir) && !glob($dir . '/*') && !glob($dir . '/.?*')) {
+            @rmdir($dir);
+        }
     }
 
     private function kind(string $mime): string
