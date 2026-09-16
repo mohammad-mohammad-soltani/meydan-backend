@@ -21,7 +21,7 @@ final class Admin
  public static function instance():self{return self::$instance??=new self();}
  public function register():void
  {
-  add_action('admin_menu',[$this,'menus']);add_action('add_meta_boxes',[$this,'metaBoxes']);add_action('save_post',[$this,'saveMeta'],10,2);add_action('admin_init',[$this,'actions']);
+  add_action('admin_menu',[$this,'menus']);add_action('add_meta_boxes',[$this,'metaBoxes']);add_action('save_post',[$this,'saveMeta'],10,2);add_action('save_post_meydan_square',[$this,'saveSquareChannels'],20,2);add_action('admin_init',[$this,'actions']);
   add_action('show_user_profile',[$this,'userFields']);add_action('edit_user_profile',[$this,'userFields']);add_action('personal_options_update',[$this,'saveUser']);add_action('edit_user_profile_update',[$this,'saveUser']);add_action('set_user_role',[$this,'syncAccountTypeForRole'],10,2);add_action('admin_enqueue_scripts',[$this,'assets']);add_action('admin_enqueue_scripts',[$this,'avatarAssets']);add_action('admin_enqueue_scripts',[$this,'contentAssets']);add_action('admin_enqueue_scripts',[$this,'creatorAssets']);add_action('admin_enqueue_scripts',[$this,'outletAssets']);add_action('admin_enqueue_scripts',[$this,'reflectionAssets']);add_action('admin_head',[$this,'styles']);
  }
  public function menus():void
@@ -173,6 +173,12 @@ final class Admin
   }
  public function initiativeBox(\WP_Post $p):void{$this->nonce();$this->input('meydan_cta_label','CTA',(string)get_post_meta($p->ID,'meydan_cta_label',true));$this->input('meydan_starts_at','Starts At',(string)get_post_meta($p->ID,'meydan_starts_at',true),'datetime-local');$this->input('meydan_ends_at','Ends At',(string)get_post_meta($p->ID,'meydan_ends_at',true),'datetime-local');$this->select('meydan_status','Status',(string)get_post_meta($p->ID,'meydan_status',true)?:'active',['draft'=>'Draft','active'=>'Active','ended'=>'Ended','disabled'=>'Disabled']);$this->check('meydan_allow_guest_join','Allow Guest Join',(bool)get_post_meta($p->ID,'meydan_allow_guest_join',true));global $wpdb;$count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}meydan_initiative_members WHERE initiative_id=%d AND status='active'",$p->ID));echo '<p><b>Participants:</b> '.esc_html((string)$count).'</p>';}
  public function campaignBox(\WP_Post $p):void{$this->nonce();$this->input('meydan_starts_at','Starts At',(string)get_post_meta($p->ID,'meydan_starts_at',true),'datetime-local');$this->input('meydan_ends_at','Ends At',(string)get_post_meta($p->ID,'meydan_ends_at',true),'datetime-local');$this->check('meydan_current','Current',(bool)get_post_meta($p->ID,'meydan_current',true));$this->input('meydan_order','Order',(string)get_post_meta($p->ID,'meydan_order',true),'number');$this->textarea('meydan_labels_json','Labels JSON',wp_json_encode((array)get_post_meta($p->ID,'meydan_labels',true),JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));$this->textarea('meydan_linked_content_json','Linked Content IDs JSON',wp_json_encode((array)get_post_meta($p->ID,'meydan_linked_content',true)));$this->textarea('meydan_schedule_json','Schedule JSON',wp_json_encode((array)get_post_meta($p->ID,'meydan_schedule',true),JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));}
+ public function saveSquareChannels(int $id,\WP_Post $post):void
+ {
+  if (wp_is_post_autosave($id) || wp_is_post_revision($id) || !current_user_can('edit_post',$id)) return;
+  $owner=(int)get_post_meta($id,'meydan_owner_user_id',true);
+  if ($owner>0 && Channels::nonceIsValid($owner)) Channels::save($owner);
+ }
  public function saveMeta(int $id,\WP_Post $post):void
  {
   if(!isset($_POST['meydan_meta_nonce'])||!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['meydan_meta_nonce'])),'meydan_save_meta')||wp_is_post_autosave($id)||wp_is_post_revision($id))return;if(!current_user_can('edit_post',$id))return;$before=['meta'=>get_post_meta($id)];
