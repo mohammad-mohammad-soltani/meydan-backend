@@ -15,6 +15,64 @@ use WP_REST_Request;
 
 final class NarrativeController extends BaseController
 {
+    public function editorial(WP_REST_Request $r)
+    {
+        $limit = min(50, max(1, (int) ($r->get_param('limit') ?: 20)));
+        $page = max(1, (int) ($r->get_param('page') ?: 1));
+        $query = new \WP_Query([
+            'post_type' => 'meydan_narrative',
+            'post_status' => 'publish',
+            'posts_per_page' => $limit,
+            'paged' => $page,
+            'meta_key' => 'meydan_editorial',
+            'meta_value' => '1',
+            'orderby' => 'date',
+            'order' => 'DESC',
+        ]);
+
+        return Response::ok([
+            'items' => array_values(array_filter(array_map(
+                static fn($post) => Serializer::narrative($post),
+                $query->posts,
+            ))),
+            'page' => $page,
+            'per_page' => $limit,
+            'total' => (int) $query->found_posts,
+            'total_pages' => (int) $query->max_num_pages,
+        ]);
+    }
+
+    public function markEditorial(WP_REST_Request $r)
+    {
+        return $this->setEditorial((int) $r['id'], true);
+    }
+
+    public function unmarkEditorial(WP_REST_Request $r)
+    {
+        return $this->setEditorial((int) $r['id'], false);
+    }
+
+    private function setEditorial(int $id, bool $editorial)
+    {
+        $post = get_post($id);
+        if (!$post || $post->post_type !== 'meydan_narrative') {
+            return Response::error('not_found', 'روایت پیدا نشد.', 404);
+        }
+
+        $before = (bool) get_post_meta($id, 'meydan_editorial', true);
+        if ($editorial) {
+            update_post_meta($id, 'meydan_editorial', 1);
+        } else {
+            delete_post_meta($id, 'meydan_editorial');
+        }
+        AuditLogger::log('narrative_editorial_updated', 'narrative', $id, ['editorial' => $before], ['editorial' => $editorial]);
+
+        return Response::ok([
+            'id' => $id,
+            'editorial' => $editorial,
+        ]);
+    }
+
     public function get(WP_REST_Request $r){$data=Serializer::narrative((int)$r['id']);return $data?Response::cache(Response::ok($data),'public, max-age=30, stale-while-revalidate=120'):Response::error('not_found','روایت پیدا نشد.',404);}
     public function create(WP_REST_Request $r){if(!is_user_logged_in())return Response::error('unauthenticated','برای انتشار روایت باید وارد شوید.',401);$p=$this->json($r);$body=trim((string)($p['body']??''));$attachments=$this->attachments((array)($p['attachments']??[]));if($body===''&&!$attachments)return Response::error('validation_failed','متن یا حداقل یک ضمیمه الزامی است.',422);if(!$this->publishRate())return Response::error('rate_limited','تعداد انتشارها بیش از حد مجاز است.',429);$poll=$this->poll((array)($p['poll']??[]));if(is_wp_error($poll))return $this->error($poll);$scheduled=isset($p['scheduled_at'])?strtotime((string)$p['scheduled_at']):false;$uid=get_current_user_id();$type=Actor::actorType($uid);$actorId=$type==='square'?(int)get_user_meta($uid,'meydan_square_id',true):$uid;$post=['post_type'=>'meydan_narrative','post_status'=>$scheduled&&$scheduled>time()?'future':'publish','post_content'=>wp_kses_post($body),'post_author'=>$uid];if($scheduled&&$scheduled>time()){$post['post_date_gmt']=gmdate('Y-m-d H:i:s',$scheduled);$post['post_date']=get_date_from_gmt($post['post_date_gmt']);}$id=wp_insert_post($post,true);if(is_wp_error($id))return $this->error($id);update_post_meta($id,'meydan_author_actor_type',$type);update_post_meta($id,'meydan_author_actor_id',$actorId);update_post_meta($id,'meydan_attachments',$attachments);update_post_meta($id,'meydan_initiative_id',(int)($p['initiative_id']??0));update_post_meta($id,'meydan_is_echo',(int)!empty($p['is_echo']));if($poll)update_post_meta($id,'meydan_poll',$poll);if(isset($p['location']['province_id']))update_post_meta($id,'meydan_province_id',(int)$p['location']['province_id']);if(isset($p['location']['city_id']))update_post_meta($id,'meydan_city_id',(int)$p['location']['city_id']);if(isset($p['tags']))wp_set_post_terms($id,array_values(array_filter(array_map('sanitize_text_field',(array)$p['tags']))),'meydan_narrative_tag');Stats::incrementNarrative($id,'views',0);AuditLogger::log('narrative_created','narrative',$id,null,['author'=>$type.':'.$actorId,'scheduled_at'=>$scheduled?:null]);return Response::ok(Serializer::narrative($id),[],201);}
     public function update(WP_REST_Request $r){$id=(int)$r['id'];$post=get_post($id);if(!$post||$post->post_type!=='meydan_narrative')return Response::error('not_found','روایت پیدا نشد.',404);if(!$this->canManage($id))return Response::error('forbidden','اجازه ویرایش این روایت را ندارید.',403);$before=Serializer::narrative($id);$p=$this->json($r);if(array_key_exists('body',$p))wp_update_post(['ID'=>$id,'post_content'=>wp_kses_post((string)$p['body'])]);if(isset($p['attachments']))update_post_meta($id,'meydan_attachments',$this->attachments((array)$p['attachments']));if(isset($p['tags']))wp_set_post_terms($id,array_values(array_filter(array_map('sanitize_text_field',(array)$p['tags']))),'meydan_narrative_tag');if(array_key_exists('initiative_id',$p))update_post_meta($id,'meydan_initiative_id',(int)$p['initiative_id']);if(array_key_exists('is_echo',$p))update_post_meta($id,'meydan_is_echo',(int)$this->bool($p['is_echo']));if(isset($p['location']['province_id']))update_post_meta($id,'meydan_province_id',(int)$p['location']['province_id']);if(isset($p['location']['city_id']))update_post_meta($id,'meydan_city_id',(int)$p['location']['city_id']);AuditLogger::log('narrative_updated','narrative',$id,$before,Serializer::narrative($id));return Response::ok(Serializer::narrative($id));}

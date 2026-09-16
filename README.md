@@ -35,6 +35,10 @@ For local development set `MEYDAN_DEV_OTP_CODE` in `.env`. The code is never sto
 
 The plugin adds a top-level **میدان** menu for dashboard, narratives, content, creators, speakers, squares/verification/map, initiatives, campaigns, speaker invitations, media reflections, comments, notifications, stats, settings, geo data, sessions, and audit logs.
 
+### Editorial narratives
+
+در صفحه ویرایش هر روایت، administrator می‌تواند گزینه «سردبیری» را فعال یا غیرفعال کند. فهرست عمومی روایت‌های سردبیری‌شده از مسیر `GET /wp-json/meydan/v1/editorial/narratives` با پارامترهای اختیاری `page` و `limit` (حداکثر ۵۰) در دسترس است. تغییر وضعیت از طریق `PUT /admin/narratives/{id}/editorial` و حذف آن با `DELETE` روی همان مسیر انجام می‌شود؛ این دو endpoint فقط برای نقش administrator مجاز هستند.
+
 Speakers are **user accounts**, not a separate entity: a speaker is a WordPress user holding the `meydan_speaker` role (account type `speaker`). The «سخنرانان» menu opens the role-filtered users list, and the speaker profile (نمایشی role, expertise, handle, initials, categories, cities, social links, verified badge) is edited on the user edit screen under «پروفایل سخنران». Promoting an existing account is what makes it invitable; there is no public speaker registration.
 
 ### Manual square creation

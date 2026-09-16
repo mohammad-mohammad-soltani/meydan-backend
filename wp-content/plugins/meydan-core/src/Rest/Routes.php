@@ -10,7 +10,7 @@ final class Routes
   self::r('/auth/otp/request','POST',[$auth,'requestOtp']);self::r('/auth/otp/verify','POST',[$auth,'verifyOtp']);self::r('/auth/refresh','POST',[$auth,'refresh']);self::r('/auth/logout','POST',[$auth,'logout']);self::r('/auth/logout-all','POST',[$auth,'logoutAll']);self::r('/auth/register/user','POST',[$auth,'registerUser']);self::r('/auth/register/square','POST',[$auth,'registerSquare']);
   self::r('/me','GET',[$me,'me']);self::r('/me/profile','PATCH',[$me,'patchProfile']);self::r('/me/narratives','GET',[$me,'narratives']);self::r('/me/following','GET',[$me,'following']);self::r('/me/initiatives','GET',[$me,'initiatives']);self::r('/me/bookmarks','GET',[$me,'bookmarks']);self::r('/me/speaker-requests','GET',[$me,'speakerRequests']);self::r('/me/square','PATCH',[$me,'patchSquare']);self::r('/me/square/location','PUT',[$me,'putSquareLocation']);self::r('/me/square/schedule','GET',[$me,'schedule']);self::r('/me/square/schedule','POST',[$me,'createSchedule']);self::r('/me/square/schedule/order','PUT',[$me,'reorderSchedule']);self::r('/me/square/schedule/(?P<id>\d+)','PATCH',[$me,'updateSchedule']);self::r('/me/square/schedule/(?P<id>\d+)','DELETE',[$me,'deleteSchedule']);
   self::r('/users/(?P<id>\d+)','GET',[$actor,'user']);self::r('/users/(?P<id>\d+)/narratives','GET',[$actor,'userNarratives']);
-  self::r('/narratives/(?P<id>\d+)','GET',[$n,'get']);self::r('/narratives','POST',[$n,'create']);self::r('/narratives/(?P<id>\d+)','PATCH',[$n,'update']);self::r('/narratives/(?P<id>\d+)','DELETE',[$n,'delete']);self::r('/narratives/(?P<id>\d+)/like','PUT',[$n,'like']);self::r('/narratives/(?P<id>\d+)/like','DELETE',[$n,'unlike']);self::r('/narratives/(?P<id>\d+)/repost','PUT',[$n,'repost']);self::r('/narratives/(?P<id>\d+)/repost','DELETE',[$n,'unrepost']);self::r('/narratives/(?P<id>\d+)/share','POST',[$n,'share']);
+  self::r('/editorial/narratives','GET',[$n,'editorial']);self::r('/narratives/(?P<id>\d+)','GET',[$n,'get']);self::r('/narratives','POST',[$n,'create']);self::r('/narratives/(?P<id>\d+)','PATCH',[$n,'update']);self::r('/narratives/(?P<id>\d+)','DELETE',[$n,'delete']);self::r('/admin/narratives/(?P<id>\d+)/editorial','PUT',[$n,'markEditorial']);self::r('/admin/narratives/(?P<id>\d+)/editorial','DELETE',[$n,'unmarkEditorial']);self::r('/narratives/(?P<id>\d+)/like','PUT',[$n,'like']);self::r('/narratives/(?P<id>\d+)/like','DELETE',[$n,'unlike']);self::r('/narratives/(?P<id>\d+)/repost','PUT',[$n,'repost']);self::r('/narratives/(?P<id>\d+)/repost','DELETE',[$n,'unrepost']);self::r('/narratives/(?P<id>\d+)/share','POST',[$n,'share']);
   self::r('/narratives/(?P<id>\d+)/comments','GET',[$c,'list']);self::r('/narratives/(?P<id>\d+)/comments','POST',[$c,'create']);self::r('/comments/(?P<id>\d+)/replies','GET',[$c,'replies']);self::r('/comments/(?P<id>\d+)','PATCH',[$c,'update']);self::r('/comments/(?P<id>\d+)','DELETE',[$c,'delete']);
   self::r('/narratives/(?P<id>\d+)/media-reflections','GET',[$mr,'list']);self::r('/admin/narratives/(?P<id>\d+)/media-reflections','POST',[$mr,'create']);self::r('/admin/media-reflections/(?P<id>\d+)','PATCH',[$mr,'update']);self::r('/admin/media-reflections/(?P<id>\d+)','DELETE',[$mr,'delete']);
   self::r('/media-outlets','GET',[$outlet,'list']);self::r('/media-outlets/(?P<id>\d+)','GET',[$outlet,'get']);self::r('/admin/media-outlets','POST',[$outlet,'adminCreate']);self::r('/admin/media-outlets/(?P<id>\d+)','PATCH',[$outlet,'adminUpdate']);self::r('/admin/media-outlets/(?P<id>\d+)','DELETE',[$outlet,'adminDelete']);
@@ -47,8 +47,12 @@ final class Routes
     str_contains($route,'notification') => 'manage_meydan_notifications',
     str_contains($route,'media-outlet') => 'manage_meydan_media_reflections',
     str_contains($route,'reflection') => 'manage_meydan_media_reflections',
+    str_contains($route,'editorial') => 'administrator',
     default => 'manage_options',
    };
+   if ($cap === 'administrator') {
+    return static fn():bool|\WP_Error => self::isAdministrator() ? true : new \WP_Error('forbidden','فقط مدیرکل می‌تواند روایت را سردبیری کند.',['status'=>403]);
+   }
    return static fn():bool|\WP_Error => current_user_can($cap) ? true : new \WP_Error('forbidden','دسترسی کافی ندارید.',['status'=>403]);
   }
   if (str_starts_with($route,'/auth/')) {
@@ -58,7 +62,7 @@ final class Routes
    return static fn():true => true;
   }
   if (str_starts_with($route,'/initiatives/(?P<id>\d+)/join')) return static fn():true => true;
-  $public = ['/timeline','/content','/creators','/speakers','/speaker-categories','/squares','/squares/map','/geo/provinces','/geo/cities','/geo/reverse','/initiatives','/explore/search','/explore/trends','/explore/suggestions','/campaigns','/campaigns/current','/media-outlets','/config'];
+  $public = ['/timeline','/content','/creators','/speakers','/speaker-categories','/squares','/squares/map','/geo/provinces','/geo/cities','/geo/reverse','/initiatives','/explore/search','/explore/trends','/explore/suggestions','/campaigns','/campaigns/current','/media-outlets','/config','/editorial/narratives'];
   $isPublic = in_array($route,$public,true)
    || ($method === 'GET' && (
     str_starts_with($route,'/content/(?P<id>')
@@ -74,5 +78,10 @@ final class Routes
    || str_starts_with($route,'/users/');
   if ($isPublic) return static fn():true => true;
   return static fn():bool|\WP_Error => is_user_logged_in() ? true : new \WP_Error('unauthenticated','برای انجام این عملیات باید وارد شوید.',['status'=>401]);
+ }
+ private static function isAdministrator():bool
+ {
+  $user=wp_get_current_user();
+  return $user instanceof \WP_User && in_array('administrator',(array)$user->roles,true);
  }
 }

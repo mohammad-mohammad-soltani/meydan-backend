@@ -46,6 +46,7 @@ final class Serializer
             'initiative' => $initiativeId ? self::initiative($initiativeId) : null,
             'poll' => get_post_meta($id, 'meydan_poll', true) ?: null,
             'is_echo' => (bool) get_post_meta($id, 'meydan_is_echo', true),
+            'editorial' => (bool) get_post_meta($id, 'meydan_editorial', true),
             'media_reflections' => $reflections,
             'location' => [
                 'province_id' => (int) get_post_meta($id, 'meydan_province_id', true) ?: null,
