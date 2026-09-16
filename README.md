@@ -74,6 +74,58 @@ The Eitaa connection is editable in the same screen: the shared sync secret and 
 
 **Webhook requirements:** Bale must be able to reach this site, so the webhook needs a public HTTPS URL. It does not work on `localhost`, and Bale only allows webhook ports 443 and 88 behind TLS. The endpoint is public by necessity, so it verifies Bale's `X-Telegram-Bot-Api-Secret-Token` header, restricts updates to the configured `chat_id`, and requires a signed callback payload before it changes any square. Alerts other than the approval buttons work without a webhook.
 
+## Video pipeline (faststart, posters, caching)
+
+Uploaded videos are made to stream immediately instead of buffering the tail of
+the file first:
+
+- **Faststart on upload.** When `POST /uploads/{upload_id}/complete` finishes a
+  video, `Meydan\Core\Uploads\VideoProcessor` runs
+  `ffmpeg -c copy -movflags +faststart` (stream copy, no re-encode) so the `moov`
+  atom sits before `mdat`. The temp file atomically replaces the original, so the
+  filename and URL never change. A failure is logged and the upload still
+  succeeds — a slower video beats a failed publish.
+- **Poster + duration.** The same pass extracts a JPEG still around second 1
+  (at most 720 px on the long edge) next to the video as `<name>-poster.jpg`, and
+  probes the real `duration`, `width` and `height` with `ffprobe`. `/timeline`,
+  `/narratives/{id}`, `/content/{id}` and chat messages now return `poster_url`,
+  `thumbnail_url`, `duration`, `width` and `height` on every video attachment.
+- **Immutable caching.** The packaged image sets
+  `Cache-Control: public, max-age=31536000, immutable` for
+  `/wp-content/uploads/**`; the plugin also maintains an equivalent managed block
+  in `wp-content/uploads/.htaccess`, so the rule survives even without an image
+  rebuild. `Accept-Ranges: bytes` and range requests are untouched, and
+  already-compressed media is never gzipped.
+
+`ffmpeg`/`ffprobe` are **not** in the stock `wordpress` image, so compose builds
+two small images around it:
+
+- `docker/wordpress/Dockerfile` — stock Apache image + `ffmpeg` + `a2enmod headers`
+  plus `docker/wordpress/meydan-uploads.conf`.
+- `docker/wpcli/Dockerfile` — stock WP-CLI image + `ffmpeg`, for the one-off pass.
+
+On a plain (non-Docker) host, install `ffmpeg` yourself; the pipeline then
+degrades to a logged no-op and the upload is still accepted.
+
+### One-off pass over existing uploads
+
+Files uploaded before this change still have `moov` at EOF. After deploying:
+
+```bash
+docker compose build wordpress wpcli
+docker compose up -d --remove-orphans db wordpress
+docker compose run --rm --entrypoint wp wpcli meydan video-faststart --dry-run
+docker compose run --rm --entrypoint wp wpcli meydan video-faststart
+```
+
+It walks `/wp-content/uploads/**`, remuxes only files whose `moov` is not inside
+the first 64 KB (temp file + atomic rename), writes missing posters and stores
+duration/dimensions on the matching attachments. `--dry-run` reports without
+touching anything; `--posters-only`, `--limit=<n>` and `--path=<dir>` narrow the
+work. It finishes with the counts, for example
+`15 video file(s): 9 remuxed, 6 already had moov in the first 64 KB, 15 poster(s) generated, 0 error(s).`
+Remuxed files get a new `ETag`/`Last-Modified`, so clients refetch them once.
+
 ## Source specification
 
 The implementation target is preserved in [`SPEC.md`](./SPEC.md).

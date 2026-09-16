@@ -7,6 +7,7 @@ namespace Meydan\Core\Support;
 use Meydan\Core\Domain\CreatorService;
 use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Integrations\Channels\Channels;
+use Meydan\Core\Uploads\VideoProcessor;
 use WP_Comment;
 use WP_Post;
 
@@ -62,19 +63,38 @@ final class Serializer
     {
         $mediaId = (int) ($item['media_id'] ?? $item['id'] ?? 0);
         $url = $mediaId ? (string) wp_get_attachment_url($mediaId) : (string) ($item['url'] ?? '');
-        $path = $mediaId ? get_attached_file($mediaId) : '';
+        $path = $mediaId ? (string) get_attached_file($mediaId) : '';
         $mime = $mediaId ? (string) get_post_mime_type($mediaId) : (string) ($item['mime_type'] ?? '');
-        $metadata = $mediaId ? wp_get_attachment_metadata($mediaId) : [];
+        $metadata = $mediaId ? (array) wp_get_attachment_metadata($mediaId) : [];
+        $type = self::mediaType($mime, $url);
+
+        $width = isset($metadata['width']) ? (int) $metadata['width'] : null;
+        $height = isset($metadata['height']) ? (int) $metadata['height'] : null;
+        $duration = isset($item['duration']) ? (float) $item['duration'] : null;
+        $poster = null;
+
+        // Videos also expose a still frame and their real length so a card never
+        // has to touch the video file to render.
+        if ($type === 'video') {
+            $video = VideoProcessor::describe($mediaId, $url, $path, $metadata, $item);
+            $poster = $video['poster_url'];
+            $duration = $video['duration'];
+            $width = $video['width'];
+            $height = $video['height'];
+        }
+
         return [
             'id' => $mediaId,
-            'type' => self::mediaType($mime, $url),
+            'type' => $type,
             'mime_type' => $mime,
             'filename' => $path ? wp_basename($path) : wp_basename((string) parse_url($url, PHP_URL_PATH)),
             'url' => $url,
+            'poster_url' => $poster,
+            'thumbnail_url' => $poster,
             'size' => ($path && is_file($path)) ? (int) filesize($path) : (int) ($item['size'] ?? 0),
-            'width' => isset($metadata['width']) ? (int) $metadata['width'] : null,
-            'height' => isset($metadata['height']) ? (int) $metadata['height'] : null,
-            'duration' => isset($item['duration']) ? (float) $item['duration'] : null,
+            'width' => $width,
+            'height' => $height,
+            'duration' => $duration,
             'caption' => isset($item['caption']) ? (string) $item['caption'] : null,
             'label' => isset($item['label']) ? (string) $item['label'] : null,
             'order' => (int) ($item['order'] ?? 0),

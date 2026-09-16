@@ -6,3 +6,7 @@ node_modules/
 *.log
 .DS_Store
 
+# local scratch space for test fixtures and tool caches
+.tmp/
+.npm-cache/
+

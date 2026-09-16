@@ -33,6 +33,158 @@ final class CliCommand
         \WP_CLI::success('Meydan fixture import completed.');
     }
 
+    /**
+     * Remux uploaded videos so their metadata sits at the front and generate posters.
+     *
+     * Existing uploads predate the faststart pass, so their `moov` atom is still at
+     * EOF. This scans `/wp-content/uploads/**`, remuxes only the files whose `moov`
+     * is not inside the first 64 KB (temp file + atomic rename) and writes a still
+     * frame plus duration/dimensions for every video attachment.
+     *
+     * ## OPTIONS
+     *
+     * [--dry-run]
+     * : Report what would change without modifying any file.
+     *
+     * [--posters-only]
+     * : Generate missing poster frames without remuxing.
+     *
+     * [--limit=<number>]
+     * : Stop after this many video files.
+     *
+     * [--path=<path>]
+     * : Scan this directory instead of the whole uploads directory.
+     *
+     * ## EXAMPLES
+     *
+     *     wp meydan video-faststart --dry-run
+     *     wp meydan video-faststart
+     *
+     * @subcommand video-faststart
+     * @param array<int,string>    $args
+     * @param array<string,string> $assocArgs
+     */
+    public function video_faststart(array $args, array $assocArgs): void
+    {
+        $processor = \Meydan\Core\Uploads\VideoProcessor::class;
+        if (!$processor::available()) {
+            \WP_CLI::error('ffmpeg is not installed on this host. Rebuild the WordPress image (docker/wordpress/Dockerfile) or install ffmpeg, then run this again.');
+        }
+
+        $uploads = wp_upload_dir();
+        $basedir = (string) $uploads['basedir'];
+        $root = isset($assocArgs['path']) && (string) $assocArgs['path'] !== ''
+            ? (string) $assocArgs['path']
+            : $basedir;
+        if (!is_dir($root)) {
+            \WP_CLI::error('Uploads directory not found: ' . $root);
+        }
+
+        $dryRun = isset($assocArgs['dry-run']);
+        $postersOnly = isset($assocArgs['posters-only']);
+        $limit = max(0, (int) ($assocArgs['limit'] ?? 0));
+        $index = self::attachmentIndex($basedir);
+
+        \WP_CLI::log(sprintf(
+            '%s uploads under %s (ffmpeg: %s)',
+            $dryRun ? 'Scanning' : 'Processing',
+            $root,
+            (string) ($processor::binaries()['ffmpeg'] ?? 'missing')
+        ));
+
+        $scanned = 0;
+        $remuxed = 0;
+        $already = 0;
+        $posters = 0;
+        $errors = 0;
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            if (!$file instanceof \SplFileInfo || !$file->isFile()) {
+                continue;
+            }
+            $path = $file->getPathname();
+            if (!$processor::isVideoPath($path)) {
+                continue;
+            }
+            if ($limit > 0 && $scanned >= $limit) {
+                break;
+            }
+            $scanned++;
+
+            $result = $processor::processFile($path, [
+                'remux' => !$dryRun && !$postersOnly,
+                'poster' => !$dryRun,
+            ]);
+
+            $attachmentId = $index[$path] ?? 0;
+            if (!$dryRun && $attachmentId > 0) {
+                $processor::storeAttachmentMeta($attachmentId, $result);
+            }
+
+            if ($result['remuxed']) {
+                $remuxed++;
+                \WP_CLI::log('remuxed      ' . $path);
+            } elseif ($dryRun && $result['faststart'] === false) {
+                $remuxed++;
+                \WP_CLI::log('needs remux  ' . $path);
+            } elseif ($result['faststart'] === true) {
+                $already++;
+            }
+
+            if ($result['poster_generated']) {
+                $posters++;
+                \WP_CLI::log('poster       ' . $result['poster_path']);
+            } elseif ($dryRun && !$result['poster_exists']) {
+                \WP_CLI::log('needs poster ' . $path);
+            }
+
+            if ($result['errors']) {
+                $errors++;
+                \WP_CLI::warning($path . ': ' . implode('; ', $result['errors']));
+            }
+        }
+
+        \WP_CLI::success(sprintf(
+            '%d video file(s): %d %s, %d already had moov in the first 64 KB, %d poster(s) generated, %d error(s).',
+            $scanned,
+            $remuxed,
+            $dryRun ? 'would be remuxed' : 'remuxed',
+            $already,
+            $posters,
+            $errors
+        ));
+    }
+
+    /**
+     * Map every attachment's absolute file path to its post id.
+     *
+     * @return array<string,int>
+     */
+    private static function attachmentIndex(string $basedir): array
+    {
+        global $wpdb;
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s",
+            '_wp_attached_file'
+        ));
+
+        $base = trailingslashit(wp_normalize_path($basedir));
+        $index = [];
+        foreach ((array) $rows as $row) {
+            $value = (string) $row->meta_value;
+            if ($value === '') {
+                continue;
+            }
+            $absolute = str_starts_with($value, '/') ? $value : $base . ltrim($value, '/');
+            $index[wp_normalize_path($absolute)] = (int) $row->post_id;
+        }
+
+        return $index;
+    }
+
     /** Print backend status. */
     public function status(): void
     {

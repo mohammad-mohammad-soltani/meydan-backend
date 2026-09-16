@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Support;
 
+use Meydan\Core\Uploads\VideoProcessor;
 use WP_Error;
 
 final class ChatRepository
@@ -305,6 +306,14 @@ final class ChatRepository
             $originActor = $originUserId ? Actor::forUser($originUserId) : null;
             $forwardedFrom = $originActor ? (string) ($originActor['display_name'] ?? 'پیام فورواردشده') : 'پیام فورواردشده';
         }
+        $attachment = null;
+        if (!$row->deleted_at && $row->attachment_json) {
+            $decoded = json_decode((string) $row->attachment_json, true);
+            if (is_array($decoded)) {
+                $attachment = $this->enrichAttachment($decoded);
+            }
+        }
+
         return [
             'id' => (string) $row->id,
             'conversation_id' => (string) $row->conversation_id,
@@ -314,11 +323,50 @@ final class ChatRepository
             'created_at' => gmdate('c', strtotime((string) $row->created_at . ' UTC')),
             'edited_at' => $row->edited_at ? gmdate('c', strtotime((string) $row->edited_at . ' UTC')) : null,
             'deleted_at' => $row->deleted_at ? gmdate('c', strtotime((string) $row->deleted_at . ' UTC')) : null,
-            'attachment' => $row->deleted_at || !$row->attachment_json ? null : json_decode((string) $row->attachment_json, true),
+            'attachment' => $attachment,
             'reply_to' => $reply,
             'forwarded_from' => $forwardedFrom,
             'reactions' => $reactions,
         ];
+    }
+
+    /**
+     * Video chat attachments carry the same still/duration fields as timeline
+     * attachments, resolved from the uploaded media the client attached.
+     *
+     * @param array<string,mixed> $attachment
+     * @return array<string,mixed>
+     */
+    private function enrichAttachment(array $attachment): array
+    {
+        $mime = (string) ($attachment['mime_type'] ?? '');
+        $url = (string) ($attachment['url'] ?? '');
+        $looksLikeVideo = str_starts_with($mime, 'video/') || (bool) preg_match('/\.(mp4|m4v|mov|webm|ogv)$/i', (string) parse_url($url, PHP_URL_PATH));
+        if (!$looksLikeVideo) {
+            return $attachment;
+        }
+
+        $mediaId = (int) ($attachment['id'] ?? 0);
+        $path = '';
+        if ($mediaId > 0 && get_post_type($mediaId) === 'attachment') {
+            $path = (string) get_attached_file($mediaId);
+        } elseif ($url !== '' && function_exists('attachment_url_to_postid')) {
+            $found = (int) attachment_url_to_postid($url);
+            if ($found > 0) {
+                $mediaId = $found;
+                $path = (string) get_attached_file($found);
+            }
+        }
+
+        $metadata = $mediaId > 0 ? (array) wp_get_attachment_metadata($mediaId) : [];
+        $video = VideoProcessor::describe($mediaId, $url, $path, $metadata, $attachment);
+        foreach ($video as $key => $value) {
+            if ($value !== null) {
+                $attachment[$key] = $value;
+            }
+        }
+
+        return $attachment;
     }
 
     private function user(int $userId): array
