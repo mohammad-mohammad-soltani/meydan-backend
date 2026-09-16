@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Meydan\Core;
 
 use Meydan\Core\Admin\Admin;
+use Meydan\Core\Admin\LocationPicker;
+use Meydan\Core\Admin\ManualSquare;
 use Meydan\Core\Auth\SessionService;
 use Meydan\Core\Auth\GuestSessionService;
 use Meydan\Core\Database\ChatMigrations;
@@ -26,6 +28,7 @@ use Meydan\Core\Support\Cors;
 use Meydan\Core\Support\GoodAction;
 use Meydan\Core\Support\RootResponse;
 use Meydan\Core\Support\SquareActivity;
+use Meydan\Core\Support\UserEmails;
 
 final class Plugin
 {
@@ -99,7 +102,15 @@ final class Plugin
             AdminPage::register();
             SquareChannelField::register();
             SquareActivity::registerAdmin();
+            ManualSquare::register();
+            LocationPicker::register();
         }
+
+        // Internal accounts never authenticate by email, but WordPress refuses
+        // to save the user edit screen while the address is empty. Keep one set
+        // for every account and repair the ones created before this rule.
+        UserEmails::register();
+        UserEmails::maybeBackfill();
 
         if (defined('WP_CLI') && WP_CLI) {
             \WP_CLI::add_command('meydan', \Meydan\Core\Support\CliCommand::class);

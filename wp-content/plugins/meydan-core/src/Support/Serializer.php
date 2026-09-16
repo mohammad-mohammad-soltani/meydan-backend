@@ -6,6 +6,7 @@ namespace Meydan\Core\Support;
 
 use Meydan\Core\Domain\CreatorService;
 use Meydan\Core\Domain\SpeakerService;
+use Meydan\Core\Integrations\Channels\Channels;
 use WP_Comment;
 use WP_Post;
 
@@ -196,6 +197,8 @@ final class Serializer
             'cover_url' => Actor::squareCoverUrl($id),
             'verified' => true,
             'approval_status' => (string) get_post_meta($id, 'meydan_approval_status', true) ?: 'pending_verification',
+            'eitaa_channel' => Channels::value(Actor::squareOwnerUserId($id), 'eitaa'),
+            'bale_channel' => Channels::value(Actor::squareOwnerUserId($id), 'bale'),
             'location' => $geo ? [
                 'province_id' => (int) $geo['province_id'],
                 'city_id' => (int) $geo['city_id'],

@@ -4,6 +4,16 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Integrations\Eitaa;
 
+use Meydan\Core\Integrations\Channels\Channels;
+
+/**
+ * Channel inputs on the square account screen (users.php / profile.php).
+ *
+ * The Eitaa input (`meydan_eitaa_channel`) lives here because the sync pipeline
+ * reads it; the Bale input (`meydan_bale_channel`) sits next to it so both
+ * channels are edited in one place. Storage and normalization are shared with
+ * the rest of the panel through Channels.
+ */
 final class SquareChannelField
 {
     public static function register(): void
@@ -19,13 +29,13 @@ final class SquareChannelField
         if (!current_user_can('edit_user', $user->ID) || !in_array('meydan_square', (array) $user->roles, true)) {
             return;
         }
-        $value = (string) get_user_meta($user->ID, 'meydan_eitaa_channel', true);
-        wp_nonce_field('meydan_eitaa_channel_' . $user->ID, 'meydan_eitaa_channel_nonce');
-        echo '<h2>اتصال ایتا</h2><table class="form-table"><tr>';
-        echo '<th><label for="meydan_eitaa_channel">کانال ایتا</label></th><td>';
-        echo '<input id="meydan_eitaa_channel" name="meydan_eitaa_channel" class="regular-text" value="' . esc_attr($value) . '" placeholder="@channel یا شناسه عددی">';
-        echo '<p class="description">شناسه عددی، @username یا لینک کانال ایتا. خالی بودن این فیلد همگام‌سازی این میدان را غیرفعال می‌کند.</p>';
-        echo '</td></tr></table>';
+        echo '<h2>اتصال کانال‌ها</h2>';
+        echo '<p class="description">کانال ایتا مبنای همگام‌سازی محتوای میدان است و شناسه کانال بله در همین حساب ذخیره می‌شود.</p>';
+        echo '<table class="form-table">';
+        echo Channels::formNonce();
+        Channels::renderRow((int) $user->ID, 'eitaa');
+        Channels::renderRow((int) $user->ID, 'bale');
+        echo '</table>';
     }
 
     public static function save(int $userId): void
@@ -33,35 +43,18 @@ final class SquareChannelField
         if (!current_user_can('edit_user', $userId)) {
             return;
         }
-        $user = get_userdata($userId);
-        if (!$user || !in_array('meydan_square', (array) $user->roles, true)) {
+        // Deliberately no role check here: a square may be owned by an account
+        // that does not hold the square role yet, and the nonce is only ever
+        // rendered on a screen whose owner can already edit the account.
+        if (!Channels::nonceIsValid($userId)) {
             return;
         }
-        $nonce = (string) ($_POST['meydan_eitaa_channel_nonce'] ?? '');
-        if ($nonce === '' || !wp_verify_nonce($nonce, 'meydan_eitaa_channel_' . $userId)) {
-            return;
-        }
-        $raw = trim((string) wp_unslash($_POST['meydan_eitaa_channel'] ?? ''));
-        $value = self::normalize($raw);
-        if ($value === '') {
-            delete_user_meta($userId, 'meydan_eitaa_channel');
-        } else {
-            update_user_meta($userId, 'meydan_eitaa_channel', $value);
-        }
+        Channels::save($userId);
     }
 
-    private static function normalize(string $value): string
+    /** @deprecated Kept for callers that normalized before Channels existed. */
+    public static function normalizeChannel(string $value): string
     {
-        $value = trim($value);
-        $value = preg_replace('#^https?://(?:www\.)?(?:eitaa\.com|eitaa\.ir)/#i', '', $value) ?? $value;
-        $value = trim($value, "/ \t\n\r\0\x0B");
-        if ($value === '') {
-            return '';
-        }
-        if (preg_match('/^-?\d+$/', $value)) {
-            return ltrim($value, '-');
-        }
-        $value = ltrim($value, '@');
-        return preg_match('/^[A-Za-z0-9_]{3,64}$/', $value) ? '@' . $value : '';
+        return Channels::normalizeEitaa($value);
     }
 }

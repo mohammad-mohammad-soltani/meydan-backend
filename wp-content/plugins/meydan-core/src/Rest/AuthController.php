@@ -10,6 +10,7 @@ use Meydan\Core\Notifications\NotificationService;
 use Meydan\Core\Support\Crypto;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\SquareActivity;
+use Meydan\Core\Support\UserEmails;
 use WP_Error;
 use WP_REST_Request;
 
@@ -52,7 +53,7 @@ final class AuthController extends BaseController
         if($fields)return Response::error('validation_failed','اطلاعات واردشده معتبر نیست.',422,$fields);
         $login='meydan_internal_'.strtolower(wp_generate_password(20,false,false));
         $display=$type==='user'?sanitize_text_field((string)$p['full_name']):sanitize_text_field((string)$p['square_name']);
-        $uid=wp_insert_user(['user_login'=>$login,'user_pass'=>wp_generate_password(64,true,true),'display_name'=>$display,'role'=>$type==='user'?'meydan_user':'meydan_square']);
+        $uid=wp_insert_user(['user_login'=>$login,'user_pass'=>wp_generate_password(64,true,true),'display_name'=>$display,'user_email'=>UserEmails::placeholderEmail(),'role'=>$type==='user'?'meydan_user':'meydan_square']);
         if(is_wp_error($uid))return $this->error(new WP_Error('registration_failed','ساخت حساب ناموفق بود.',['status'=>500]));
         update_user_meta($uid,'meydan_account_type',$type);update_user_meta($uid,'meydan_phone_hash',Crypto::hash($phone));update_user_meta($uid,'meydan_phone_ciphertext',Crypto::encrypt($phone));
         update_user_meta($uid,'meydan_province_id',(int)$p['province_id']);update_user_meta($uid,'meydan_city_id',(int)$p['city_id']);
