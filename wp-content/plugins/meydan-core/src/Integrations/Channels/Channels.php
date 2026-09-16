@@ -187,7 +187,10 @@ final class Channels
         }
         $value = ltrim($value, '@');
 
-        return preg_match('/^-?\d+$/', $value) ? ltrim($value, '-') : '';
+        if (preg_match('/^-?\d+$/', $value)) {
+            return ltrim($value, '-');
+        }
+        return preg_match('/^[A-Za-z][A-Za-z0-9_]{4,31}$/', $value) ? '@' . $value : '';
     }
 
     private static function stripChannelUrl(string $value, array $domains): string

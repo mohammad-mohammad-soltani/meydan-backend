@@ -14,6 +14,7 @@ use Meydan\Core\Database\Migrations;
 use Meydan\Core\Database\PushMigrations;
 use Meydan\Core\Domain\Registrations;
 use Meydan\Core\Integrations\Eitaa\AdminPage;
+use Meydan\Core\Integrations\Bale\AdminPage as BaleAdminPage;
 use Meydan\Core\Integrations\Eitaa\Migrations as EitaaMigrations;
 use Meydan\Core\Integrations\Eitaa\SquareChannelField;
 use Meydan\Core\Integrations\Bale\ErrorReporter as BaleErrorReporter;
@@ -104,6 +105,7 @@ final class Plugin
         if (is_admin()) {
             Admin::instance()->register();
             AdminPage::register();
+            BaleAdminPage::register();
             SquareChannelField::register();
             SquareActivity::registerAdmin();
             ManualSquare::register();
