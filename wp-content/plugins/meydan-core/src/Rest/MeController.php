@@ -26,6 +26,7 @@ final class MeController extends BaseController
             return Response::cache(
                 Response::ok([
                     'account_type' => 'square',
+                    ...$this->rolePayload($uid),
                     'square' => $this->squareProfile($sid),
                 ]),
                 'private, no-store'
@@ -36,6 +37,7 @@ final class MeController extends BaseController
             return Response::cache(
                 Response::ok([
                     'account_type' => 'speaker',
+                    ...$this->rolePayload($uid),
                     'profile' => $this->profile($uid),
                     'speaker' => Serializer::speaker($uid),
                 ]),
@@ -46,10 +48,23 @@ final class MeController extends BaseController
         return Response::cache(
             Response::ok([
                 'account_type' => 'user',
+                ...$this->rolePayload($uid),
                 'profile' => $this->profile($uid),
             ]),
             'private, no-store'
         );
+    }
+
+    /** @return array{role:?string,roles:array<int,string>} */
+    private function rolePayload(int $uid): array
+    {
+        $user = get_userdata($uid);
+        $roles = $user ? array_values(array_map('sanitize_key', (array) $user->roles)) : [];
+
+        return [
+            'role' => $roles[0] ?? null,
+            'roles' => $roles,
+        ];
     }
 
     public function patchProfile(WP_REST_Request $r)

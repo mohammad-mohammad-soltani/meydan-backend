@@ -35,6 +35,10 @@ For local development set `MEYDAN_DEV_OTP_CODE` in `.env`. The code is never sto
 
 The plugin adds a top-level **میدان** menu for dashboard, narratives, content, creators, speakers, squares/verification/map, initiatives, campaigns, speaker invitations, media reflections, comments, notifications, stats, settings, geo data, sessions, and audit logs.
 
+### Current user profile
+
+`GET /wp-json/meydan/v1/me` علاوه بر `account_type`، نقش اصلی وردپرس را در `role` و تمام نقش‌های کاربر را در `roles` برمی‌گرداند. مثال: `role: "administrator"` و `roles: ["administrator"]`. این endpoint نیاز به احراز هویت دارد.
+
 ### Editorial narratives
 
 در صفحه ویرایش هر روایت، administrator می‌تواند گزینه «سردبیری» را فعال یا غیرفعال کند. فهرست عمومی روایت‌های سردبیری‌شده از مسیر `GET /wp-json/meydan/v1/editorial/narratives` با پارامترهای اختیاری `page` و `limit` (حداکثر ۵۰) در دسترس است. تغییر وضعیت از طریق `PUT /admin/narratives/{id}/editorial` و حذف آن با `DELETE` روی همان مسیر انجام می‌شود؛ این دو endpoint فقط برای نقش administrator مجاز هستند.

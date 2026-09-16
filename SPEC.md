@@ -503,6 +503,8 @@ GET /me
 {
   "data": {
     "account_type": "user",
+    "role": "meydan_user",
+    "roles": ["meydan_user"],
     "profile": {
       "id": 812,
       "full_name": "...",
@@ -525,6 +527,8 @@ GET /me
 {
   "data": {
     "account_type": "square",
+    "role": "meydan_square",
+    "roles": ["meydan_square"],
     "square": {
       "id": 33,
       "name": "...",
