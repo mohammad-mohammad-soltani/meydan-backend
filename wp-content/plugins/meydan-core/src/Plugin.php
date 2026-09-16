@@ -15,6 +15,8 @@ use Meydan\Core\Database\PushMigrations;
 use Meydan\Core\Domain\Registrations;
 use Meydan\Core\Integrations\Eitaa\AdminPage;
 use Meydan\Core\Integrations\Bale\AdminPage as BaleAdminPage;
+use Meydan\Core\Integrations\Bale\Migrations as BaleMigrations;
+use Meydan\Core\Integrations\Bale\Controller as BaleSyncController;
 use Meydan\Core\Integrations\Eitaa\Migrations as EitaaMigrations;
 use Meydan\Core\Integrations\Eitaa\SquareChannelField;
 use Meydan\Core\Integrations\Bale\ErrorReporter as BaleErrorReporter;
@@ -48,6 +50,7 @@ final class Plugin
         ChatMigrations::run();
         PushMigrations::run();
         EitaaMigrations::run();
+        BaleMigrations::run();
         Registrations::registerRolesAndCapabilities();
         Registrations::registerPostTypes();
         Registrations::registerTaxonomies();
@@ -71,6 +74,7 @@ final class Plugin
         ChatMigrations::maybeRun();
         PushMigrations::maybeRun();
         EitaaMigrations::maybeRun();
+        BaleMigrations::maybeRun();
 
         add_action('init', [Registrations::class, 'registerPostTypes']);
         add_action('init', [Registrations::class, 'registerTaxonomies']);
@@ -91,6 +95,7 @@ final class Plugin
         add_action('rest_api_init', [ChatRoutes::class, 'register']);
         add_action('rest_api_init', [PushRoutes::class, 'register']);
         add_action('rest_api_init', static fn() => \Meydan\Core\Integrations\Eitaa\Controller::register());
+        add_action('rest_api_init', [BaleSyncController::class, 'register']);
         add_action('rest_api_init', [BaleWebhookController::class, 'register']);
         ApiMiddleware::register();
         Cors::register();
