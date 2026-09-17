@@ -182,6 +182,8 @@ final class Serializer
             'cities' => array_values(array_filter(array_map('intval', (array) get_user_meta($userId, 'meydan_cities', true)))),
             'social_links' => array_values(array_filter((array) get_user_meta($userId, 'meydan_social_links', true), 'is_array')),
             'categories' => SpeakerService::categoriesOf($userId),
+            'eitaa_channel' => Channels::value($userId, 'eitaa'),
+            'bale_channel' => Channels::value($userId, 'bale'),
             // A speaker *is* the account, so this is the same user id.
             'user_id' => $userId,
         ];
