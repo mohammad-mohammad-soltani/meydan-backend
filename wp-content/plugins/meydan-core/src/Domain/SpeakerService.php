@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Domain;
 
+use Meydan\Core\Integrations\Channels\Channels;
 use Meydan\Core\Support\Actor;
 use WP_Error;
 
@@ -153,6 +154,12 @@ final class SpeakerService
         if (array_key_exists('social_links', $input)) {
             // Shared normaliser: the platform key vocabulary is the same.
             update_user_meta($userId, 'meydan_social_links', CreatorService::normalizeSocialLinks((array) $input['social_links']));
+        }
+
+        foreach (['eitaa' => 'eitaa_channel', 'bale' => 'bale_channel'] as $kind => $key) {
+            if (array_key_exists($key, $input)) {
+                Channels::store($userId, $kind, (string) $input[$key]);
+            }
         }
 
         if (array_key_exists('categories', $input)) {
