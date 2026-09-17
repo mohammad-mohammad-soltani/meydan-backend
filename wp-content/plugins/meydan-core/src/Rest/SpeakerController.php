@@ -24,6 +24,15 @@ final class SpeakerController extends BaseController
         return $this->query($r);
     }
 
+    /** Administrator list keeps the same speaker shape but is explicitly private. */
+    public function adminList(WP_REST_Request $r): WP_REST_Response
+    {
+        if (!$this->speakerAdmin()) {
+            return Response::error('forbidden', 'دسترسی کافی ندارید.', 403);
+        }
+        return $this->query($r);
+    }
+
     public function get(WP_REST_Request $r): WP_REST_Response
     {
         $d = $this->enrich(Serializer::speaker((int) $r['id']));

@@ -47,6 +47,8 @@ final class Serializer
             'poll' => get_post_meta($id, 'meydan_poll', true) ?: null,
             'is_echo' => (bool) get_post_meta($id, 'meydan_is_echo', true),
             'editorial' => (bool) get_post_meta($id, 'meydan_editorial', true),
+            'is_content' => self::linkedContentId($id) !== null,
+            'content_id' => self::linkedContentId($id),
             'media_reflections' => $reflections,
             'location' => [
                 'province_id' => (int) get_post_meta($id, 'meydan_province_id', true) ?: null,
@@ -124,6 +126,7 @@ final class Serializer
             'category' => $categories && !is_wp_error($categories) ? ['id' => $categories[0]->term_id, 'name' => $categories[0]->name, 'slug' => $categories[0]->slug] : null,
             'attachments' => array_values(array_map([self::class, 'attachment'], $attachments)),
             'creators' => self::contentCreators($id),
+            'producer' => self::contentProducer($id),
             'tags' => wp_get_post_terms($id, 'meydan_content_tag', ['fields' => 'names']),
             'usage_note' => (string) get_post_meta($id, 'meydan_usage_note', true),
             'featured' => (bool) get_post_meta($id, 'meydan_featured', true),
@@ -389,6 +392,29 @@ final class Serializer
             }
         }
         return $out;
+    }
+
+    private static function contentProducer(int $contentId): ?array
+    {
+        $type=(string)get_post_meta($contentId,'meydan_producer_actor_type',true);
+        $id=(int)get_post_meta($contentId,'meydan_producer_actor_id',true);
+        if($type&&$id>0){$actor=Actor::parse($type,$id);if($actor)return $actor;}
+        // Directly-created content historically stored its producer in the
+        // content_creators relation. Keep producer populated for clients that
+        // render the singular producer field, while preserving creators[].
+        global $wpdb;
+        $creatorId=(int)$wpdb->get_var($wpdb->prepare("SELECT creator_id FROM {$wpdb->prefix}meydan_content_creators WHERE content_id=%d ORDER BY position ASC,creator_id ASC LIMIT 1",$contentId));
+        $creator=$creatorId>0?self::creator($creatorId):null;
+        if(!$creator)return null;
+        $creator['type']='creator';
+        $creator['display_name']=(string)($creator['name']??'');
+        return $creator;
+    }
+
+    private static function linkedContentId(int $narrativeId): ?int
+    {
+        $id=(int)get_post_meta($narrativeId,'meydan_content_id',true);
+        return $id>0&&get_post_type($id)==='meydan_content'&&get_post_status($id)==='publish'?$id:null;
     }
 
     private static function interactionExists(?int $userId, string $objectType, int $objectId, string $action): bool

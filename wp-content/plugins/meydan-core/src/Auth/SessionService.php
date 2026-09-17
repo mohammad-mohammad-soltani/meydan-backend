@@ -10,7 +10,7 @@ use WP_Error;
 final class SessionService
 {
     public const ACCESS_TTL = 900;
-    public const REFRESH_TTL = 30 * DAY_IN_SECONDS;
+    public const REFRESH_TTL = YEAR_IN_SECONDS;
 
     public function issue(int $userId, ?string $deviceName = null): array|WP_Error
     {
@@ -57,15 +57,16 @@ final class SessionService
         }
 
         $newAccess = Crypto::randomToken(32, 'acc_');
-        $newRefresh = Crypto::randomToken(48, 'ref_');
         $wpdb->update($table, [
             'access_token_hash' => Crypto::hash($newAccess),
-            'refresh_token_hash' => Crypto::hash($newRefresh),
             'access_expires_at' => gmdate('Y-m-d H:i:s', time() + self::ACCESS_TTL),
             'refresh_expires_at' => gmdate('Y-m-d H:i:s', time() + self::REFRESH_TTL),
             'last_used_at' => current_time('mysql', true),
         ], ['id' => (int) $row->id]);
-        self::setRefreshCookie($newRefresh);
+        // Keep the refresh credential stable. Concurrent API requests can both
+        // renew an expired access token; rotating this value let a late response
+        // overwrite the browser with a token the database had already replaced.
+        self::setRefreshCookie($refreshToken);
         return ['access_token' => $newAccess, 'expires_in' => self::ACCESS_TTL];
     }
 

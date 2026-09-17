@@ -45,6 +45,8 @@ GET /narratives/(?P<id>\\d+)/media-reflections
 POST /admin/narratives/(?P<id>\\d+)/media-reflections
 PATCH /admin/media-reflections/(?P<id>\\d+)
 DELETE /admin/media-reflections/(?P<id>\\d+)
+POST /admin/narratives/(?P<id>\\d+)/content
+DELETE /admin/narratives/(?P<id>\\d+)/content
 GET /media-outlets
 GET /media-outlets/(?P<id>\\d+)
 POST /admin/media-outlets

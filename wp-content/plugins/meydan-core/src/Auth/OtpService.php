@@ -13,6 +13,22 @@ final class OtpService
     public const EXPIRES = 120;
     public const RESEND_AFTER = 60;
 
+    /**
+     * Local development escape hatch for the challenge lifetime.
+     *
+     * The shipped contract (see SPEC.md) keeps a challenge valid for EXPIRES
+     * seconds. While developing against the pinned MEYDAN_DEV_OTP_CODE the
+     * developer usually learns the code out-of-band, which makes the two minute
+     * window easy to miss, so MEYDAN_DEV_OTP_TTL may extend it. The override is
+     * ignored unless wp_get_environment_type() is 'local'.
+     */
+    private static function expiresIn(): int
+    {
+        $override = defined('MEYDAN_DEV_OTP_TTL') ? (int) MEYDAN_DEV_OTP_TTL : 0;
+
+        return ($override > 0 && wp_get_environment_type() === 'local') ? $override : self::EXPIRES;
+    }
+
     public function request(string $phone): array|WP_Error
     {
         $phone = self::normalizePhone($phone);
@@ -31,7 +47,7 @@ final class OtpService
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_auth_challenges';
         $now = current_time('mysql', true);
-        $expires = gmdate('Y-m-d H:i:s', time() + self::EXPIRES);
+        $expires = gmdate('Y-m-d H:i:s', time() + self::expiresIn());
         $inserted = $wpdb->insert($table, [
             'challenge_id' => $challenge,
             'phone_hash' => $phoneHash,
@@ -53,7 +69,7 @@ final class OtpService
             return $sent;
         }
 
-        return ['challenge_id' => $challenge, 'expires_in' => self::EXPIRES, 'resend_after' => self::RESEND_AFTER];
+        return ['challenge_id' => $challenge, 'expires_in' => self::expiresIn(), 'resend_after' => self::RESEND_AFTER];
     }
 
     public function verify(string $challengeId, string $code): array|WP_Error

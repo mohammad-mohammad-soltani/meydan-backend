@@ -35,6 +35,7 @@ services:
       WORDPRESS_DEBUG: ${WP_DEBUG:-1}
       WP_ENVIRONMENT_TYPE: ${WP_ENVIRONMENT_TYPE:-local}
       MEYDAN_DEV_OTP_CODE: ${MEYDAN_DEV_OTP_CODE:-}
+      MEYDAN_DEV_OTP_TTL: ${MEYDAN_DEV_OTP_TTL:-}
       MEYDAN_SMS_ENDPOINT: ${MEYDAN_SMS_ENDPOINT:-}
       MEYDAN_SMS_TOKEN: ${MEYDAN_SMS_TOKEN:-}
       MEYDAN_SMS_FROM_NUMBER: ${MEYDAN_SMS_FROM_NUMBER:-}
@@ -60,6 +61,7 @@ services:
         }
         define('WP_ENVIRONMENT_TYPE', getenv('WP_ENVIRONMENT_TYPE') ?: 'production');
         define('MEYDAN_DEV_OTP_CODE', getenv('MEYDAN_DEV_OTP_CODE') ?: '');
+        define('MEYDAN_DEV_OTP_TTL', getenv('MEYDAN_DEV_OTP_TTL') ?: '');
         define('MEYDAN_SMS_ENDPOINT', getenv('MEYDAN_SMS_ENDPOINT') ?: '');
         define('MEYDAN_SMS_TOKEN', getenv('MEYDAN_SMS_TOKEN') ?: '');
         define('MEYDAN_EITAA_SYNC_SECRET', getenv('MEYDAN_EITAA_SYNC_SECRET') ?: '');

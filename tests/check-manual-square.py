@@ -11,6 +11,7 @@ def text(path: Path) -> str:
 
 
 manual = text(src / "Admin/ManualSquare.php")
+square_service = text(src / "Domain/SquareAdminService.php")
 admin = text(src / "Admin/Admin.php")
 plugin = text(src / "Plugin.php")
 emails = text(src / "Support/UserEmails.php")
@@ -33,6 +34,7 @@ assert "check_admin_referer" in manual, "form handler must verify its nonce"
 assert "wp_nonce_field(self::FORM, self::NONCE)" in manual, "form must render its named nonce"
 
 # One screen must collect both the account and the square object.
+creation = manual + "\n" + square_service
 for needle in [
     "wp_insert_user",
     "wp_insert_post",
@@ -52,12 +54,12 @@ for needle in [
     "set_role('meydan_square')",
     "AuditLogger::log",
 ]:
-    assert needle in manual, f"manual square creation missing {needle}"
+    assert needle in creation, f"manual square creation missing {needle}"
 
 # The OTP identity must be reusable, so the phone is normalized like auth does.
-assert "OtpService::normalizePhone" in manual, "phone must be normalized like OTP registration"
-assert "Crypto::hash" in manual and "Crypto::encrypt" in manual, "phone identity must match the auth storage"
-assert "phoneOwner" in manual, "duplicate phone must be rejected"
+assert "OtpService::normalizePhone" in creation, "phone must be normalized like OTP registration"
+assert "Crypto::hash" in creation and "Crypto::encrypt" in creation, "phone identity must match the auth storage"
+assert "phoneOwner" in creation, "duplicate phone must be rejected"
 
 # Fields rendered on the page.
 for field_name in ["full_name", "square_name", "contact_name", "contact_phone", "description", "start_date", "email", "approve"]:
@@ -91,7 +93,7 @@ assert "delete_user_meta" in channels, "clearing a channel field must remove tha
 assert "meydan_bale_channel" in field and "meydan_eitaa_channel" in field, "both channel inputs belong on the square account screen"
 assert "Channels::save" in field, "square account screen must save through the shared helper"
 assert "Channels::render" in admin and "Channels::formNonce" in admin, "square edit screen must render both channels"
-assert "Channels::save" in manual, "manual page must store the channel values"
+assert "Channels::store" in square_service, "shared square service must store channel values"
 assert "Channels::formNonce" in manual, "manual page must render the channel nonce"
 assert "Channels::definition" in manual, "manual page must reuse the channel field definitions"
 assert "eitaa_channel" in serializer and "bale_channel" in serializer, "API must expose both channels"

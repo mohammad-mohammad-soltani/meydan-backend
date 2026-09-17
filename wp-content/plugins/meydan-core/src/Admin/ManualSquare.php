@@ -284,6 +284,8 @@ JS
             'address' => $address,
             'latitude' => $latitude,
             'longitude' => $longitude,
+            'eitaa_channel' => sanitize_text_field((string) ($_POST['meydan_eitaa_channel'] ?? '')),
+            'bale_channel' => sanitize_text_field((string) ($_POST['meydan_bale_channel'] ?? '')),
             'approve' => !empty($_POST['approve']),
         ];
     }
@@ -291,86 +293,10 @@ JS
     /** @param array<string,mixed> $input @return array{user_id:int,square_id:int,name:string}|\WP_Error */
     private static function create(array $input): array|\WP_Error
     {
-        $avatarId = (int) $input['avatar_media_id'];
-        if ($avatarId > 0 && !wp_attachment_is_image($avatarId)) {
-            $avatarId = 0;
-        }
+        return \Meydan\Core\Domain\SquareAdminService::create(array_merge($input, [
+            'status' => !empty($input['approve']) ? 'approved' : 'pending_verification',
+        ]));
 
-        $display = $input['full_name'] !== '' ? $input['full_name'] : $input['square_name'];
-        $login = 'meydan_internal_' . strtolower(wp_generate_password(20, false, false));
-        $userData = [
-            'user_login' => $login,
-            'user_pass' => wp_generate_password(64, true, true),
-            'display_name' => $display,
-            'role' => 'meydan_user',
-        ];
-        if ($input['email'] !== '') {
-            $userData['user_email'] = $input['email'];
-        }
-
-        $userId = wp_insert_user($userData);
-        if (is_wp_error($userId)) {
-            return new \WP_Error('meydan_square_user', 'ساخت حساب کاربری ناموفق بود: ' . $userId->get_error_message());
-        }
-        $userId = (int) $userId;
-
-        // Same identity fields the OTP registration writes, so the owner can
-        // request an OTP for this number and land on this account.
-        update_user_meta($userId, 'meydan_account_type', 'square');
-        update_user_meta($userId, 'meydan_phone_hash', Crypto::hash($input['phone']));
-        update_user_meta($userId, 'meydan_phone_ciphertext', Crypto::encrypt($input['phone']));
-        update_user_meta($userId, 'meydan_full_name', $display);
-        update_user_meta($userId, 'meydan_province_id', $input['province_id']);
-        update_user_meta($userId, 'meydan_city_id', $input['city_id']);
-        if ($avatarId > 0) {
-            update_user_meta($userId, 'meydan_avatar_media_id', $avatarId);
-        }
-        UserEmails::ensureEmail($userId);
-
-        $status = $input['approve'] ? 'approved' : 'pending_verification';
-        $squareId = wp_insert_post([
-            'post_type' => 'meydan_square',
-            'post_status' => $input['approve'] ? 'publish' : 'pending',
-            'post_title' => $input['square_name'],
-            'post_content' => $input['description'],
-            'post_author' => $userId,
-        ], true);
-        if (is_wp_error($squareId)) {
-            wp_delete_user($userId);
-            return new \WP_Error('meydan_square_post', 'ساخت میدان ناموفق بود: ' . $squareId->get_error_message());
-        }
-        $squareId = (int) $squareId;
-
-        update_post_meta($squareId, 'meydan_owner_user_id', $userId);
-        update_post_meta($squareId, 'meydan_approval_status', $status);
-        update_post_meta($squareId, 'meydan_verified', $input['approve'] ? 1 : 0);
-        update_post_meta($squareId, 'meydan_contact_name', $input['contact_name']);
-        update_post_meta($squareId, 'meydan_contact_phone', $input['contact_phone']);
-        if ($avatarId > 0) {
-            update_post_meta($squareId, 'meydan_avatar_media_id', $avatarId);
-        }
-        update_user_meta($userId, 'meydan_square_id', $squareId);
-
-        if ($input['start_date'] !== '') {
-            \Meydan\Core\Support\SquareActivity::setStartDate($squareId, $input['start_date']);
-        }
-
-        self::saveGeo($squareId, $input);
-        Channels::save($userId);
-        self::linkChannelUrls($squareId, $userId);
-
-        // Promoting to the square role after the links exist is intentional:
-        // the role-change hook then finds the square and only syncs the type.
-        (new \WP_User($userId))->set_role('meydan_square');
-
-        AuditLogger::log('square_created_manually', 'square', $squareId, null, [
-            'user_id' => $userId,
-            'approval_status' => $status,
-            'province_id' => $input['province_id'],
-            'city_id' => $input['city_id'],
-        ]);
-
-        return ['user_id' => $userId, 'square_id' => $squareId, 'name' => $input['square_name']];
     }
 
     /** Mirrors the public channels onto the square post for the API serializer. */
