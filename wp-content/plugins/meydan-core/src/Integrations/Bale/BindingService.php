@@ -12,7 +12,7 @@ final class BindingService
         global $wpdb;
         $items = [];
         $users = get_users([
-            'meta_key' => self::BALE_META,
+            'meta_key' => 'meydan_bale_channel',
             'fields' => ['ID'],
             'number' => -1,
         ]);
