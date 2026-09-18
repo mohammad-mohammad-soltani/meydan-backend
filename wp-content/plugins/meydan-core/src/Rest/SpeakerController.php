@@ -5,6 +5,7 @@ namespace Meydan\Core\Rest;
 
 use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Domain\SpeakerService;
+use Meydan\Core\Domain\SpeakerAdminService;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\Serializer;
 use WP_REST_Request;
@@ -76,6 +77,19 @@ final class SpeakerController extends BaseController
             return $this->error($promoted);
         }
         return $this->saveProfile($userId, $p, null);
+    }
+
+    /** Admin-only direct account creation; no OTP challenge is needed here. */
+    public function adminCreateAccount(WP_REST_Request $r): WP_REST_Response
+    {
+        if (!$this->speakerAdmin()) {
+            return Response::error('forbidden', 'دسترسی کافی ندارید.', 403);
+        }
+        $created = SpeakerAdminService::create($this->json($r));
+        if (is_wp_error($created)) {
+            return $this->error($created);
+        }
+        return Response::ok($this->enrich(Serializer::speaker($created['user_id'])), [], 201);
     }
 
     public function adminUpdate(WP_REST_Request $r): WP_REST_Response
