@@ -6,19 +6,17 @@ namespace Meydan\Core\Support;
 
 /**
  * Public accounts are OTP-only and their WordPress username/password are
- * internal random values, so nothing ever asked WordPress for an email. That
- * left `user_email` empty, and WordPress refuses to save the user edit screen
- * with an empty address ("Please enter an email address"), which blocked every
- * other wp-admin profile edit as well.
+ * internal values. WordPress still expects a valid email on profile edits, so
+ * accounts without a real email receive a generated placeholder.
  *
- * This class guarantees that every internal account owns a unique, valid,
- * never-deliverable placeholder address. Real addresses entered by an operator
- * are always kept: the placeholder is only written when the address is missing.
+ * Whenever a phone number is available, the placeholder is derived from that
+ * phone number so wp-admin shows a stable, recognizable value instead of a
+ * random string. Real operator-supplied email addresses are never replaced.
  */
 final class UserEmails
 {
-    /** Bumped to re-run the one-off repair of legacy empty addresses. */
-    public const BACKFILL_VERSION = '1.0.1';
+    /** Bumped to migrate legacy random/hash placeholders to phone-based ones. */
+    public const BACKFILL_VERSION = '1.1.0';
 
     private static bool $booted = false;
 
@@ -29,13 +27,8 @@ final class UserEmails
         }
         self::$booted = true;
 
-        // Any account created through wp_insert_user()/wp_create_user().
         add_action('user_register', [self::class, 'onUserRegistered'], 20);
-        // Fills the address before wp_insert_user() validates it, so an empty
-        // submitted value is never rejected.
         add_filter('pre_user_email', [self::class, 'filterPreUserEmail'], 10, 1);
-        // The user edit screen validates before wp_update_user() runs; this
-        // repairs the user object and drops the empty-email error.
         add_action('user_profile_update_errors', [self::class, 'onProfileUpdateErrors'], 10, 3);
     }
 
@@ -45,9 +38,9 @@ final class UserEmails
     }
 
     /**
-     * Repairs legacy accounts created before this class existed: both the empty
-     * addresses and any address WordPress would reject. Runs once per
-     * BACKFILL_VERSION from Plugin::boot().
+     * Migrate old empty, random and hash-based placeholders. Calling
+     * ensureEmail() for every row is safe because real email addresses are
+     * explicitly preserved.
      */
     public static function maybeBackfill(): void
     {
@@ -56,38 +49,51 @@ final class UserEmails
         }
 
         global $wpdb;
-        $rows = $wpdb->get_results("SELECT ID,user_email FROM {$wpdb->users} ORDER BY ID ASC LIMIT 2000", ARRAY_A) ?: [];
+        $rows = $wpdb->get_results("SELECT ID FROM {$wpdb->users} ORDER BY ID ASC LIMIT 2000", ARRAY_A) ?: [];
         foreach ($rows as $row) {
-            if (!is_email(trim((string) $row['user_email']))) {
-                self::ensureEmail((int) $row['ID']);
-            }
+            self::ensureEmail((int) $row['ID']);
         }
 
         update_option('meydan_user_email_backfill', self::BACKFILL_VERSION, false);
     }
 
     /**
-     * Gives the account a placeholder address when it has none. Accounts that
-     * already hold a valid address are never touched.
+     * Ensures a valid address. If this account has a phone and its current
+     * address is one of Meydan's legacy generated placeholders, it is upgraded
+     * to <phone-digits>@<site-host>.
      */
-    public static function ensureEmail(int $userId): string
+    public static function ensureEmail(int $userId, string $phone = ''): string
     {
         if ($userId <= 0) {
             return '';
         }
 
         $current = trim((string) get_userdata($userId)?->user_email);
+        $phone = $phone !== '' ? $phone : self::phoneForUser($userId);
+
+        if ($phone !== '') {
+            $phoneEmail = self::placeholderEmailForPhone($phone, $userId);
+            if ($phoneEmail !== '') {
+                if (is_email($current) && !self::isGeneratedPlaceholderForUser($current, $userId)) {
+                    return $current;
+                }
+                if ($current !== $phoneEmail) {
+                    self::writeEmail($userId, $phoneEmail);
+                    clean_user_cache($userId);
+                }
+                return $phoneEmail;
+            }
+        }
+
         if (is_email($current)) {
             return $current;
         }
 
-        $email = self::uniqueEmail($userId);
+        $email = self::uniqueLocalEmail('user-' . $userId, $userId);
         if ($email === '') {
             return '';
         }
 
-        // wp_update_user() would recurse through pre_user_email; a direct
-        // database write is the only safe path here.
         self::writeEmail($userId, $email);
         clean_user_cache($userId);
 
@@ -95,8 +101,8 @@ final class UserEmails
     }
 
     /**
-     * A unique placeholder address that can be passed to wp_insert_user()
-     * before the account exists. `user_register` then keeps it as-is.
+     * Unique placeholder for flows that do not have the phone number yet.
+     * Phone-aware registration should prefer placeholderEmailForPhone().
      */
     public static function placeholderEmail(int $seed = 0): string
     {
@@ -104,21 +110,26 @@ final class UserEmails
         if ($seed > 0) {
             $local .= '-' . $seed;
         }
-        $email = $local . '@' . self::domain();
 
-        $suffix = 1;
-        while (email_exists($email)) {
-            $suffix++;
-            $email = $local . '-' . $suffix . '@' . self::domain();
-            if ($suffix > 200) {
-                return '';
-            }
-        }
-
-        return $email;
+        return self::uniqueLocalEmail($local, $seed);
     }
 
-    public static function filterPreUserEmail(mixed $value): mixed    {
+    /**
+     * Stable placeholder derived from the normalized phone number.
+     * Example: +989121234567 -> 989121234567@example.test
+     */
+    public static function placeholderEmailForPhone(string $phone, int $userId = 0): string
+    {
+        $digits = preg_replace('/\D+/', '', self::normalizeDigits($phone)) ?? '';
+        if ($digits === '') {
+            return '';
+        }
+
+        return self::uniqueLocalEmail($digits, $userId);
+    }
+
+    public static function filterPreUserEmail(mixed $value): mixed
+    {
         $email = trim((string) $value);
         if (is_email($email)) {
             return $email;
@@ -140,8 +151,6 @@ final class UserEmails
             return;
         }
         $submitted = trim((string) ($user->user_email ?? ''));
-        // Only repair a missing or empty address. An address the operator typed
-        // is left alone so its own validation error still surfaces.
         if (is_email($submitted) || $submitted !== '') {
             return;
         }
@@ -152,12 +161,10 @@ final class UserEmails
         }
 
         $user->user_email = $email;
-        // edit_user() reports an empty submitted value as `invalid_email`.
         $errors->remove('invalid_email');
         $errors->remove('empty_email');
     }
 
-    /** The account currently being edited, when a profile form is posting. */
     private static function submittedUserId(): int
     {
         if (!isset($_POST['user_id'])) {
@@ -175,19 +182,64 @@ final class UserEmails
         return current_user_can('edit_user', $userId) ? $userId : 0;
     }
 
-    private static function uniqueEmail(int $userId): string
+    private static function phoneForUser(int $userId): string
     {
-        $base = self::baseEmail($userId);
-        if ($base === '') {
+        $ciphertext = trim((string) get_user_meta($userId, 'meydan_phone_ciphertext', true));
+        if ($ciphertext === '') {
             return '';
         }
-        [$local, $domain] = explode('@', $base, 2);
 
-        $candidate = $base;
+        try {
+            return Crypto::decrypt($ciphertext);
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
+    private static function isGeneratedPlaceholderForUser(string $email, int $userId): bool
+    {
+        if (!self::isPlaceholder($email)) {
+            return false;
+        }
+
+        $local = strtolower((string) strstr($email, '@', true));
+        if ($local === '') {
+            return false;
+        }
+
+        if (str_starts_with($local, 'meydan-user-')) {
+            return true;
+        }
+
+        if (preg_match('/^user-' . preg_quote((string) $userId, '/') . '(?:-\d+)?$/', $local)) {
+            return true;
+        }
+
+        $phoneHash = strtolower(trim((string) get_user_meta($userId, 'meydan_phone_hash', true)));
+        if ($phoneHash !== '') {
+            $legacyHash = preg_quote(substr($phoneHash, 0, 24), '/');
+            if (preg_match('/^' . $legacyHash . '(?:-\d+)?$/', $local)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function uniqueLocalEmail(string $local, int $userId = 0): string
+    {
+        $local = strtolower(trim($local));
+        $local = preg_replace('/[^a-z0-9._-]/', '', $local) ?? '';
+        if ($local === '') {
+            return '';
+        }
+
+        $domain = self::domain();
+        $candidate = $local . '@' . $domain;
         $suffix = 1;
-        while (email_exists($candidate)) {
-            $owner = (int) email_exists($candidate);
-            if ($owner === $userId) {
+
+        while ($owner = email_exists($candidate)) {
+            if ($userId > 0 && (int) $owner === $userId) {
                 return $candidate;
             }
             $suffix++;
@@ -200,31 +252,16 @@ final class UserEmails
         return $candidate;
     }
 
-    /**
-     * Stable identifier for the placeholder. The phone is the account's real
-     * identity, so it is preferred; the account id keeps it collision-free.
-     */
-    private static function baseEmail(int $userId): string
+    private static function normalizeDigits(string $value): string
     {
-        $identifier = '';
-        $phoneHash = (string) get_user_meta($userId, 'meydan_phone_hash', true);
-        if ($phoneHash !== '') {
-            $identifier = substr($phoneHash, 0, 24);
-        }
-        if ($identifier === '') {
-            $identifier = 'user-' . $userId;
-        }
-
-        $domain = self::domain();
-
-        return $identifier . '@' . $domain;
+        return strtr($value, [
+            '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
+            '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+            '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+        ]);
     }
 
-    /**
-     * Domain of the placeholder address. WordPress rejects a single-label
-     * domain, so a local host (localhost, 127.0.0.1) gets a `.local` suffix:
-     * localhost becomes localhost.local, which is_email() accepts.
-     */
     private static function domain(): string
     {
         $host = (string) wp_parse_url((string) home_url(), PHP_URL_HOST);
@@ -247,7 +284,7 @@ final class UserEmails
         $wpdb->update($wpdb->users, ['user_email' => $email], ['ID' => $userId]);
     }
 
-    /** True when the address is one of our generated placeholders. */
+    /** True when the address uses Meydan's generated-email domain. */
     public static function isPlaceholder(string $email): bool
     {
         return str_ends_with(strtolower(trim($email)), '@' . self::domain());
