@@ -9,14 +9,14 @@ namespace Meydan\Core\Support;
  * internal values. WordPress still expects a valid email on profile edits, so
  * accounts without a real email receive a generated placeholder.
  *
- * Whenever a phone number is available, the placeholder is derived from that
- * phone number so wp-admin shows a stable, recognizable value instead of a
- * random string. Real operator-supplied email addresses are never replaced.
+ * Whenever a phone number is available, the address is derived from that phone
+ * number. This keeps wp-admin consistent and avoids exposing arbitrary or
+ * legacy placeholder addresses for OTP-only accounts.
  */
 final class UserEmails
 {
-    /** Bumped to migrate legacy random/hash placeholders to phone-based ones. */
-    public const BACKFILL_VERSION = '1.1.0';
+    /** Bumped to migrate every legacy address to the phone-based convention. */
+    public const BACKFILL_VERSION = '1.2.0';
 
     private static bool $booted = false;
 
@@ -38,9 +38,9 @@ final class UserEmails
     }
 
     /**
-     * Migrate old empty, random and hash-based placeholders. Calling
-     * ensureEmail() for every row is safe because real email addresses are
-     * explicitly preserved.
+     * Migrate old addresses. Calling ensureEmail() for every row is safe: an
+     * account with a phone receives its canonical phone-based address, while
+     * accounts without a phone retain a valid existing address.
      */
     public static function maybeBackfill(): void
     {
@@ -58,9 +58,8 @@ final class UserEmails
     }
 
     /**
-     * Ensures a valid address. If this account has a phone and its current
-     * address is one of Meydan's legacy generated placeholders, it is upgraded
-     * to <phone-digits>@<site-host>.
+     * Ensures a valid address. An OTP account with a phone always uses
+     * <phone-digits>@<site-host>, regardless of the address it had before.
      */
     public static function ensureEmail(int $userId, string $phone = ''): string
     {
@@ -74,9 +73,6 @@ final class UserEmails
         if ($phone !== '') {
             $phoneEmail = self::placeholderEmailForPhone($phone, $userId);
             if ($phoneEmail !== '') {
-                if (is_email($current) && !self::isGeneratedPlaceholderForUser($current, $userId)) {
-                    return $current;
-                }
                 if ($current !== $phoneEmail) {
                     self::writeEmail($userId, $phoneEmail);
                     clean_user_cache($userId);

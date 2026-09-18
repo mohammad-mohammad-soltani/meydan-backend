@@ -184,6 +184,9 @@ final class AdminUserController extends BaseController
         }
         if (array_key_exists('email', $p) && (string) $p['email'] !== '') $update['user_email'] = sanitize_email((string) $p['email']);
         if (count($update) > 1) wp_update_user($update);
+        // All Meydan accounts authenticate with their mobile number, so a
+        // submitted or legacy email must not replace the canonical address.
+        UserEmails::ensureEmail($id);
         foreach (['headline', 'location_label'] as $key) if (array_key_exists($key, $p)) update_user_meta($id, 'meydan_' . $key, sanitize_text_field((string) $p[$key]));
         if (array_key_exists('about', $p)) update_user_meta($id, 'meydan_about', wp_kses_post((string) $p['about']));
         foreach (['province_id', 'city_id', 'avatar_media_id', 'cover_media_id'] as $key) if (array_key_exists($key, $p)) update_user_meta($id, 'meydan_' . $key, max(0, (int) $p[$key]));
