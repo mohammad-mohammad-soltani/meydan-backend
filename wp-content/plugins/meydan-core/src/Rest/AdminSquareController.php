@@ -38,7 +38,11 @@ final class AdminSquareController extends BaseController
         }
         if ($meta) $args['meta_query'] = $meta;
         $q = new WP_Query($args);
-        return Response::ok(array_map([$this, 'adminSquare'], $q->posts), ['page' => $page, 'per_page' => $perPage, 'total' => (int) $q->found_posts, 'pages' => (int) $q->max_num_pages]);
+        $items = array_values(array_filter(
+            array_map([$this, 'adminSquare'], $q->posts),
+            static fn ($item): bool => is_array($item) && isset($item['id']),
+        ));
+        return Response::ok($items, ['page' => $page, 'per_page' => $perPage, 'total' => (int) $q->found_posts, 'pages' => (int) $q->max_num_pages]);
     }
 
     public function create(WP_REST_Request $r)
