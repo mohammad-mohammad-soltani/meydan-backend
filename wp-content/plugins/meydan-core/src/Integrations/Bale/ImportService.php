@@ -55,8 +55,9 @@ final class ImportService
     {
         global $wpdb;
         $squareId = (int) ($payload['square_id'] ?? 0);
-        $userId = $this->bindings->ownerForSquare($squareId);
-        if ($userId <= 0 || $this->bindings->channelForSquare($squareId) === '') {
+        $userId = $squareId > 0 ? $this->bindings->ownerForSquare($squareId) : (int) ($payload['user_id'] ?? 0);
+        $valid = $squareId > 0 ? ($userId > 0 && $this->bindings->channelForSquare($squareId) !== '') : $this->bindings->user($userId);
+        if (!$valid) {
             return $this->fail(new WP_Error('bale_square_invalid', 'میدان یا اتصال بله معتبر نیست.', ['status' => 422]), $squareId);
         }
 
@@ -112,8 +113,8 @@ final class ImportService
             }
             $postId = (int) $result;
 
-            update_post_meta($postId, 'meydan_author_actor_type', 'square');
-            update_post_meta($postId, 'meydan_author_actor_id', $squareId);
+            update_post_meta($postId, 'meydan_author_actor_type', $squareId > 0 ? 'square' : 'speaker');
+            update_post_meta($postId, 'meydan_author_actor_id', $squareId > 0 ? $squareId : $userId);
             update_post_meta($postId, 'meydan_attachments', $attachments);
             update_post_meta($postId, 'meydan_import_source', 'bale');
             update_post_meta($postId, 'meydan_import_source_key', $sourceKey);

@@ -19,8 +19,9 @@ final class IntegrationUploadService
     public function start(array $payload): array|WP_Error
     {
         $squareId = (int) ($payload['square_id'] ?? 0);
-        $userId = $this->bindings->ownerForSquare($squareId);
-        if ($userId <= 0 || $this->bindings->channelForSquare($squareId) === '') {
+        $userId = $squareId > 0 ? $this->bindings->ownerForSquare($squareId) : (int) ($payload['user_id'] ?? 0);
+        $valid = $squareId > 0 ? ($userId > 0 && $this->bindings->channelForSquare($squareId) !== '') : $this->bindings->user($userId);
+        if (!$valid) {
             return new WP_Error('bale_square_invalid', 'میدان مقصد معتبر نیست.', ['status' => 422]);
         }
         $payload['purpose'] = 'narrative';
