@@ -45,7 +45,7 @@ final class BindingService
 
     public static function channelForUser(int $userId): string
     {
-        return trim((string) get_user_meta($userId, self::BALE_META, true));
+        return trim((string) get_user_meta($userId, 'meydan_bale_channel', true));
     }
 
     public function ownerForSquare(int $squareId): int
