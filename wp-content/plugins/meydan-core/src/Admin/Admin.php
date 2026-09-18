@@ -22,7 +22,25 @@ final class Admin
  public function register():void
  {
   add_action('admin_menu',[$this,'menus']);add_action('add_meta_boxes',[$this,'metaBoxes']);add_action('save_post',[$this,'saveMeta'],10,2);add_action('save_post_meydan_square',[$this,'saveSquareChannels'],20,2);add_action('admin_init',[$this,'actions']);
-  add_action('show_user_profile',[$this,'userFields']);add_action('edit_user_profile',[$this,'userFields']);add_action('personal_options_update',[$this,'saveUser']);add_action('edit_user_profile_update',[$this,'saveUser']);add_action('set_user_role',[$this,'syncAccountTypeForRole'],10,2);add_action('admin_enqueue_scripts',[$this,'assets']);add_action('admin_enqueue_scripts',[$this,'avatarAssets']);add_action('admin_enqueue_scripts',[$this,'contentAssets']);add_action('admin_enqueue_scripts',[$this,'creatorAssets']);add_action('admin_enqueue_scripts',[$this,'outletAssets']);add_action('admin_enqueue_scripts',[$this,'reflectionAssets']);add_action('admin_head',[$this,'styles']);
+  add_action('show_user_profile',[$this,'userFields']);add_action('edit_user_profile',[$this,'userFields']);add_action('personal_options_update',[$this,'saveUser']);add_action('edit_user_profile_update',[$this,'saveUser']);add_action('set_user_role',[$this,'syncAccountTypeForRole'],10,2);add_action('admin_enqueue_scripts',[$this,'assets']);add_action('admin_enqueue_scripts',[$this,'avatarAssets']);add_action('admin_enqueue_scripts',[$this,'contentAssets']);add_action('admin_enqueue_scripts',[$this,'creatorAssets']);add_action('admin_enqueue_scripts',[$this,'outletAssets']);add_action('admin_enqueue_scripts',[$this,'reflectionAssets']);add_action('admin_head',[$this,'styles']);add_filter('manage_users_columns',[$this,'userListColumns']);add_filter('user_row_actions',[$this,'showDisplayNameInUsersList'],9999,2);
+ }
+ public function userListColumns(array $columns):array
+ {
+  if(isset($columns['username']))$columns['username']='نام کاربر';
+  return $columns;
+ }
+ /**
+  * WordPress renders user_login in the primary Users column. Meydan keeps
+  * user_login internal/random because public auth is OTP-only, so swap only
+  * the in-memory value used for this table row with the real display name.
+  * Nothing is written back to wp_users and the standard row actions remain.
+  */
+ public function showDisplayNameInUsersList(array $actions,\WP_User $user):array
+ {
+  $name=trim((string)get_user_meta($user->ID,'meydan_full_name',true));
+  if($name==='')$name=trim((string)$user->display_name);
+  if($name!=='')$user->user_login=$name;
+  return $actions;
  }
  public function menus():void
  {
