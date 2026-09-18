@@ -13,7 +13,9 @@ final class BindingService
         $checkpointTable = $wpdb->prefix . 'meydan_bale_checkpoints';
         $items = [];
         $users = get_users([
-            'role' => 'meydan_square',
+            // Administrators can configure a square from the admin panel;
+            // bindings are keyed by meydan_square_id, not by role.
+            'meta_key' => 'meydan_square_id',
             'fields' => ['ID'],
             'number' => -1,
         ]);
@@ -51,13 +53,11 @@ final class BindingService
         $owner = (int) get_post_meta($squareId, 'meydan_owner_user_id', true);
         if ($owner > 0) {
             $user = get_userdata($owner);
-            if ($user && in_array('meydan_square', (array) $user->roles, true)
-                && (int) get_user_meta($owner, 'meydan_square_id', true) === $squareId) {
+            if ($user && (int) get_user_meta($owner, 'meydan_square_id', true) === $squareId) {
                 return $owner;
             }
         }
         $ids = get_users([
-            'role' => 'meydan_square',
             'meta_key' => 'meydan_square_id',
             'meta_value' => $squareId,
             'fields' => 'ids',
