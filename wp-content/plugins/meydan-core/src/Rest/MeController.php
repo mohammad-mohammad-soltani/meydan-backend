@@ -402,15 +402,8 @@ final class MeController extends BaseController
                 ];
             }
         }
-        $q = new WP_Query([
-            'post_type' => 'meydan_narrative',
-            'post_status' => 'publish',
-            'posts_per_page' => 20,
-            'orderby' => 'date',
-            'order' => 'DESC',
-            'meta_query' => $meta,
-        ]);
-        return Response::ok(array_values(array_filter(array_map([Serializer::class, 'narrative'], $q->posts))));
+        return ProfileNarrativePage::list($meta, $r, $type . ':' . $id);
+
     }
 
     /** Canonical resolution lives on Actor so other controllers share it. */
