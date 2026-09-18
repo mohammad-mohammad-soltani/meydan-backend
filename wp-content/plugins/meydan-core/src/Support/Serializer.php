@@ -6,6 +6,7 @@ namespace Meydan\Core\Support;
 
 use Meydan\Core\Domain\CreatorService;
 use Meydan\Core\Domain\SpeakerService;
+use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Integrations\Channels\Channels;
 use Meydan\Core\Uploads\VideoProcessor;
 use WP_Comment;
@@ -16,7 +17,7 @@ final class Serializer
     public static function narrative(int|WP_Post $post, ?Viewer $viewer = null): ?array
     {
         $post = $post instanceof WP_Post ? $post : get_post($post);
-        if (!$post || $post->post_type !== 'meydan_narrative' || in_array($post->post_status, ['trash', 'auto-draft'], true)) {
+        if (!$post || $post->post_type !== 'meydan_narrative' || in_array($post->post_status, ['trash', 'auto-draft'], true) || !UserAccess::visibleNarrative((int) $post->ID)) {
             return null;
         }
         $viewer ??= Viewer::current();
@@ -111,6 +112,11 @@ final class Serializer
             return null;
         }
         $id = (int) $post->ID;
+        $sourceNarrative = (int) get_post_meta($id, 'meydan_source_narrative_id', true);
+        if ($sourceNarrative > 0 && !UserAccess::visibleNarrative($sourceNarrative)) return null;
+        $producerType = (string) get_post_meta($id, 'meydan_producer_actor_type', true);
+        $producerId = (int) get_post_meta($id, 'meydan_producer_actor_id', true);
+        if (($producerType === 'user' && !UserAccess::visibleUser($producerId)) || ($producerType === 'square' && !UserAccess::visibleSquare($producerId))) return null;
         $attachments = array_values(array_filter(
             (array) get_post_meta($id, 'meydan_attachments', true),
             'is_array'
@@ -168,7 +174,7 @@ final class Serializer
      */
     public static function speaker(int $userId): ?array
     {
-        if ($userId <= 0 || !Actor::isSpeaker($userId)) {
+        if ($userId <= 0 || !Actor::isSpeaker($userId) || !UserAccess::visibleUser($userId)) {
             return null;
         }
         $user = get_userdata($userId);
@@ -209,7 +215,7 @@ final class Serializer
     public static function square(int|WP_Post $post): ?array
     {
         $post = $post instanceof WP_Post ? $post : get_post($post);
-        if (!$post || $post->post_type !== 'meydan_square' || in_array($post->post_status, ['trash', 'auto-draft'], true)) {
+        if (!$post || $post->post_type !== 'meydan_square' || in_array($post->post_status, ['trash', 'auto-draft'], true) || !UserAccess::visibleSquare((int) $post->ID)) {
             return null;
         }
         $id = (int) $post->ID;
@@ -293,6 +299,7 @@ final class Serializer
             return null;
         }
         $authorId = (int) $comment->user_id;
+        if (($authorId && !UserAccess::visibleUser($authorId)) || !UserAccess::visibleNarrative((int) $comment->comment_post_ID)) return null;
         return [
             'id' => (int) $comment->comment_ID,
             'narrative_id' => (int) $comment->comment_post_ID,

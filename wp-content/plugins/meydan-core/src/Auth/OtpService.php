@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Auth;
 
+use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Support\Crypto;
 use Meydan\Core\Support\RateLimiter;
 use WP_Error;
@@ -99,6 +100,7 @@ final class OtpService
         $wpdb->update($table, ['consumed_at' => $now], ['id' => (int) $row->id]);
 
         if ($userId > 0) {
+            if (UserAccess::disabled($userId)) return new WP_Error('account_disabled', 'این حساب غیرفعال است.', ['status' => 403]);
             $session = (new SessionService())->issue($userId);
             if (is_wp_error($session)) {
                 return $session;

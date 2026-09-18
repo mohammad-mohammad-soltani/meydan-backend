@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Meydan\Core\Auth;
 
 use Meydan\Core\Support\Crypto;
+use Meydan\Core\Domain\UserAccess;
 use WP_Error;
 
 final class SessionService
@@ -14,7 +15,7 @@ final class SessionService
 
     public function issue(int $userId, ?string $deviceName = null): array|WP_Error
     {
-        if (!get_userdata($userId)) {
+        if (!get_userdata($userId) || UserAccess::disabled($userId)) {
             return new WP_Error('user_not_found', 'حساب کاربری پیدا نشد.', ['status' => 404]);
         }
         $access = Crypto::randomToken(32, 'acc_');
@@ -51,7 +52,7 @@ final class SessionService
             "SELECT * FROM {$table} WHERE refresh_token_hash = %s AND revoked_at IS NULL AND refresh_expires_at >= UTC_TIMESTAMP() LIMIT 1",
             $hash
         ));
-        if (!$row) {
+        if (!$row || UserAccess::disabled((int) $row->user_id)) {
             self::clearRefreshCookie();
             return new WP_Error('unauthenticated', 'نشست معتبر نیست.', ['status' => 401]);
         }
@@ -82,10 +83,16 @@ final class SessionService
 
     public function logoutAll(int $userId): void
     {
+        $this->revokeAll($userId);
+        self::clearRefreshCookie();
+    }
+
+    /** Admin account changes must not clear the administrator's own cookie. */
+    public function revokeAll(int $userId): void
+    {
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_sessions';
         $wpdb->query($wpdb->prepare("UPDATE {$table} SET revoked_at = UTC_TIMESTAMP() WHERE user_id = %d AND revoked_at IS NULL", $userId));
-        self::clearRefreshCookie();
     }
 
     public static function authenticateBearer(mixed $userId): mixed
@@ -104,7 +111,7 @@ final class SessionService
             "SELECT id, user_id FROM {$table} WHERE access_token_hash = %s AND revoked_at IS NULL AND access_expires_at >= UTC_TIMESTAMP() LIMIT 1",
             $hash
         ));
-        if (!$row) {
+        if (!$row || UserAccess::disabled((int) $row->user_id)) {
             return $userId;
         }
         $wpdb->update($table, ['last_used_at' => current_time('mysql', true)], ['id' => (int) $row->id]);

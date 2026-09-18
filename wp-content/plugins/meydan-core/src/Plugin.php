@@ -13,6 +13,7 @@ use Meydan\Core\Database\ChatMigrations;
 use Meydan\Core\Database\Migrations;
 use Meydan\Core\Database\PushMigrations;
 use Meydan\Core\Domain\Registrations;
+use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Integrations\Eitaa\AdminPage;
 use Meydan\Core\Integrations\Bale\AdminPage as BaleAdminPage;
 use Meydan\Core\Integrations\Bale\Migrations as BaleMigrations;
@@ -84,6 +85,8 @@ final class Plugin
         add_action('init', [Migrations::class, 'runDeferred'], 25);
 
         add_filter('determine_current_user', [SessionService::class, 'authenticateBearer'], 30);
+        add_filter('determine_current_user', [UserAccess::class, 'currentUser'], 99);
+        add_filter('wp_authenticate_user', [UserAccess::class, 'allowWordPressLogin'], 99);
         add_action('init', [GuestSessionService::class, 'ensureGuestCookie'], 1);
         // Uploads are immutable by filename; keep their long-lived cache rule in place.
         add_action('init', [UploadCache::class, 'ensure'], 5);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Rest;
 
+use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\EventLogger;
 use Meydan\Core\Support\Response;
@@ -371,7 +372,7 @@ final class ExploreController extends BaseController
             }
             $seen[$userId] = true;
 
-            if (get_user_meta($userId, 'meydan_account_type', true) === 'square') {
+            if (UserAccess::disabled($userId) || get_user_meta($userId, 'meydan_account_type', true) === 'square') {
                 continue;
             }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Support;
 
+use Meydan\Core\Domain\UserAccess;
 use WP_Error;
 use WP_HTTP_Response;
 use WP_REST_Request;
@@ -23,6 +24,7 @@ final class ApiMiddleware
         if ($result !== null || !str_starts_with($request->get_route(), '/meydan/v1/')) {
             return $result;
         }
+        UserAccess::resetContext();
         if ($request->get_method() === 'POST') {
             return Idempotency::lookup($request) ?? $result;
         }
@@ -44,6 +46,11 @@ final class ApiMiddleware
         }
         $response->header('X-Request-Id', Response::requestId());
         $response->header('X-Content-Type-Options', 'nosniff');
+        // Account moderation must take effect without a previously cached public
+        // profile, square, search result or timeline reappearing for another minute.
+        if (preg_match('#^/meydan/v1/(?:users|actors|speakers|squares|narratives|comments|content|timeline|explore)(?:/|$)#', $request->get_route())) {
+            $response->header('Cache-Control', 'no-store');
+        }
         if ($request->get_method() === 'POST') {
             Idempotency::store($request, $response);
         }

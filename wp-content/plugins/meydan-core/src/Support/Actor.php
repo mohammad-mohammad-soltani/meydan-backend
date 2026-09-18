@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Support;
 
+use Meydan\Core\Domain\UserAccess;
 final class Actor
 {
     /**
@@ -143,10 +144,10 @@ final class Actor
 
     public static function parse(string $type, int $id): ?array
     {
-        if ($type === 'user' && get_userdata($id)) {
+        if ($type === 'user' && UserAccess::visibleUser($id)) {
             return self::forUser($id);
         }
-        if ($type === 'square' && get_post_type($id) === 'meydan_square') {
+        if ($type === 'square' && UserAccess::visibleSquare($id)) {
             return self::forSquare($id);
         }
         return null;

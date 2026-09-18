@@ -166,6 +166,9 @@ final class SpeakerController extends BaseController
         if ($meta) {
             $args['meta_query'] = $meta;
         }
+        if (!$paginate) {
+            $args['meta_query'][] = ['relation' => 'OR', ['key' => 'meydan_disabled', 'compare' => 'NOT EXISTS'], ['key' => 'meydan_disabled', 'value' => '1', 'compare' => '!=']];
+        }
 
         $total = 0;
         if ($paginate) {
