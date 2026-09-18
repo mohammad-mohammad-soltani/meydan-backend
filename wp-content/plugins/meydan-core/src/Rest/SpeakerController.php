@@ -10,6 +10,7 @@ use Meydan\Core\Support\Response;
 use Meydan\Core\Support\Serializer;
 use WP_REST_Request;
 use WP_REST_Response;
+use WP_User_Query;
 
 /**
  * Speaker profiles, backed by WordPress users holding the `meydan_speaker` role.
@@ -31,7 +32,7 @@ final class SpeakerController extends BaseController
         if (!$this->speakerAdmin()) {
             return Response::error('forbidden', 'دسترسی کافی ندارید.', 403);
         }
-        return $this->query($r);
+        return $this->query($r, true);
     }
 
     public function get(WP_REST_Request $r): WP_REST_Response
@@ -124,7 +125,11 @@ final class SpeakerController extends BaseController
         return Response::ok(['deleted' => true]);
     }
 
-    private function query(WP_REST_Request $r): WP_REST_Response
+    /**
+     * Public speaker discovery remains a lightweight capped list, while the
+     * administrator directory exposes a real page/per_page contract.
+     */
+    private function query(WP_REST_Request $r, bool $paginate = false): WP_REST_Response
     {
         $meta = [];
         if ($this->bool($r->get_param('verified'))) {
@@ -135,13 +140,26 @@ final class SpeakerController extends BaseController
             $meta[] = ['key' => 'meydan_speaker_categories', 'value' => $category, 'compare' => 'LIKE'];
         }
 
+        $city = (int) $r->get_param('city_id');
+        if ($city > 0) {
+            // `meydan_cities` is a serialized integer array. Matching the
+            // integer token avoids the false positives of searching "12".
+            $meta[] = ['key' => 'meydan_cities', 'value' => 'i:' . $city . ';', 'compare' => 'LIKE'];
+        }
+
+        $page = max(1, (int) ($r->get_param('page') ?: 1));
+        $perPage = min(100, max(1, (int) ($r->get_param('per_page') ?: 20)));
         $args = [
             'role' => SpeakerService::ROLE,
             'orderby' => 'display_name',
             'order' => 'ASC',
-            'number' => 50,
+            'number' => $paginate ? $perPage : 50,
             'fields' => 'ID',
         ];
+        if ($paginate) {
+            $args['offset'] = ($page - 1) * $perPage;
+            $args['count_total'] = true;
+        }
         if ($q = trim((string) $r->get_param('q'))) {
             $args['search'] = '*' . $q . '*';
         }
@@ -149,15 +167,29 @@ final class SpeakerController extends BaseController
             $args['meta_query'] = $meta;
         }
 
+        $total = 0;
+        if ($paginate) {
+            $query = new WP_User_Query($args);
+            $ids = (array) $query->get_results();
+            $total = (int) $query->get_total();
+        } else {
+            $ids = (array) get_users($args);
+        }
+
         $data = [];
-        foreach ((array) get_users($args) as $id) {
+        foreach ($ids as $id) {
             $item = $this->enrich(Serializer::speaker((int) $id));
             if ($item) {
                 $data[] = $item;
             }
         }
-        if ($city = (int) $r->get_param('city_id')) {
-            $data = array_values(array_filter($data, static fn(array $c): bool => in_array($city, $c['cities'], true)));
+        if ($paginate) {
+            return Response::ok($data, [
+                'page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'pages' => max(1, (int) ceil($total / $perPage)),
+            ]);
         }
 
         return Response::cache(Response::ok($data), 'public, max-age=60, stale-while-revalidate=300');
