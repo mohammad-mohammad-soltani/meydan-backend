@@ -21,6 +21,7 @@ final class NarrativeCleanup
         add_action('delete_user', [self::class, 'deleteUserNarratives'], 10, 1);
         add_action('before_delete_post', [self::class, 'deleteSquareNarratives'], 10, 2);
         add_action('before_delete_post', [self::class, 'deleteImportMapping'], 20, 2);
+        add_action('before_delete_post', [self::class, 'deleteNarrativeRelations'], 30, 2);
         add_action('init', [self::class, 'maybeDeleteOrphanNarratives'], 35);
     }
 
@@ -168,6 +169,40 @@ final class NarrativeCleanup
             $table = $wpdb->prefix . 'meydan_' . $source . '_imports';
             $wpdb->delete($table, ['narrative_id' => $postId], ['%d']);
         }
+    }
+
+    /**
+     * Removes custom-table data that WordPress cannot cascade when a narrative
+     * is hard-deleted.
+     */
+    public static function deleteNarrativeRelations(int $postId, WP_Post $post): void
+    {
+        if ($postId <= 0 || $post->post_type !== 'meydan_narrative') {
+            return;
+        }
+
+        global $wpdb;
+        $wpdb->delete($wpdb->prefix . 'meydan_narrative_stats', ['narrative_id' => $postId], ['%d']);
+        $wpdb->delete($wpdb->prefix . 'meydan_served_history', ['narrative_id' => $postId], ['%d']);
+        $wpdb->delete($wpdb->prefix . 'meydan_media_reflections', ['narrative_id' => $postId], ['%d']);
+
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$wpdb->prefix}meydan_interactions
+             WHERE object_type='narrative' AND object_id=%d",
+            $postId
+        ));
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$wpdb->prefix}meydan_notifications
+             WHERE (entity_type='narrative' AND entity_id=%d)
+                OR (parent_entity_type='narrative' AND parent_entity_id=%d)",
+            $postId,
+            $postId
+        ));
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$wpdb->prefix}meydan_events
+             WHERE entity_type='narrative' AND entity_id=%d",
+            $postId
+        ));
     }
 
     /** @param array<int,int|string> $ids */
