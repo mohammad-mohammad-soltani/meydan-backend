@@ -105,7 +105,7 @@ JS
 
         echo '<div class="meydan-grid">';
         self::field('phone', 'شماره موبایل', '', 'tel', '۰۹۱۲۳۴۵۶۷۸۹ یا +98912...', true);
-        self::field('full_name', 'نام و نام خانوادگی مالک', '', 'text', 'مثلاً «محمد محمد سلطانی»');
+        self::field('full_name', 'نام و نام خانوادگی مالک', '', 'text', 'مستقل از نام میدان', true);
         self::field('email', 'ایمیل وردپرس', '', 'email', 'اختیاری؛ خالی بماند ایمیل داخلی ساخته می‌شود');
         self::field('contact_name', 'نام رابط میدان', '', 'text', 'اگر با مالک متفاوت است');
         self::field('contact_phone', 'تلفن رابط میدان', '', 'tel', 'اختیاری');
