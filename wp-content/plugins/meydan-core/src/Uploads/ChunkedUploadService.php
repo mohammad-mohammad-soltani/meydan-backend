@@ -274,6 +274,34 @@ final class ChunkedUploadService
         return $payload;
     }
 
+    /**
+     * Removes every upload session owned by a deleted account, including
+     * unfinished chunk directories on disk.
+     */
+    public function purgeForUser(int $userId): int
+    {
+        if ($userId <= 0) {
+            return 0;
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_uploads';
+        $ids = array_values(array_filter(array_map(
+            'strval',
+            $wpdb->get_col($wpdb->prepare(
+                "SELECT upload_id FROM {$table} WHERE user_id=%d",
+                $userId,
+            )) ?: [],
+        )));
+
+        foreach ($ids as $uploadId) {
+            $this->cleanup($uploadId);
+        }
+
+        $wpdb->delete($table, ['user_id' => $userId], ['%d']);
+        return count($ids);
+    }
+
     public function abort(string $uploadId, int $userId): array|WP_Error
     {
         $row = $this->row($uploadId, $userId);

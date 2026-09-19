@@ -14,6 +14,8 @@ jobs:
         run: find wp-content/plugins/meydan-core -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Required REST inventory
         run: python3 tests/check-route-inventory.py
+      - name: Permanent user deletion contract
+        run: python3 tests/check-user-deletion-contract.py
       - name: Notification event coverage
         run: python3 tests/check-notification-events.py
       - name: Root response contract
