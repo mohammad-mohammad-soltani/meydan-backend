@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Meydan\Core\Support;
 
 use Meydan\Core\Storage\AttachmentStorage;
+use Meydan\Core\Storage\StorageFactory;
+use Meydan\Core\Storage\WordPressMediaHooks;
 
 use Meydan\Core\Database\Migrations;
 use Meydan\Core\Domain\Registrations;
@@ -17,6 +19,85 @@ final class CliCommand
         Migrations::run();
         Registrations::registerRolesAndCapabilities();
         \WP_CLI::success('Meydan migrations completed: ' . Migrations::VERSION);
+    }
+
+    /** Upload legacy attachment originals only; resized derivatives are intentionally skipped. */
+    public function media_migrate_originals(array $args, array $assocArgs): void
+    {
+        if (strtolower(trim((string) getenv('MEDIA_STORAGE'))) !== 's3') {
+            \WP_CLI::error('MEDIA_STORAGE must be s3.');
+        }
+
+        $dryRun = isset($assocArgs['dry-run']);
+        $limit = max(0, (int) ($assocArgs['limit'] ?? 0));
+        $after = max(0, (int) ($assocArgs['after'] ?? 0));
+        $storage = StorageFactory::create();
+        $pipeline = WordPressMediaHooks::pipeline();
+        $page = 1;
+        $processed = $uploaded = $skipped = $failed = 0;
+
+        do {
+            $attachments = get_posts([
+                'post_type' => 'attachment', 'post_status' => 'inherit',
+                'posts_per_page' => 100, 'paged' => $page++,
+                'orderby' => 'ID', 'order' => 'ASC', 'fields' => 'ids',
+            ]);
+            foreach ($attachments as $attachmentId) {
+                $attachmentId = (int) $attachmentId;
+                if ($attachmentId <= $after) continue;
+                if ($limit > 0 && $processed >= $limit) break 2;
+                $processed++;
+                if ((string) get_post_meta($attachmentId, '_meydan_storage_driver', true) === 's3') {
+                    $skipped++;
+                    continue;
+                }
+                $path = AttachmentStorage::localPath($attachmentId);
+                if ($path === '' || !is_file($path)) {
+                    $skipped++;
+                    continue;
+                }
+                $attached = (string) get_post_meta($attachmentId, '_wp_attached_file', true);
+                $filename = basename($attached !== '' ? $attached : $path);
+                $relativeDir = trim(str_replace('\\', '/', dirname($attached)), '/.');
+                $directory = preg_match('#^\d{4}/\d{2}$#', $relativeDir) ? 'uploads/' . $relativeDir : 'uploads/' . gmdate('Y/m');
+                $key = self::legacyUniqueKey($storage, $directory, $filename);
+                $mime = (string) get_post_mime_type($attachmentId);
+                if ($dryRun) {
+                    \WP_CLI::log('would upload original ' . $attachmentId . ' -> ' . $key);
+                    continue;
+                }
+                try {
+                    $result = $pipeline->upload($path, $key, $mime);
+                    update_post_meta($attachmentId, '_meydan_storage_driver', 's3');
+                    update_post_meta($attachmentId, '_meydan_storage_key', $result['key']);
+                    update_post_meta($attachmentId, '_meydan_storage_derivative_keys', []);
+                    update_post_meta($attachmentId, '_meydan_storage_size', $result['size']);
+                    update_post_meta($attachmentId, '_meydan_storage_checksum', $result['checksum']);
+                    update_post_meta($attachmentId, '_meydan_storage_etag', $result['etag']);
+                    update_post_meta($attachmentId, '_wp_attached_file', $result['key']);
+                    $uploaded++;
+                    \WP_CLI::log('uploaded original ' . $attachmentId . ' -> ' . $result['key']);
+                } catch (\Throwable $error) {
+                    $failed++;
+                    \WP_CLI::warning('attachment ' . $attachmentId . ': ' . $error->getMessage());
+                }
+            }
+        } while ($attachments);
+
+        \WP_CLI::success(sprintf('%d scanned, %d originals uploaded, %d skipped, %d failed%s.', $processed, $uploaded, $skipped, $failed, $dryRun ? ' (dry-run)' : ''));
+    }
+
+    private static function legacyUniqueKey(\Meydan\Core\Storage\StorageInterface $storage, string $directory, string $filename): string
+    {
+        $filename = sanitize_file_name($filename);
+        $extension = pathinfo($filename, PATHINFO_EXTENSION);
+        $stem = $extension !== '' ? substr($filename, 0, -strlen($extension) - 1) : $filename;
+        for ($index = 0; $index < 10000; $index++) {
+            $suffix = $index === 0 ? '' : '-' . $index;
+            $candidate = trim($directory, '/') . '/' . $stem . $suffix . ($extension !== '' ? '.' . $extension : '');
+            if (!$storage->exists($candidate)) return $candidate;
+        }
+        throw new \RuntimeException('Unable to allocate a unique legacy media key.');
     }
 
     /** Import the frontend fixtures into real WordPress entities. Use --force to rebuild seeded records. */
