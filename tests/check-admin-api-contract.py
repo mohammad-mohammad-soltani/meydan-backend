@@ -22,7 +22,7 @@ for method in ['create', 'update']:
     assert f'function {method}' in service
 for method in ['list', 'create', 'get', 'update', 'delete', 'status', 'map']:
     assert f'function {method}' in square
-assert "wp_trash_post($id)" in square
+assert "wp_delete_post($id, true)" in square
 assert "Admin::applySquareStatus" in square
 assert "function update" in requests
 assert "AuditLogger::log" in requests
