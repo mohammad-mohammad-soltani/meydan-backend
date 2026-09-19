@@ -17,7 +17,7 @@ use WP_Error;
 final class SquareDeletionService
 {
     /** @return array{square_id:int,owner_user_id:int,owner_deleted:bool}|WP_Error */
-    public static function deletePermanently(int $squareId): array|WP_Error
+    public static function deletePermanently(int $squareId, bool $deleteOwner = true): array|WP_Error
     {
         $post = get_post($squareId);
         if (!$post || $post->post_type !== 'meydan_square') {
@@ -46,7 +46,7 @@ final class SquareDeletionService
         }
 
         $ownerDeleted = false;
-        if ($ownerLinked && $owner) {
+        if ($deleteOwner && $ownerLinked && $owner) {
             $roles = (array) $owner->roles;
             $dedicatedSquareAccount =
                 !in_array('administrator', $roles, true)
