@@ -25,7 +25,7 @@ final class BindingService
                 continue;
             }
             $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
-            if ($squareId <= 0 || get_post_type($squareId) !== 'meydan_square') {
+            if (!self::activeSquare($squareId)) {
                 continue;
             }
             $last = $wpdb->get_var($wpdb->prepare(
@@ -45,7 +45,7 @@ final class BindingService
 
     public function ownerForSquare(int $squareId): int
     {
-        if ($squareId <= 0 || get_post_type($squareId) !== 'meydan_square') {
+        if (!self::activeSquare($squareId)) {
             return 0;
         }
         $owner = (int) get_post_meta($squareId, 'meydan_owner_user_id', true);
@@ -64,6 +64,15 @@ final class BindingService
             'number' => 1,
         ]);
         return $ids ? (int) $ids[0] : 0;
+    }
+
+    private static function activeSquare(int $squareId): bool
+    {
+        if ($squareId <= 0 || get_post_type($squareId) !== 'meydan_square') {
+            return false;
+        }
+
+        return !in_array((string) get_post_status($squareId), ['trash', 'auto-draft'], true);
     }
 
     public function channelForSquare(int $squareId): string
