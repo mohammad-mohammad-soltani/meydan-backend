@@ -52,12 +52,14 @@ final class Controller
         if ($error = $this->authorize($request, 64 * 1024)) return $error;
         $payload = $this->json($request);
         $squareId = (int) ($payload['square_id'] ?? 0);
+        $userId = (int) ($payload['user_id'] ?? 0);
         $timestamp = (int) ($payload['last_success_at'] ?? 0);
         $bindings = new BindingService();
-        if ($timestamp <= 0 || $bindings->ownerForSquare($squareId) <= 0) {
+        $valid = $squareId > 0 ? $bindings->ownerForSquare($squareId) > 0 : $bindings->user($userId);
+        if ($timestamp <= 0 || !$valid) {
             return new WP_Error('eitaa_checkpoint_invalid', 'Checkpoint نامعتبر است.', ['status' => 422]);
         }
-        if (!$bindings->checkpoint($squareId, $timestamp)) {
+        if ($squareId > 0 ? !$bindings->checkpoint($squareId, $timestamp) : !$bindings->checkpointUser($userId, $timestamp)) {
             return new WP_Error('eitaa_checkpoint_failed', 'ذخیره Checkpoint ناموفق بود.', ['status' => 500]);
         }
         return Response::ok(['saved' => true]);
