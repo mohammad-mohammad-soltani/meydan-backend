@@ -172,9 +172,10 @@ final class Actor
 
     public static function squareDisplayName(int $squareId): string
     {
-        $ownerId = self::squareOwnerUserId($squareId);
-        $owner = $ownerId ? get_userdata($ownerId) : null;
-        return (string) get_user_meta($ownerId, 'meydan_full_name', true) ?: ($owner?->display_name ?: (get_the_title($squareId) ?: 'میدان'));
+        // A square is its own actor. Its public/admin name must come from the
+        // square post title and must never fall back to the owner's name.
+        $title = trim((string) get_the_title($squareId));
+        return $title !== '' ? $title : 'میدان';
     }
 
     public static function squareAvatarUrl(int $squareId): string
