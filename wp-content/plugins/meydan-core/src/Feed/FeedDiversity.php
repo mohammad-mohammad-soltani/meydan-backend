@@ -10,7 +10,7 @@ final class FeedDiversity
     public function rerank(array $items, array $settings): array
     {
         $chunkSize = max(1, (int) ($settings['diversity_top_n'] ?? 20));
-        $actorCap = max(1, (int) ($settings['max_same_author_in_top_n'] ?? 3));
+        $actorCap = min(3, max(1, (int) ($settings['max_same_author_in_top_n'] ?? 3)));
         $roleCaps = [
             'meydan_speaker' => (float) ($settings['max_speaker_ratio_top_20'] ?? 40) / 100,
             'meydan_official' => (float) ($settings['max_official_ratio_top_20'] ?? 40) / 100,

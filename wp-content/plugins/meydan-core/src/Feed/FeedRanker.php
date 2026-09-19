@@ -20,7 +20,9 @@ final class FeedRanker
                 $score = (float) ($item['score'] ?? 0.0);
                 $hash = hash('sha256', $refreshSeed . ':' . (int) ($item['narrative_id'] ?? 0));
                 $fraction = hexdec(substr($hash, 0, 8)) / 4294967295;
-                $jitter = $fraction * max(0.000001, abs($score) * 0.01);
+                // Keep score/breakdown untouched while allowing a fresh
+                // snapshot to reshuffle genuinely close candidates.
+                $jitter = $fraction * max(0.000001, abs($score) * 0.05);
                 $item['_rank_key'] = $score + $jitter;
             }
             unset($item);

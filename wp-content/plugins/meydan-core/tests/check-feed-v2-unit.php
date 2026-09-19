@@ -234,5 +234,13 @@ $seedARepeat = $ranker->rank($seedItems, 'refresh-a');
 $seedB = $ranker->rank($seedItems, 'refresh-b');
 assertSame(array_column($seedA, 'narrative_id'), array_column($seedARepeat, 'narrative_id'));
 if (array_column($seedA, 'narrative_id') === array_column($seedB, 'narrative_id')) throw new RuntimeException('Different refresh seeds should change equal-score ordering.');
+$closeItems = [
+    ['narrative_id' => 9101, 'score' => 100.0, 'age_hours' => 1.0],
+    ['narrative_id' => 9102, 'score' => 99.0, 'age_hours' => 1.0],
+    ['narrative_id' => 9103, 'score' => 98.0, 'age_hours' => 1.0],
+];
+$closeA = $ranker->rank($closeItems, 'refresh-close-a');
+$closeB = $ranker->rank($closeItems, 'refresh-close-b');
+if (array_column($closeA, 'narrative_id') === array_column($closeB, 'narrative_id')) throw new RuntimeException('Refresh should vary close-score ordering.');
 
 echo "Feed V2 unit checks passed.\n";
