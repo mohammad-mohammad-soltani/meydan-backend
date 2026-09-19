@@ -24,6 +24,7 @@ require_once __DIR__ . '/../src/Feed/Candidate.php';
 require_once __DIR__ . '/../src/Feed/FeedSettings.php';
 require_once __DIR__ . '/../src/Feed/FeedScorer.php';
 require_once __DIR__ . '/../src/Feed/FeedDiversity.php';
+require_once __DIR__ . '/../src/Feed/FeedRanker.php';
 
 $candidate = new Meydan\Core\Feed\Candidate(42, 'following');
 $candidate->addSource('same_city');
@@ -100,5 +101,54 @@ assertSame(0.6, $scorer->score(feedFixture(['age_hours' => 72]), $feedSettings)[
 assertTrue($scorer->score(feedFixture(['age_hours' => 72.0001]), $feedSettings)['excluded']);
 $zeroScore = $scorer->score(feedFixture(['stats' => ['likes'=>0,'views'=>0,'comments'=>0,'shares'=>0,'reposts'=>0]]), $feedSettings)['score'];
 assertTrue(is_finite($zeroScore) && $zeroScore === 0.0);
+
+$diversity = new Meydan\Core\Feed\FeedDiversity();
+$diversitySettings = Meydan\Core\Feed\FeedSettings::defaults();
+$diversityItems = [];
+for ($i = 0; $i < 80; $i++) {
+    $isSpeaker = $i % 4 === 0;
+    $diversityItems[] = [
+        'narrative_id' => 1000 + $i,
+        'actor_type' => $isSpeaker ? 'user' : 'square',
+        'actor_id' => $isSpeaker ? 200 + ($i % 8) : 1 + ($i % 10),
+        'actor_roles' => $isSpeaker ? ['meydan_speaker'] : [],
+        'score' => 100 - $i,
+        'age_hours' => (float) $i,
+    ];
+}
+$mixed = $diversity->rerank($diversityItems, $diversitySettings);
+assertSame(count($diversityItems), count($mixed));
+for ($offset = 0; $offset < count($mixed); $offset += 20) {
+    $chunk = array_slice($mixed, $offset, 20);
+    $actors = [];
+    $speakerBlocks = [];
+    foreach ($chunk as $index => $item) {
+        $actor = (string) $item['actor_type'] . ':' . (int) $item['actor_id'];
+        $actors[$actor] = ($actors[$actor] ?? 0) + 1;
+        if (in_array('meydan_speaker', (array) ($item['actor_roles'] ?? []), true)) {
+            $speakerBlocks[intdiv($index, 10)] = ($speakerBlocks[intdiv($index, 10)] ?? 0) + 1;
+        }
+        if ($index > 0) {
+            $previous = $chunk[$index - 1];
+            $previousActor = (string) $previous['actor_type'] . ':' . (int) $previous['actor_id'];
+            if ($actor === $previousActor) throw new RuntimeException('Diversity should separate repeated actors.');
+        }
+    }
+    foreach ($actors as $actor => $count) {
+        if (str_starts_with($actor, 'square:') && $count > 3) throw new RuntimeException('Square cap exceeded in a chunk.');
+    }
+    for ($block = 0; $block < 2; $block++) {
+        if (($speakerBlocks[$block] ?? 0) < 1 || ($speakerBlocks[$block] ?? 0) > 3) throw new RuntimeException('Speaker quota violated in a ten-item block.');
+    }
+}
+
+$ranker = new Meydan\Core\Feed\FeedRanker();
+$seedItems = [];
+for ($i = 0; $i < 12; $i++) $seedItems[] = ['narrative_id' => 3000 + $i, 'score' => 10.0, 'age_hours' => 1.0];
+$seedA = $ranker->rank($seedItems, 'refresh-a');
+$seedARepeat = $ranker->rank($seedItems, 'refresh-a');
+$seedB = $ranker->rank($seedItems, 'refresh-b');
+assertSame(array_column($seedA, 'narrative_id'), array_column($seedARepeat, 'narrative_id'));
+if (array_column($seedA, 'narrative_id') === array_column($seedB, 'narrative_id')) throw new RuntimeException('Different refresh seeds should change equal-score ordering.');
 
 echo "Feed V2 unit checks passed.\n";

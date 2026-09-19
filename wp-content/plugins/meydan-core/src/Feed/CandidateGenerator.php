@@ -21,12 +21,30 @@ final class CandidateGenerator
         $candidates = [];
         foreach ($this->followingIds($context, $pool) as $id) $this->add($candidates, $id, 'following');
         foreach ($this->ids('', [], $settings, $pool) as $id) $this->add($candidates, $id, 'recent');
+        foreach ($this->speakerIds($settings, $pool) as $id) $this->add($candidates, $id, 'speaker');
         foreach ($this->ids("EXISTS (SELECT 1 FROM {$GLOBALS['wpdb']->postmeta} em WHERE em.post_id=p.ID AND em.meta_key='meydan_editorial' AND em.meta_value='1')", [], $settings, $pool) as $id) $this->add($candidates, $id, 'editorial');
         foreach ($this->ids("EXISTS (SELECT 1 FROM {$GLOBALS['wpdb']->postmeta} gm WHERE gm.post_id=p.ID AND gm.meta_key='meydan_initiative_id' AND CAST(gm.meta_value AS UNSIGNED)>0)", [], $settings, $pool) as $id) $this->add($candidates, $id, 'good_deed');
         if ($context->viewer->cityId) foreach ($this->metaIds('meydan_city_id', (int) $context->viewer->cityId, $settings, $pool) as $id) $this->add($candidates, $id, 'same_city');
         if ($context->viewer->provinceId) foreach ($this->metaIds('meydan_province_id', (int) $context->viewer->provinceId, $settings, $pool) as $id) $this->add($candidates, $id, 'same_province');
         foreach ($this->ids('', [], $settings, $pool) as $id) $this->add($candidates, $id, 'general');
-        return array_slice($candidates, 0, $pool, true);
+        $selected = array_slice($candidates, 0, $pool, true);
+        $speakerIds = array_keys(array_filter(
+            $candidates,
+            static fn(Candidate $candidate): bool => in_array('speaker', $candidate->sourceNames(), true),
+        ));
+        $requiredSpeakers = min(3, max(1, intdiv(max(1, $requested), 10)));
+        $selectedSpeakerCount = count(array_intersect(array_keys($selected), $speakerIds));
+        foreach ($speakerIds as $speakerId) {
+            if ($selectedSpeakerCount >= $requiredSpeakers) break;
+            if (isset($selected[$speakerId])) continue;
+            foreach (array_reverse(array_keys($selected)) as $replaceId) {
+                if (in_array($replaceId, $speakerIds, true)) continue;
+                $selected[$replaceId] = $candidates[$speakerId];
+                $selectedSpeakerCount++;
+                break;
+            }
+        }
+        return $selected;
     }
 
     /** @param array<int,Candidate> $candidates */
@@ -53,6 +71,29 @@ final class CandidateGenerator
     private function metaIds(string $key, int $value, array $settings, int $limit): array
     {
         return $this->ids('lm.meta_value=%d', [$value], $settings, $limit, false, $key);
+    }
+
+    /** @return list<int> */
+    private function speakerIds(array $settings, int $limit): array
+    {
+        $users = get_users([
+            'role' => 'meydan_speaker',
+            'fields' => ['ID'],
+            'number' => 1000,
+            'orderby' => 'ID',
+            'order' => 'ASC',
+        ]);
+        $clauses = [];
+        $args = [];
+        foreach ($users as $user) {
+            $id = (int) ($user->ID ?? 0);
+            if ($id <= 0) continue;
+            $clauses[] = '(at.meta_value=%s AND ai.meta_value=%d)';
+            $args[] = 'user';
+            $args[] = $id;
+        }
+        if (!$clauses) return [];
+        return $this->ids('(' . implode(' OR ', $clauses) . ')', $args, $settings, $limit, true);
     }
 
     /** @return list<int> */

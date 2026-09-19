@@ -13,6 +13,9 @@ generator = (root / 'Feed/CandidateGenerator.php').read_text(encoding='utf-8')
 hydrator = (root / 'Feed/CandidateHydrator.php').read_text(encoding='utf-8')
 for source in ['following', 'recent', 'editorial', 'good_deed', 'same_city', 'same_province', 'general']:
     assert source in generator
+assert "'speaker'" in generator
+assert "'role' => 'meydan_speaker'" in generator
+assert "'orderby' => 'ID'" in generator
 assert 'post_date_gmt >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)' in generator
 assert "ORDER BY p.post_date_gmt DESC, p.ID DESC" in generator
 assert "ORDER BY created_at DESC, id DESC LIMIT 1000" in generator
@@ -44,3 +47,9 @@ assert "if ($debug !== null) $meta['debug_feed'] = $debug;" in timeline
 assert "if ($mode === 'following')" in timeline
 assert "if (str_starts_with($route,'/admin/'))" in routes
 print('Feed V2 REST integration contract OK.')
+
+ranker = (root / 'Feed/FeedRanker.php').read_text(encoding='utf-8')
+assert 'refreshSeed' in ranker or 'refresh_seed' in ranker
+assert 'hash(' in ranker
+assert 'jitter' in ranker.lower()
+print('Feed V2 refresh-seed contract OK.')

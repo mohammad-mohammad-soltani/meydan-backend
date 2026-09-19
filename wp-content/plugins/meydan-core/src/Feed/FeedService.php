@@ -27,7 +27,8 @@ final class FeedService
         $hydrated = $this->hydrator->hydrate($candidates, $context);
         $eligible = $this->filter->preRank($hydrated, $context);
         $scored = $this->scorer->scoreAll($eligible, $settings);
-        $ranked = $this->ranker->rank($scored);
+        $refreshSeed = bin2hex(random_bytes(16));
+        $ranked = $this->ranker->rank($scored, $refreshSeed);
         $selected = array_slice($this->diversity->rerank($ranked, $settings), 0, max(1, $limit));
         foreach ($selected as $index => &$item) $item['rank'] = $index + 1;
         unset($item);
