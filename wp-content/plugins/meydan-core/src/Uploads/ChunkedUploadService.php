@@ -259,6 +259,7 @@ final class ChunkedUploadService
                 'post_status' => 'inherit',
             ], $destination, 0, true);
         } catch (\Throwable) {
+            @unlink($destination);
             return new WP_Error('storage_failed', 'پیکربندی یا اعتبارسنجی فضای ذخیره‌سازی ناموفق بود.', ['status' => 502]);
         }
 
@@ -278,7 +279,8 @@ final class ChunkedUploadService
         // Video finalisation can take longer than the network upload. The client
         // shows this as a separate "processing" phase after upload reaches 100%.
         $video = [];
-        if (str_starts_with((string) $check['type'], 'video/')) {
+        if (str_starts_with((string) $check['type'], 'video/')
+            && strtolower(trim((string) getenv('MEDIA_STORAGE'))) !== 's3') {
             try {
                 $video = VideoProcessor::processAttachment((int) $attachmentId);
             } catch (\Throwable $error) {
@@ -299,6 +301,13 @@ final class ChunkedUploadService
             error_log('Meydan upload metadata generation failed for attachment ' . (int) $attachmentId . ': ' . $error->getMessage());
             if (get_post((int) $attachmentId)) wp_delete_attachment((int) $attachmentId, true);
             return new WP_Error('storage_failed', 'انتقال فایل به فضای ذخیره‌سازی ناموفق بود.', ['status' => 502]);
+        }
+
+        // The S3 hook has already streamed the original to object storage and
+        // removed any temporary derivative files. Never leave assembled.upload
+        // behind in the chunk directory.
+        if (strtolower(trim((string) getenv('MEDIA_STORAGE'))) === 's3') {
+            @unlink($destination);
         }
 
         $attachmentUrl = wp_get_attachment_url((int) $attachmentId);

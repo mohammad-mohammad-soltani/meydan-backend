@@ -20,6 +20,10 @@ final class WordPressMediaHooks
     public static function register(): void
     {
         add_action('add_attachment', [self::class, 'markPending'], 10, 1);
+        // New Meydan S3 uploads intentionally keep one original object only.
+        // This is scoped to pending Meydan attachments; legacy/local media and
+        // other plugins retain WordPress' normal image-size behavior.
+        add_filter('intermediate_image_sizes_advanced', [self::class, 'disablePendingSizes'], 1, 3);
         add_filter('wp_generate_attachment_metadata', [self::class, 'offloadGeneratedMetadata'], 20, 3);
         add_filter('wp_get_attachment_url', [self::class, 'attachmentUrl'], 20, 2);
         add_filter('wp_calculate_image_srcset', [self::class, 'imageSrcset'], 20, 5);
@@ -76,14 +80,11 @@ final class WordPressMediaHooks
         try {
             $original = $pipeline->upload($localPath, $logicalKey, $mime);
             $uploaded[] = $original['key'];
+            // Deliberately do not upload WordPress image sizes, alternate
+            // originals, posters, or other derivatives. One input file maps
+            // to one S3 object. removeStaging() still removes any temporary
+            // files produced by third-party processing before this hook ran.
             $derivatives = [];
-            foreach (self::derivativeFiles($localPath, $metadata, $attachmentId) as $name => $path) {
-                if (!is_file($path)) continue;
-                $derivativeMime = self::mimeFor($path);
-                $result = $pipeline->upload($path, dirname($original['key']) . '/' . basename($path), $derivativeMime);
-                $derivatives[$name] = $result['key'];
-                $uploaded[] = $result['key'];
-            }
 
             update_post_meta($attachmentId, self::DRIVER, 's3');
             update_post_meta($attachmentId, self::KEY, $original['key']);
@@ -146,6 +147,14 @@ final class WordPressMediaHooks
             return $sources;
         }
         return $sources;
+    }
+
+    public static function disablePendingSizes(array $sizes, array $imageMeta, int $attachmentId): array
+    {
+        if (self::s3Enabled() && (int) get_post_meta($attachmentId, self::PENDING, true)) {
+            return [];
+        }
+        return $sizes;
     }
 
     public static function deleteObjectsBeforeAttachment(mixed $delete, \WP_Post $post, bool $forceDelete): mixed
