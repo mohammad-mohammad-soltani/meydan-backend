@@ -67,7 +67,7 @@ final class UserDeletionService
             self::userNarrativeIds($userId),
             self::squareNarrativeIds($squareIds),
         ));
-        $contentIds = self::derivedContentIds($userId, $narrativeIds);
+        $contentIds = self::derivedContentIds($userId, $squareIds, $narrativeIds);
         $initiativeIds = self::derivedInitiativeIds($narrativeIds);
 
         // Stop channel imports before anything disappears. A sync worker that
@@ -210,8 +210,8 @@ final class UserDeletionService
         ]) ?: []);
     }
 
-    /** @param list<int> $narrativeIds @return list<int> */
-    private static function derivedContentIds(int $userId, array $narrativeIds): array
+    /** @param list<int> $squareIds @param list<int> $narrativeIds @return list<int> */
+    private static function derivedContentIds(int $userId, array $squareIds, array $narrativeIds): array
     {
         $meta = [
             'relation' => 'OR',
@@ -221,6 +221,18 @@ final class UserDeletionService
                 ['key' => 'meydan_producer_actor_id', 'value' => $userId, 'type' => 'NUMERIC'],
             ],
         ];
+        if ($squareIds) {
+            $meta[] = [
+                'relation' => 'AND',
+                ['key' => 'meydan_producer_actor_type', 'value' => 'square'],
+                [
+                    'key' => 'meydan_producer_actor_id',
+                    'value' => $squareIds,
+                    'compare' => 'IN',
+                    'type' => 'NUMERIC',
+                ],
+            ];
+        }
         if ($narrativeIds) {
             $meta[] = [
                 'key' => 'meydan_source_narrative_id',
