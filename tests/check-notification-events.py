@@ -8,6 +8,8 @@ controller = (root / "wp-content/plugins/meydan-core/src/Rest/NotificationContro
 settings = (root / "wp-content/plugins/meydan-core/src/Admin/SettingsPage.php").read_text(encoding="utf-8")
 plugin = (root / "wp-content/plugins/meydan-core/src/Plugin.php").read_text(encoding="utf-8")
 duplicate_settings = root / "wp-content/plugins/meydan-core/src/Admin/NotificationTemplateSettings.php"
+events = (root / "wp-content/plugins/meydan-core/src/Notifications/EventSubscriber.php").read_text(encoding="utf-8")
+admin = (root / "wp-content/plugins/meydan-core/src/Admin/Admin.php").read_text(encoding="utf-8")
 
 assert "NotificationService" in initiative, "InitiativeController must use NotificationService"
 assert "initiative_join" in initiative, "joining a good-work initiative must create an initiative_join notification"
@@ -21,5 +23,8 @@ assert "media_handle_upload" in settings, "notification icon files must be store
 assert "meydan_notification_templates_json" not in settings, "notification templates must not use the old JSON textarea"
 assert "NotificationTemplateSettings" not in plugin, "notification templates must be registered only through SettingsPage"
 assert not duplicate_settings.exists(), "legacy NotificationTemplateSettings admin-footer editor must be removed"
+
+assert "$actorKind === 'square' ? '/square/' . $profileId : '/' . $profileId" in events, "follow notifications must use canonical public profile URLs"
+assert "'square',$id,'/square/'.$id)" in admin, "square approval notifications must target /square/{id}"
 
 print("notification event coverage ok")
