@@ -23,6 +23,8 @@ assert 'min($pool, $requested)' in generator
 assert 'RAND(' not in generator and 'mt_rand' not in generator
 assert 'score' not in generator.lower() and 'rank' not in generator.lower()
 assert 'get_post(' not in hydrator and 'get_post_meta(' not in hydrator
+assert "'fields'=>['ID','roles']" not in hydrator
+assert "'fields'=>'all'" in hydrator
 assert 'IN (' in hydrator
 print('Feed V2 candidate pipeline contract OK.')
 
