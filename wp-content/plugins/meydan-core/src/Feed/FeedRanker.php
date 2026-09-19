@@ -7,14 +7,32 @@ namespace Meydan\Core\Feed;
 final class FeedRanker
 {
     /** @param list<array<string,mixed>> $items @return list<array<string,mixed>> */
-    public function rank(array $items): array
+    public function rank(array $items, ?string $refreshSeed = null): array
     {
         usort($items, static function (array $left, array $right): int {
-            $score = ((float) ($right['score'] ?? 0.0)) <=> ((float) ($left['score'] ?? 0.0));
+            $score = ((float) ($right['_rank_key'] ?? $right['score'] ?? 0.0)) <=> ((float) ($left['_rank_key'] ?? $left['score'] ?? 0.0));
             if ($score !== 0) return $score;
             $age = ((float) ($left['age_hours'] ?? 0.0)) <=> ((float) ($right['age_hours'] ?? 0.0));
             return $age !== 0 ? $age : ((int) ($right['narrative_id'] ?? 0)) <=> ((int) ($left['narrative_id'] ?? 0));
         });
+        if ($refreshSeed !== null) {
+            foreach ($items as &$item) {
+                $score = (float) ($item['score'] ?? 0.0);
+                $hash = hash('sha256', $refreshSeed . ':' . (int) ($item['narrative_id'] ?? 0));
+                $fraction = hexdec(substr($hash, 0, 8)) / 4294967295;
+                $jitter = $fraction * max(0.000001, abs($score) * 0.01);
+                $item['_rank_key'] = $score + $jitter;
+            }
+            unset($item);
+            usort($items, static function (array $left, array $right): int {
+                $score = ((float) ($right['_rank_key'] ?? 0.0)) <=> ((float) ($left['_rank_key'] ?? 0.0));
+                if ($score !== 0) return $score;
+                $age = ((float) ($left['age_hours'] ?? 0.0)) <=> ((float) ($right['age_hours'] ?? 0.0));
+                return $age !== 0 ? $age : ((int) ($right['narrative_id'] ?? 0)) <=> ((int) ($left['narrative_id'] ?? 0));
+            });
+            foreach ($items as &$item) unset($item['_rank_key']);
+            unset($item);
+        }
         return $items;
     }
 }
