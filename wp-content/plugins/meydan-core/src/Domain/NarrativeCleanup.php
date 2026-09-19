@@ -14,12 +14,13 @@ use WP_Post;
  */
 final class NarrativeCleanup
 {
-    private const ORPHAN_CLEANUP_OPTION = 'meydan_orphan_narratives_cleaned_v1';
+    private const ORPHAN_CLEANUP_OPTION = 'meydan_orphan_imported_narratives_cleaned_v2';
 
     public static function register(): void
     {
         add_action('delete_user', [self::class, 'deleteUserNarratives'], 10, 1);
         add_action('before_delete_post', [self::class, 'deleteSquareNarratives'], 10, 2);
+        add_action('before_delete_post', [self::class, 'deleteImportMapping'], 20, 2);
         add_action('init', [self::class, 'maybeDeleteOrphanNarratives'], 35);
     }
 
@@ -79,11 +80,12 @@ final class NarrativeCleanup
     }
 
     /**
-     * One-time cleanup for narratives whose owning actor no longer exists.
+     * One-time cleanup for orphaned automatically imported narratives.
      *
-     * For legacy user narratives without actor metadata, post_author is used as
-     * the fallback. A trashed square still exists and is therefore not treated
-     * as orphaned until it is permanently deleted.
+     * Only Eitaa/Bale imports are considered here. An imported narrative is
+     * orphaned when its actor is gone/trashed or when its source_key no longer
+     * has a matching row in the integration import table. This deliberately
+     * leaves manually-created narratives alone.
      */
     public static function maybeDeleteOrphanNarratives(): void
     {
@@ -93,7 +95,13 @@ final class NarrativeCleanup
 
         global $wpdb;
         $ids = $wpdb->get_col(
-            "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'meydan_narrative'"
+            "SELECT DISTINCT p.ID
+             FROM {$wpdb->posts} p
+             INNER JOIN {$wpdb->postmeta} source
+               ON source.post_id = p.ID
+              AND source.meta_key = 'meydan_import_source'
+              AND source.meta_value IN ('eitaa','bale')
+             WHERE p.post_type = 'meydan_narrative'"
         );
 
         $deleted = 0;
@@ -104,21 +112,28 @@ final class NarrativeCleanup
                 continue;
             }
 
+            $source = (string) get_post_meta($id, 'meydan_import_source', true);
+            $sourceKey = trim((string) get_post_meta($id, 'meydan_import_source_key', true));
             $actorType = (string) get_post_meta($id, 'meydan_author_actor_type', true);
             $actorId = (int) get_post_meta($id, 'meydan_author_actor_id', true);
-            $orphaned = false;
 
+            $actorOrphaned = false;
             if ($actorType === 'square') {
-                $orphaned = $actorId <= 0 || get_post_type($actorId) !== 'meydan_square';
+                $square = $actorId > 0 ? get_post($actorId) : null;
+                $actorOrphaned = !$square
+                    || $square->post_type !== 'meydan_square'
+                    || in_array($square->post_status, ['trash', 'auto-draft'], true);
             } elseif ($actorType === 'user') {
                 $ownerId = $actorId > 0 ? $actorId : (int) $post->post_author;
-                $orphaned = $ownerId <= 0 || !get_userdata($ownerId);
+                $actorOrphaned = $ownerId <= 0 || !get_userdata($ownerId);
             } else {
                 $authorId = (int) $post->post_author;
-                $orphaned = $authorId <= 0 || !get_userdata($authorId);
+                $actorOrphaned = $authorId <= 0 || !get_userdata($authorId);
             }
 
-            if ($orphaned && wp_delete_post($id, true)) {
+            $mappingOrphaned = !self::hasImportMapping($source, $sourceKey, $id);
+
+            if (($actorOrphaned || $mappingOrphaned) && wp_delete_post($id, true)) {
                 $deleted++;
             }
         }
@@ -127,6 +142,41 @@ final class NarrativeCleanup
             'deleted' => $deleted,
             'ran_at' => current_time('mysql', true),
         ], false);
+    }
+
+    private static function hasImportMapping(string $source, string $sourceKey, int $narrativeId): bool
+    {
+        if ($sourceKey === '' || !in_array($source, ['eitaa', 'bale'], true)) {
+            return false;
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_' . $source . '_imports';
+        return (bool) $wpdb->get_var($wpdb->prepare(
+            "SELECT 1 FROM {$table} WHERE source_key=%s AND narrative_id=%d LIMIT 1",
+            $sourceKey,
+            $narrativeId
+        ));
+    }
+
+    /**
+     * Removes stale integration rows when an imported narrative is permanently
+     * deleted, preventing known() from returning a dead narrative id.
+     */
+    public static function deleteImportMapping(int $postId, WP_Post $post): void
+    {
+        if ($postId <= 0 || $post->post_type !== 'meydan_narrative') {
+            return;
+        }
+
+        $source = (string) get_post_meta($postId, 'meydan_import_source', true);
+        if (!in_array($source, ['eitaa', 'bale'], true)) {
+            return;
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_' . $source . '_imports';
+        $wpdb->delete($table, ['narrative_id' => $postId], ['%d']);
     }
 
     /** @param array<int,int|string> $ids */
