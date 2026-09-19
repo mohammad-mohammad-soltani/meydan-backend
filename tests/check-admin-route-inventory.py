@@ -6,6 +6,9 @@ root = Path(__file__).parents[1] / 'wp-content/plugins/meydan-core/src'
 routes = (root / 'Rest/Routes.php').read_text(encoding='utf-8')
 found = {(method, route) for route, method in re.findall(r"self::r\('([^']+)','([^']+)'", routes)}
 required = {
+    ('GET', '/admin/users'), ('POST', '/admin/users'), ('GET', '/admin/users/roles'),
+    ('GET', r'/admin/users/(?P<id>\d+)'), ('PATCH', r'/admin/users/(?P<id>\d+)'),
+    ('DELETE', r'/admin/users/(?P<id>\d+)'), ('PATCH', r'/admin/users/(?P<id>\d+)/status'),
     ('GET', '/admin/squares'), ('POST', '/admin/squares'),
     ('GET', r'/admin/squares/(?P<id>\d+)'), ('PATCH', r'/admin/squares/(?P<id>\d+)'),
     ('DELETE', r'/admin/squares/(?P<id>\d+)'), ('POST', r'/admin/squares/(?P<id>\d+)/status'),
