@@ -36,4 +36,9 @@ assert "'/admin/feed/preview','GET'" in routes
 assert 'FeedSettings::enabled()' in timeline
 assert 'debug_feed' in timeline and 'isAdministrator' in timeline
 assert 'Stats::incrementViewsBulk($ids)' in timeline
+assert "if ($cursor !== '')" in timeline and 'TimelineSession::resume' in timeline
+assert "if ($mode === 'for_you' && $filter === 'all' && FeedSettings::enabled())" in timeline
+assert "if ($debug !== null) $meta['debug_feed'] = $debug;" in timeline
+assert "if ($mode === 'following')" in timeline
+assert "if (str_starts_with($route,'/admin/'))" in routes
 print('Feed V2 REST integration contract OK.')
