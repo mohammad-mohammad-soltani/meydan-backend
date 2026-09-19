@@ -8,10 +8,16 @@ namespace Meydan\Core\Feed;
 final class CandidateGenerator
 {
     /** @return array<int,Candidate> keyed by narrative id */
-    public function generate(FeedContext $context): array
+    public function generate(FeedContext $context, int $requested = 0): array
     {
         $settings = $context->settings;
+        // `candidate_pool_size` preserves a healthy candidate pool for short
+        // requests, but a TimelineSession may legitimately need more ids than
+        // that. Never shorten an existing 600-item snapshot merely because the
+        // configurable pool defaults to 300.
+        $requested = max(1, $requested);
         $pool = (int) $settings['candidate_pool_size'];
+        $pool = max($pool, $requested);
         $candidates = [];
         foreach ($this->followingIds($context, $pool) as $id) $this->add($candidates, $id, 'following');
         foreach ($this->ids('', [], $settings, $pool) as $id) $this->add($candidates, $id, 'recent');
@@ -36,7 +42,7 @@ final class CandidateGenerator
     {
         if (!$context->viewer->isAuthenticated()) return [];
         global $wpdb;
-        $rows = $wpdb->get_results($wpdb->prepare("SELECT object_type,object_id FROM {$wpdb->prefix}meydan_interactions WHERE user_id=%d AND action='follow' LIMIT 1000", $context->viewer->userId), ARRAY_A) ?: [];
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT object_type,object_id FROM {$wpdb->prefix}meydan_interactions WHERE user_id=%d AND action='follow' ORDER BY created_at DESC, id DESC LIMIT 1000", $context->viewer->userId), ARRAY_A) ?: [];
         $clauses=[]; $args=[];
         foreach ($rows as $row) { if (!in_array($row['object_type'], ['user','square'], true)) continue; $context->addFollowing($row['object_type'], (int)$row['object_id']); $clauses[]='(at.meta_value=%s AND ai.meta_value=%d)'; $args[]=$row['object_type']; $args[]=(int)$row['object_id']; }
         if (!$clauses) return [];

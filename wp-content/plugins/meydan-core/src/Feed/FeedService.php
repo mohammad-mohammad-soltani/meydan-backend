@@ -23,7 +23,7 @@ final class FeedService
     {
         $settings = FeedSettings::get();
         $context = new FeedContext($viewer, $settings, []);
-        $candidates = $this->generator->generate($context);
+        $candidates = $this->generator->generate($context, $limit);
         $hydrated = $this->hydrator->hydrate($candidates, $context);
         $eligible = $this->filter->preRank($hydrated, $context);
         $scored = $this->scorer->scoreAll($eligible, $settings);

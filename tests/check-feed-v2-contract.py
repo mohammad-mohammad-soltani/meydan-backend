@@ -15,6 +15,8 @@ for source in ['following', 'recent', 'editorial', 'good_deed', 'same_city', 'sa
     assert source in generator
 assert 'post_date_gmt >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)' in generator
 assert "ORDER BY p.post_date_gmt DESC, p.ID DESC" in generator
+assert "ORDER BY created_at DESC, id DESC LIMIT 1000" in generator
+assert 'max($pool, $requested)' in generator
 assert 'RAND(' not in generator and 'mt_rand' not in generator
 assert 'score' not in generator.lower() and 'rank' not in generator.lower()
 assert 'get_post(' not in hydrator and 'get_post_meta(' not in hydrator
