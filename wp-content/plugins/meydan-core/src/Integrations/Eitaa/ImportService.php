@@ -55,9 +55,10 @@ final class ImportService
     {
         global $wpdb;
         $squareId = (int) ($payload['square_id'] ?? 0);
-        $userId = $this->bindings->ownerForSquare($squareId);
-        if ($userId <= 0 || $this->bindings->channelForSquare($squareId) === '') {
-            return $this->fail(new WP_Error('eitaa_square_invalid', 'میدان یا اتصال ایتا معتبر نیست.', ['status' => 422]), $squareId);
+        $userId = $squareId > 0 ? $this->bindings->ownerForSquare($squareId) : (int) ($payload['user_id'] ?? 0);
+        $valid = $squareId > 0 ? ($userId > 0 && $this->bindings->channelForSquare($squareId) !== '') : $this->bindings->user($userId);
+        if (!$valid) {
+            return $this->fail(new WP_Error('eitaa_target_invalid', 'مقصد یا اتصال ایتا معتبر نیست.', ['status' => 422]), $squareId, $userId);
         }
 
         $sourceKey = trim((string) ($payload['source_key'] ?? ''));
@@ -65,12 +66,12 @@ final class ImportService
         $channelId = trim((string) ($payload['channel_id'] ?? ''));
         $publishedAt = (int) ($payload['published_at'] ?? 0);
         if ($sourceKey === '' || strlen($sourceKey) > 255 || $sourceHash === '' || $channelId === '' || $publishedAt <= 0) {
-            return $this->fail(new WP_Error('eitaa_import_invalid', 'اطلاعات منبع ایتا کامل نیست.', ['status' => 422]), $squareId);
+            return $this->fail(new WP_Error('eitaa_import_invalid', 'اطلاعات منبع ایتا کامل نیست.', ['status' => 422]), $squareId, $userId);
         }
 
         $attachments = $this->attachments((array) ($payload['attachments'] ?? []), $userId);
         if (is_wp_error($attachments)) {
-            return $this->fail($attachments, $squareId);
+            return $this->fail($attachments, $squareId, $userId);
         }
 
         $table = $wpdb->prefix . 'meydan_eitaa_imports';
@@ -112,8 +113,8 @@ final class ImportService
             }
             $postId = (int) $result;
 
-            update_post_meta($postId, 'meydan_author_actor_type', 'square');
-            update_post_meta($postId, 'meydan_author_actor_id', $squareId);
+            update_post_meta($postId, 'meydan_author_actor_type', $squareId > 0 ? 'square' : 'user');
+            update_post_meta($postId, 'meydan_author_actor_id', $squareId > 0 ? $squareId : $userId);
             update_post_meta($postId, 'meydan_attachments', $attachments);
             update_post_meta($postId, 'meydan_import_source', 'eitaa');
             update_post_meta($postId, 'meydan_import_source_key', $sourceKey);
@@ -207,10 +208,11 @@ final class ImportService
      * Reports an import failure to Bale (requirement 1) and returns it
      * unchanged, so the sync service still receives its error.
      */
-    private function fail(WP_Error $error, int $squareId): WP_Error
+    private function fail(WP_Error $error, int $squareId, int $userId = 0): WP_Error
     {
         BaleEvents::reportEitaaFailure('ورود محتوا از ایتا', $error, [
             'square_id' => $squareId,
+            'user_id' => $userId,
             'http_status' => $error->get_error_data()['status'] ?? null,
         ]);
         return $error;

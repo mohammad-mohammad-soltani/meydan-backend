@@ -91,7 +91,7 @@ final class SpeakerService
         return true;
     }
 
-    /** A user can become a speaker unless it is an admin, square or already one. */
+    /** A user can become a speaker unless it is an admin, square, official or already one. */
     public static function isPromotable(int $userId): bool
     {
         $user = get_userdata($userId);
@@ -101,6 +101,7 @@ final class SpeakerService
         $roles = (array) $user->roles;
         return !in_array('administrator', $roles, true)
             && !in_array('meydan_square', $roles, true)
+            && !in_array('meydan_official', $roles, true)
             && !in_array(self::ROLE, $roles, true);
     }
 
@@ -217,7 +218,7 @@ final class SpeakerService
         return $out;
     }
 
-    /** Accounts selectable as speakers: never an admin, square or existing speaker. */
+    /** Accounts selectable as speakers: never an admin, square, official or existing speaker. */
     public static function promotableUsers(): array
     {
         $out = [];

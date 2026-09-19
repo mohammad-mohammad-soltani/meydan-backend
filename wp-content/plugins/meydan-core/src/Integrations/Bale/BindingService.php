@@ -34,6 +34,10 @@ final class BindingService
             if ($isSquareAccount && !$isSquare) {
                 continue;
             }
+            $isUserTarget = $user && (in_array('meydan_speaker', (array) $user->roles, true) || in_array('meydan_official', (array) $user->roles, true));
+            if (!$isSquare && !$isUserTarget) {
+                continue;
+            }
 
             $last = $isSquare
                 ? $wpdb->get_var($wpdb->prepare("SELECT last_success_at FROM {$wpdb->prefix}meydan_bale_checkpoints WHERE square_id=%d", $squareId))
@@ -64,6 +68,10 @@ final class BindingService
         $isSquareAccount = (string) get_user_meta($userId, 'meydan_account_type', true) === 'square'
             || in_array('meydan_square', (array) $user->roles, true);
         if ($isSquareAccount) {
+            return false;
+        }
+        $roles = (array) $user->roles;
+        if (!in_array('meydan_speaker', $roles, true) && !in_array('meydan_official', $roles, true)) {
             return false;
         }
 

@@ -378,6 +378,7 @@ final class ChatRepository
             'handle' => '@user' . $userId,
             'avatar_url' => null,
             'verified' => false,
+            'verified_official' => false,
             'profile_type' => 'user',
             'profile_id' => (string) $userId,
         ];
@@ -398,6 +399,7 @@ final class ChatRepository
             'handle' => $handle,
             'avatar_url' => !empty($actor['avatar_url']) ? (string) $actor['avatar_url'] : null,
             'verified' => (bool) ($actor['verified'] ?? false),
+            'verified_official' => (bool) ($actor['verified_official'] ?? false),
             'profile_type' => $profileType === 'square' ? 'square' : 'user',
             'profile_id' => (string) $profileId,
         ];
