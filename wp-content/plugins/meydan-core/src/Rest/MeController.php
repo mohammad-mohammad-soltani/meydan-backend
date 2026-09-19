@@ -198,7 +198,11 @@ final class MeController extends BaseController
         $sid = (int) get_user_meta($uid, 'meydan_square_id', true);
         $p = $this->json($r);
         $before = $this->squareProfile($sid);
-        if (isset($p['name'])) update_user_meta($uid, 'meydan_full_name', sanitize_text_field((string) $p['name']));
+        if (isset($p['name'])) {
+            $name = sanitize_text_field((string) $p['name']);
+            if ($name === '') return Response::error('validation_failed', 'نام میدان الزامی است.', 422, ['name' => 'required']);
+            wp_update_post(['ID' => $sid, 'post_title' => $name]);
+        }
         if (isset($p['description'])) update_user_meta($uid, 'meydan_about', wp_kses_post((string) $p['description']));
         if (array_key_exists('avatar_media_id', $p)) {
             $avatarId = $this->profileImageMediaId($p['avatar_media_id'], $uid, 'avatar');
