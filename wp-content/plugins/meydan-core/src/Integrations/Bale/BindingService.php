@@ -24,8 +24,20 @@ final class BindingService
                 continue;
             }
             $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
-            $isSquare = $squareId > 0 && get_post_type($squareId) === 'meydan_square';
-            $last = $isSquare ? $wpdb->get_var($wpdb->prepare("SELECT last_success_at FROM {$wpdb->prefix}meydan_bale_checkpoints WHERE square_id=%d", $squareId)) : get_user_meta($userId, 'meydan_bale_last_success_at', true);
+            $isSquare = self::activeSquare($squareId);
+            $user = get_userdata($userId);
+            $isSquareAccount = (string) get_user_meta($userId, 'meydan_account_type', true) === 'square'
+                || ($user && in_array('meydan_square', (array) $user->roles, true));
+
+            // A deleted/trashed square account must never silently fall back
+            // to a plain user target, otherwise its channel keeps importing.
+            if ($isSquareAccount && !$isSquare) {
+                continue;
+            }
+
+            $last = $isSquare
+                ? $wpdb->get_var($wpdb->prepare("SELECT last_success_at FROM {$wpdb->prefix}meydan_bale_checkpoints WHERE square_id=%d", $squareId))
+                : get_user_meta($userId, 'meydan_bale_last_success_at', true);
             $items[] = [
                 'user_id' => $userId,
                 'square_id' => $isSquare ? $squareId : 0,
@@ -50,7 +62,7 @@ final class BindingService
 
     public function ownerForSquare(int $squareId): int
     {
-        if ($squareId <= 0 || get_post_type($squareId) !== 'meydan_square') {
+        if (!self::activeSquare($squareId)) {
             return 0;
         }
         $owner = (int) get_post_meta($squareId, 'meydan_owner_user_id', true);
@@ -67,6 +79,15 @@ final class BindingService
             'number' => 1,
         ]);
         return $ids ? (int) $ids[0] : 0;
+    }
+
+    private static function activeSquare(int $squareId): bool
+    {
+        if ($squareId <= 0 || get_post_type($squareId) !== 'meydan_square') {
+            return false;
+        }
+
+        return !in_array((string) get_post_status($squareId), ['trash', 'auto-draft'], true);
     }
 
     public function channelForSquare(int $squareId): string
