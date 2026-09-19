@@ -32,11 +32,11 @@ final class FeedSettings
             'max_speaker_ratio_top_20' => 40.0,
             'max_official_ratio_top_20' => 40.0,
             'freshness_buckets' => [
-                ['min_hours' => 0, 'max_hours' => 6, 'multiplier' => 1.45],
-                ['min_hours' => 6, 'max_hours' => 12, 'multiplier' => 1.35],
-                ['min_hours' => 12, 'max_hours' => 24, 'multiplier' => 1.2],
-                ['min_hours' => 24, 'max_hours' => 48, 'multiplier' => 0.85],
-                ['min_hours' => 48, 'max_hours' => 72, 'multiplier' => 0.6],
+                ['min_hours' => 0, 'max_hours' => 6, 'multiplier' => 1.8],
+                ['min_hours' => 6, 'max_hours' => 12, 'multiplier' => 1.45],
+                ['min_hours' => 12, 'max_hours' => 24, 'multiplier' => 1.15],
+                ['min_hours' => 24, 'max_hours' => 48, 'multiplier' => 0.75],
+                ['min_hours' => 48, 'max_hours' => 72, 'multiplier' => 0.45],
             ],
         ];
     }

@@ -98,13 +98,16 @@ assertSame(1.25, $scorer->score(feedFixture(['post_city_id' => 2, 'post_province
 assertSame(1.6, $scorer->score(feedFixture(['following' => true]), $feedSettings)['following_multiplier']);
 assertSame(6.0, $scorer->score(feedFixture(['actor_roles' => ['meydan_official'], 'post_city_id' => 1, 'post_province_id' => 1, 'editorial' => true, 'good_deed' => true, 'following' => true]), $feedSettings)['total_boost']);
 assertTrue($scorer->score(feedFixture(['stats' => ['likes'=>0,'views'=>0,'comments'=>1,'shares'=>0,'reposts'=>0]]), $feedSettings)['base_score'] > $scorer->score(feedFixture(['stats' => ['likes'=>1,'views'=>0,'comments'=>0,'shares'=>0,'reposts'=>0]]), $feedSettings)['base_score']);
-assertSame(1.45, $scorer->score(feedFixture(['age_hours' => 0]), $feedSettings)['freshness_multiplier']);
-assertSame(1.35, $scorer->score(feedFixture(['age_hours' => 6]), $feedSettings)['freshness_multiplier']);
-assertSame(1.2, $scorer->score(feedFixture(['age_hours' => 12]), $feedSettings)['freshness_multiplier']);
-assertSame(0.85, $scorer->score(feedFixture(['age_hours' => 24]), $feedSettings)['freshness_multiplier']);
-assertSame(0.6, $scorer->score(feedFixture(['age_hours' => 48]), $feedSettings)['freshness_multiplier']);
-assertSame(0.6, $scorer->score(feedFixture(['age_hours' => 72]), $feedSettings)['freshness_multiplier']);
+assertSame(1.8, $scorer->score(feedFixture(['age_hours' => 0]), $feedSettings)['freshness_multiplier']);
+assertSame(1.45, $scorer->score(feedFixture(['age_hours' => 6]), $feedSettings)['freshness_multiplier']);
+assertSame(1.15, $scorer->score(feedFixture(['age_hours' => 12]), $feedSettings)['freshness_multiplier']);
+assertSame(0.75, $scorer->score(feedFixture(['age_hours' => 24]), $feedSettings)['freshness_multiplier']);
+assertSame(0.45, $scorer->score(feedFixture(['age_hours' => 48]), $feedSettings)['freshness_multiplier']);
+assertSame(0.45, $scorer->score(feedFixture(['age_hours' => 72]), $feedSettings)['freshness_multiplier']);
 assertTrue($scorer->score(feedFixture(['age_hours' => 72.0001]), $feedSettings)['excluded']);
+$freshScore = $scorer->score(feedFixture(['age_hours' => 1]), $feedSettings)['score'];
+$oldScore = $scorer->score(feedFixture(['age_hours' => 48]), $feedSettings)['score'];
+assertTrue($freshScore > $oldScore, 'A fresh post with matching engagement must outrank an older post.');
 $zeroScore = $scorer->score(feedFixture(['stats' => ['likes'=>0,'views'=>0,'comments'=>0,'shares'=>0,'reposts'=>0]]), $feedSettings)['score'];
 assertTrue(is_finite($zeroScore) && $zeroScore === 0.0);
 
