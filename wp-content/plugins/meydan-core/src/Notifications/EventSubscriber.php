@@ -34,7 +34,8 @@ final class EventSubscriber
         $actorKind = (string) ($actor['type'] ?? 'user') === 'square' ? 'square' : 'user';
         $actorRawId = (string) ($actor['id'] ?? 'usr_' . $actorUserId);
         $actorNumericId = (int) substr($actorRawId, (int) strrpos($actorRawId, '_') + 1);
-        $deepLink = '/profile/' . $actorKind . '/' . ($actorNumericId > 0 ? $actorNumericId : $actorUserId);
+        $profileId = $actorNumericId > 0 ? $actorNumericId : $actorUserId;
+        $deepLink = $actorKind === 'square' ? '/square/' . $profileId : '/' . $profileId;
         (new NotificationService())->fromTemplate($recipient, 'follow', $actorKind, $actorUserId, 'actor', $targetId, $deepLink, 'follow:actor:' . $targetType . ':' . $targetId, true);
     }
 
