@@ -8,6 +8,7 @@ use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Auth\OtpService;
 use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Domain\UserAccess;
+use Meydan\Core\Integrations\Channels\Channels;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Crypto;
 use Meydan\Core\Support\Response;
@@ -20,11 +21,11 @@ use WP_User;
 final class AdminUserController extends BaseController
 {
     private const ROLES = [
-        'meydan_user', 'meydan_speaker', 'meydan_square', 'meydan_content_editor',
+        'meydan_user', 'meydan_speaker', 'meydan_official', 'meydan_square', 'meydan_content_editor',
         'meydan_moderator', 'meydan_manager', 'meydan_support', 'administrator',
     ];
     private const ROLE_LABELS = [
-        'meydan_user' => 'کاربر عادی', 'meydan_speaker' => 'سخنران', 'meydan_square' => 'مالک میدان',
+        'meydan_user' => 'کاربر عادی', 'meydan_speaker' => 'سخنران', 'meydan_official' => 'رسمی', 'meydan_square' => 'مالک میدان',
         'meydan_content_editor' => 'ویرایشگر محتوا', 'meydan_moderator' => 'ناظر',
         'meydan_manager' => 'مدیر میدان', 'meydan_support' => 'پشتیبان', 'administrator' => 'مدیرکل',
     ];
@@ -190,6 +191,9 @@ final class AdminUserController extends BaseController
         foreach (['headline', 'location_label'] as $key) if (array_key_exists($key, $p)) update_user_meta($id, 'meydan_' . $key, sanitize_text_field((string) $p[$key]));
         if (array_key_exists('about', $p)) update_user_meta($id, 'meydan_about', wp_kses_post((string) $p['about']));
         foreach (['province_id', 'city_id', 'avatar_media_id', 'cover_media_id'] as $key) if (array_key_exists($key, $p)) update_user_meta($id, 'meydan_' . $key, max(0, (int) $p[$key]));
+        foreach (['eitaa' => 'eitaa_channel', 'bale' => 'bale_channel'] as $kind => $key) {
+            if (array_key_exists($key, $p)) Channels::store($id, $kind, (string) $p[$key]);
+        }
     }
 
     private function changeRole(int $id, string $role, array $p): true|WP_Error
@@ -221,7 +225,7 @@ final class AdminUserController extends BaseController
             }
         } else {
             $user->set_role($role);
-            update_user_meta($id, 'meydan_account_type', $role === 'meydan_square' ? 'square' : 'user');
+            update_user_meta($id, 'meydan_account_type', $role === 'meydan_square' ? 'square' : ($role === 'meydan_official' ? 'official' : 'user'));
         }
         if ($role === 'meydan_square' && ($squareId = Actor::squareId($id))) delete_post_meta($squareId, 'meydan_disabled_by_owner');
         (new \Meydan\Core\Auth\SessionService())->revokeAll($id);
@@ -288,6 +292,7 @@ final class AdminUserController extends BaseController
             'city_id' => (int) get_user_meta($id, 'meydan_city_id', true) ?: null,
             'avatar_media_id' => $avatar ?: null, 'avatar_url' => $avatar ? wp_get_attachment_url($avatar) : null,
             'cover_media_id' => $cover ?: null, 'cover_url' => $cover ? wp_get_attachment_url($cover) : null,
+            'eitaa_channel' => Channels::value($id, 'eitaa'), 'bale_channel' => Channels::value($id, 'bale'),
             'square_id' => Actor::squareId($id) ?: null, 'registered_at' => $user->user_registered];
     }
 }
