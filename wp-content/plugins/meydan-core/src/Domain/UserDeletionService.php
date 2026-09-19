@@ -484,6 +484,24 @@ final class UserDeletionService
             );
         }
 
+        // Clear migration-era speaker references as well. Leaving these stale
+        // would not revive the user, but a later forced migration would still
+        // carry dead post => user links.
+        $speakerMap = (array) get_option('meydan_speaker_user_map', []);
+        $filteredSpeakerMap = array_filter(
+            $speakerMap,
+            static fn(mixed $mappedUserId): bool => (int) $mappedUserId !== $userId,
+        );
+        if (count($filteredSpeakerMap) !== count($speakerMap)) {
+            update_option('meydan_speaker_user_map', $filteredSpeakerMap, false);
+        }
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$wpdb->postmeta}
+             WHERE meta_key IN ('meydan_speaker_user_id','meydan_creator_user_id')
+               AND CAST(meta_value AS UNSIGNED)=%d",
+            $userId,
+        ));
+
         // Audit history is intentionally retained, but it must no longer point
         // at a user row that is about to disappear.
         $wpdb->update(
