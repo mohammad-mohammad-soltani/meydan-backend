@@ -34,6 +34,11 @@ final class SquareAdminService
         if ($name === '') {
             return new WP_Error('validation_failed', 'نام میدان الزامی است.', ['status' => 422, 'fields' => ['square_name' => 'required']]);
         }
+
+        $ownerName = sanitize_text_field((string) ($input['full_name'] ?? ''));
+        if ($ownerName === '') {
+            return new WP_Error('validation_failed', 'نام و نام خانوادگی مالک الزامی است.', ['status' => 422, 'fields' => ['full_name' => 'required']]);
+        }
         $province = (int) ($input['province_id'] ?? 0);
         $city = (int) ($input['city_id'] ?? 0);
         if ($province <= 0 || $city <= 0 || !self::cityBelongsTo($city, $province)) {
@@ -58,7 +63,7 @@ final class SquareAdminService
             return new WP_Error('validation_failed', 'وضعیت اولیه فقط می‌تواند pending_verification یا approved باشد.', ['status' => 422, 'fields' => ['status' => 'invalid']]);
         }
         $approved = $status === 'approved';
-        $display = sanitize_text_field((string) ($input['full_name'] ?? '')) ?: $name;
+        $display = $ownerName;
         $userId = wp_insert_user([
             'user_login' => 'meydan_internal_' . strtolower(wp_generate_password(20, false, false)),
             'user_pass' => wp_generate_password(64, true, true),
