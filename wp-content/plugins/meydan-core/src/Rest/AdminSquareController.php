@@ -7,7 +7,7 @@ namespace Meydan\Core\Rest;
 use Meydan\Core\Admin\Admin;
 use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Domain\SquareAdminService;
-use Meydan\Core\Integrations\Channels\Channels;
+use Meydan\Core\Domain\SquareDeletionService;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\Serializer;
 use WP_Query;
@@ -80,24 +80,21 @@ final class AdminSquareController extends BaseController
         $before = Serializer::square($id);
         if (!$before) return Response::error('not_found', 'میدان پیدا نشد.', 404);
 
-        $ownerId = (int) get_post_meta($id, 'meydan_owner_user_id', true);
-        $deleted = wp_delete_post($id, true);
-        if (!$deleted) {
-            return Response::error('internal_error', 'حذف کامل میدان انجام نشد.', 500);
-        }
+        $deleted = SquareDeletionService::deletePermanently($id);
+        if (is_wp_error($deleted)) return $this->error($deleted);
 
-        if ($ownerId > 0 && (int) get_user_meta($ownerId, 'meydan_square_id', true) === $id) {
-            delete_user_meta($ownerId, 'meydan_square_id');
-            Channels::store($ownerId, 'eitaa', '');
-            Channels::store($ownerId, 'bale', '');
-        }
+        AuditLogger::log('square_deleted', 'square', $id, $before, [
+            'status' => 'deleted_permanently',
+            'owner_user_id' => $deleted['owner_user_id'],
+            'owner_deleted' => $deleted['owner_deleted'],
+        ]);
 
-        global $wpdb;
-        $wpdb->delete($wpdb->prefix . 'meydan_eitaa_checkpoints', ['square_id' => $id], ['%d']);
-        $wpdb->delete($wpdb->prefix . 'meydan_bale_checkpoints', ['square_id' => $id], ['%d']);
-
-        AuditLogger::log('square_deleted', 'square', $id, $before, ['status' => 'deleted_permanently']);
-        return Response::ok(['deleted' => true, 'id' => $id]);
+        return Response::ok([
+            'deleted' => true,
+            'permanent' => true,
+            'id' => $id,
+            'owner_deleted' => $deleted['owner_deleted'],
+        ]);
     }
 
     public function status(WP_REST_Request $r)
