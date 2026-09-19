@@ -7,12 +7,29 @@ namespace Meydan\Core\Support;
 use Meydan\Core\Storage\AttachmentStorage;
 use Meydan\Core\Storage\StorageFactory;
 use Meydan\Core\Storage\WordPressMediaHooks;
+use Meydan\Core\Storage\S3Storage;
 
 use Meydan\Core\Database\Migrations;
 use Meydan\Core\Domain\Registrations;
 
 final class CliCommand
 {
+    /** Make existing objects public without downloading or re-uploading them. */
+    public function media_make_public(array $args = [], array $assocArgs = []): void
+    {
+        $storage = StorageFactory::create();
+        if (!$storage instanceof S3Storage) \WP_CLI::error('MEDIA_STORAGE must be s3 for this command.');
+        $limit = max(0, (int) ($assocArgs['limit'] ?? 0));
+        $result = $storage->makePublic(static function (int $processed, int $failed, string $item): void {
+            if (($processed + $failed) % 100 === 0) \WP_CLI::log(sprintf('Processed %d object(s), %d failure(s); latest: %s', $processed, $failed, $item));
+        }, $limit);
+        if ($result['failed'] > 0) {
+            \WP_CLI::warning(sprintf('%d object(s) made public, %d failure(s). Re-run to retry failures.', $result['processed'], $result['failed']));
+            return;
+        }
+        \WP_CLI::success(sprintf('%d object(s) are now public-read.', $result['processed']));
+    }
+
     /** Run/repair database migrations. */
     public function migrate(): void
     {

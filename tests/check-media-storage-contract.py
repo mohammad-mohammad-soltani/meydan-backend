@@ -24,7 +24,8 @@ s3 = required[2].read_text(encoding="utf-8")
 assert "MultipartUploader" in s3
 assert "AbortMultipartUpload" in s3 or "abortMultipartUpload" in s3
 assert "SourceFile" in s3
-assert "'ACL'" not in s3 and '"ACL"' not in s3
+assert s3.count("'ACL'") >= 2
+assert "putObjectAcl" in s3 and "listObjectsV2" in s3
 assert "file_get_contents" not in s3
 
 hooks = required[5].read_text(encoding="utf-8")
@@ -48,6 +49,7 @@ for relative in ["Uploads/VideoProcessor.php", "Support/Serializer.php", "Suppor
     source = (plugin / "src" / relative).read_text(encoding="utf-8")
     assert "AttachmentStorage::localPath" in source, f"{relative} must not treat S3 _wp_attached_file as local"
 assert "AttachmentStorage::attachmentIdFromUrl" in (plugin / "src/Support/ChatRepository.php").read_text(encoding="utf-8")
+assert "media_make_public" in (plugin / "src/Support/CliCommand.php").read_text(encoding="utf-8")
 
 assert "MediaPipeline" in chunked
 assert "StorageFactory" in chunked

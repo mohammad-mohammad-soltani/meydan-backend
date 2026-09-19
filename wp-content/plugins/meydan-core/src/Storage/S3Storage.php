@@ -62,6 +62,7 @@ final class S3Storage implements StorageInterface
                     'Key' => $key,
                     'SourceFile' => $localPath,
                     'ContentType' => $mimeType,
+                    'ACL' => 'public-read',
                     'Metadata' => $metadata,
                 ]);
             } else {
@@ -116,6 +117,34 @@ final class S3Storage implements StorageInterface
         ];
     }
 
+    /** Change ACLs in place; object bytes are never downloaded or re-uploaded. */
+    public function makePublic(?callable $progress = null, int $limit = 0): array
+    {
+        $prefix = rtrim($this->prefix, '/') . '/';
+        $processed = 0;
+        $failed = 0;
+        $continuation = null;
+        do {
+            $params = ['Bucket' => $this->bucket, 'Prefix' => $prefix, 'MaxKeys' => 1000];
+            if ($continuation !== null && $continuation !== '') $params['ContinuationToken'] = $continuation;
+            $page = $this->client->listObjectsV2($params);
+            foreach ((array) ($this->value($page, 'Contents') ?? []) as $object) {
+                $key = is_array($object) ? (string) ($object['Key'] ?? '') : '';
+                if ($key === '' || ($limit > 0 && $processed + $failed >= $limit)) continue;
+                try {
+                    $this->client->putObjectAcl(['Bucket' => $this->bucket, 'Key' => $key, 'ACL' => 'public-read']);
+                    $processed++;
+                    if ($progress !== null) $progress($processed, $failed, $key);
+                } catch (Throwable $error) {
+                    $failed++;
+                    if ($progress !== null) $progress($processed, $failed, $key . ': ' . $error->getMessage());
+                }
+            }
+            $continuation = (string) ($this->value($page, 'NextContinuationToken') ?? '');
+        } while ($continuation !== '' && ($limit <= 0 || $processed + $failed < $limit));
+        return ['processed' => $processed, 'failed' => $failed];
+    }
+
     /** @param array<string,string> $metadata */
     private function multipart(string $path, string $key, string $mimeType, array $metadata): mixed
     {
@@ -123,7 +152,7 @@ final class S3Storage implements StorageInterface
             if (is_callable($this->multipartFactory)) {
                 return ($this->multipartFactory)($this->client, $path, [
                     'bucket' => $this->bucket, 'key' => $key, 'content_type' => $mimeType,
-                    'metadata' => $metadata, 'part_size' => self::MULTIPART_PART_SIZE,
+                    'metadata' => $metadata, 'acl' => 'public-read', 'part_size' => self::MULTIPART_PART_SIZE,
                 ]);
             }
             $uploader = new MultipartUploader($this->client, $path, [
@@ -132,6 +161,7 @@ final class S3Storage implements StorageInterface
                 'part_size' => self::MULTIPART_PART_SIZE,
                 'before_initiate' => static function ($command) use ($mimeType, $metadata): void {
                     $command['ContentType'] = $mimeType;
+                    $command['ACL'] = 'public-read';
                     $command['Metadata'] = $metadata;
                 },
             ]);

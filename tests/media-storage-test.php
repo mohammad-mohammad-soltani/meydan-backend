@@ -88,6 +88,7 @@ check($failingDeletionStorage->deleted === ['thumb', 'poster'], 'Original deleti
 $client = new class {
     public array $put = [];
     public array $aborted = [];
+    public array $acls = [];
     public array $deleted = [];
     public bool $failPut = false;
     public function putObject(array $args): array { $this->put = $args; if ($this->failPut) throw new RuntimeException('network'); return ['ETag' => '"etag-small"']; }
@@ -97,6 +98,8 @@ $client = new class {
     public function doesObjectExistV2(string $bucket, string $key): bool { return false; }
     public function deleteObject(array $args): void { $this->deleted[] = $args; }
     public function abortMultipartUpload(array $args): void { $this->aborted[] = $args; }
+    public function listObjectsV2(array $args): array { return ['Contents' => [['Key' => 'production/old.jpg'], ['Key' => 'production/video.mp4']]]; }
+    public function putObjectAcl(array $args): void { $this->acls[] = $args; }
 };
 $s3 = new S3Storage([
     'endpoint' => 'https://s3.example.test', 'region' => 'test-1', 'bucket' => 'media',
@@ -105,10 +108,12 @@ $s3 = new S3Storage([
 ], $client);
 $s3Result = $s3->put($source, 'users/7/source.txt', 'text/plain');
 check($s3Result['key'] === 'production/users/7/source.txt', 'S3Storage must apply production prefix.');
-check(!array_key_exists('ACL', $client->put), 'S3Storage must never send ACL headers.');
+check(($client->put['ACL'] ?? '') === 'public-read', 'S3Storage uploads must request public-read ACL.');
 check($client->put['SourceFile'] === $source, 'S3Storage small uploads must stream from SourceFile.');
 check($s3->head($s3Result['key'])['checksum'] === hash_file('sha256', $source), 'S3 HEAD must expose checksum metadata.');
 check($s3->head($s3Result['key'])['metadata_size'] === 14, 'S3 HEAD must verify the stored source-size metadata.');
+$publicResult = $s3->makePublic();
+check($publicResult === ['processed' => 2, 'failed' => 0] && count($client->acls) === 2, 'S3 migration must update ACLs in place for listed objects.');
 $unsafeRejected = false;
 try { $s3->put($source, '../escape.txt', 'text/plain'); } catch (RuntimeException) { $unsafeRejected = true; }
 check($unsafeRejected, 'S3 keys must reject traversal segments.');
@@ -122,11 +127,13 @@ $handle = fopen($large, 'wb');
 ftruncate($handle, 67108865);
 fclose($handle);
 $failed = false;
+$multipartOptions = [];
 $multipart = new S3Storage([
     'endpoint' => 'https://s3.example.test', 'region' => 'test-1', 'bucket' => 'media',
     'access_key' => 'key', 'secret_key' => 'secret', 'public_url' => 'https://media.example.test',
     'prefix' => 'production', 'checksum_enabled' => false, 'checksum_max_bytes' => 0,
-], $client, static function (): never {
+], $client, static function ($client, $path, array $options) use (&$multipartOptions): never {
+    $multipartOptions = $options;
     throw new class('multipart failed') extends RuntimeException {
         public function getUploadId(): string { return 'upload-123'; }
     };
@@ -138,6 +145,7 @@ try {
 }
 check($failed, 'Multipart failure must surface to the caller.');
 check(($client->aborted[0]['UploadId'] ?? '') === 'upload-123', 'Multipart failure must abort the incomplete upload.');
+check(($multipartOptions['acl'] ?? '') === 'public-read', 'Multipart uploads must request public-read ACL.');
 
 $logFile = $root . '/media.log';
 $oldLog = ini_get('error_log');
