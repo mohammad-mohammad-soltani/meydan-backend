@@ -15,6 +15,9 @@ final class Registrations
         // A speaker is an account type, not an entity: the role carries the
         // same abilities as a regular user and nothing more.
         add_role('meydan_speaker', 'Meydan Speaker', ['read' => true, 'read_meydan' => true, 'publish_meydan_narratives' => true, 'edit_own_meydan_narratives' => true]);
+        // Official public figures are normal user actors with a dedicated account
+        // role. The role itself grants the grey official badge in clients.
+        add_role('meydan_official', 'Meydan Official', ['read' => true, 'read_meydan' => true, 'publish_meydan_narratives' => true, 'edit_own_meydan_narratives' => true]);
         add_role('meydan_content_editor', 'Meydan Content Editor', [
             'read' => true,
             'read_meydan' => true,
@@ -31,6 +34,7 @@ final class Registrations
             'read' => true,
             'read_meydan' => true,
             'manage_meydan_speakers' => true,
+            'manage_meydan_officials' => true,
             'manage_meydan_speaker_requests' => true,
             'manage_meydan_notifications' => true,
         ]);
@@ -54,6 +58,7 @@ final class Registrations
             'manage_meydan_content',
             'manage_meydan_creators',
             'manage_meydan_speakers',
+            'manage_meydan_officials',
             'manage_meydan_squares',
             'verify_meydan_squares',
             'manage_meydan_initiatives',
