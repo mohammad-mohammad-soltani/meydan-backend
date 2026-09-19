@@ -18,7 +18,7 @@ use WP_Error;
 use WP_REST_Request;
 use WP_User;
 
-/** Administrator-only account management; account deletion is reversible. */
+/** Administrator-only account management; disabled accounts may be hard-deleted. */
 final class AdminUserController extends BaseController
 {
     private const ROLES = [
