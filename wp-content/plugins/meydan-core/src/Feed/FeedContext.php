@@ -33,4 +33,11 @@ final class FeedContext
     {
         return isset($this->followingActors[$type . ':' . $id]);
     }
+
+    public function addFollowing(string $type, int $id): void
+    {
+        if ($id > 0 && in_array($type, ['user', 'square'], true)) {
+            $this->followingActors[$type . ':' . $id] = true;
+        }
+    }
 }

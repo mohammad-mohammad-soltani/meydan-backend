@@ -38,7 +38,7 @@ final class CandidateGenerator
         global $wpdb;
         $rows = $wpdb->get_results($wpdb->prepare("SELECT object_type,object_id FROM {$wpdb->prefix}meydan_interactions WHERE user_id=%d AND action='follow' LIMIT 1000", $context->viewer->userId), ARRAY_A) ?: [];
         $clauses=[]; $args=[];
-        foreach ($rows as $row) { if (!in_array($row['object_type'], ['user','square'], true)) continue; $clauses[]='(at.meta_value=%s AND ai.meta_value=%d)'; $args[]=$row['object_type']; $args[]=(int)$row['object_id']; }
+        foreach ($rows as $row) { if (!in_array($row['object_type'], ['user','square'], true)) continue; $context->addFollowing($row['object_type'], (int)$row['object_id']); $clauses[]='(at.meta_value=%s AND ai.meta_value=%d)'; $args[]=$row['object_type']; $args[]=(int)$row['object_id']; }
         if (!$clauses) return [];
         return $this->ids('('.implode(' OR ', $clauses).')', $args, $context->settings, $limit, true);
     }

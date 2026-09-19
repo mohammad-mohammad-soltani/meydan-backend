@@ -20,3 +20,10 @@ assert 'score' not in generator.lower() and 'rank' not in generator.lower()
 assert 'get_post(' not in hydrator and 'get_post_meta(' not in hydrator
 assert 'IN (' in hydrator
 print('Feed V2 candidate pipeline contract OK.')
+
+service = (root / 'Feed/FeedService.php').read_text(encoding='utf-8')
+for stage in ['FeedContext', 'CandidateGenerator', 'CandidateHydrator', 'FeedFilter', 'FeedScorer', 'FeedRanker', 'FeedDiversity']:
+    assert stage in service
+for side_effect in ['incrementViews', 'served_history', 'EventLogger', 'wp_cache_set', 'wp_cache_add']:
+    assert side_effect not in service
+print('Feed V2 orchestration contract OK.')
