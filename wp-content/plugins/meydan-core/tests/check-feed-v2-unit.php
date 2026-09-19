@@ -25,6 +25,7 @@ require_once __DIR__ . '/../src/Feed/FeedSettings.php';
 require_once __DIR__ . '/../src/Feed/FeedScorer.php';
 require_once __DIR__ . '/../src/Feed/FeedDiversity.php';
 require_once __DIR__ . '/../src/Feed/FeedRanker.php';
+require_once __DIR__ . '/../src/Feed/CandidateGenerator.php';
 
 $candidate = new Meydan\Core\Feed\Candidate(42, 'following');
 $candidate->addSource('same_city');
@@ -32,6 +33,11 @@ $candidate->addSource('following');
 
 assertSame(42, $candidate->narrativeId);
 assertSame(['following', 'same_city'], $candidate->sourceNames());
+
+$defaults = Meydan\Core\Feed\FeedSettings::defaults();
+assertSame(150, $defaults['source_quotas']['following']);
+assertSame(75, $defaults['source_quotas']['speaker']);
+assertSame(40.0, $defaults['max_speaker_ratio_top_20']);
 
 $settings = Meydan\Core\Feed\FeedSettings::validate([
     'max_post_age_hours' => 72,
@@ -116,6 +122,84 @@ for ($i = 0; $i < 80; $i++) {
         'age_hours' => (float) $i,
     ];
 }
+
+$roleItems = [];
+for ($i = 0; $i < 100; $i++) {
+    $roleItems[] = [
+        'narrative_id' => 5000 + $i,
+        'actor_type' => 'user',
+        'actor_id' => 100 + ($i % 50),
+        'actor_roles' => ['meydan_speaker'],
+        'source_names' => ['speaker'],
+        'score' => 100 - $i,
+        'age_hours' => 1.0,
+    ];
+}
+for ($i = 0; $i < 100; $i++) {
+    $roleItems[] = [
+        'narrative_id' => 6000 + $i,
+        'actor_type' => 'user',
+        'actor_id' => 300 + $i,
+        'actor_roles' => [],
+        'source_names' => ['general'],
+        'score' => 50 - ($i / 10),
+        'age_hours' => 1.0,
+    ];
+}
+$roleMixed = $diversity->rerank($roleItems, $diversitySettings);
+$firstTwenty = array_slice($roleMixed, 0, 20);
+$speakerCount = count(array_filter($firstTwenty, static fn(array $item): bool => in_array('meydan_speaker', (array) ($item['actor_roles'] ?? []), true)));
+assertTrue($speakerCount > 0, 'Speaker posts must not be removed completely.');
+assertTrue($speakerCount <= 8, 'Speaker role ratio must be capped at 40% of top 20.');
+
+$quotaGenerator = new Meydan\Core\Feed\CandidateGenerator();
+$quotaSelection = $quotaGenerator->selectBySourceBudgets([
+    'speaker' => range(1, 100),
+    'general' => range(1001, 1100),
+], ['speaker' => 3, 'general' => 7], 10);
+assertSame(10, count($quotaSelection));
+assertTrue(count(array_intersect($quotaSelection, range(1, 100))) <= 3, 'Source quota must cap speaker candidates.');
+assertTrue(count(array_intersect($quotaSelection, range(1001, 1100))) >= 7, 'Source quota must preserve normal candidates.');
+
+$missingSourceSelection = $quotaGenerator->selectBySourceBudgets([
+    'speaker' => [],
+    'recent' => range(2001, 2010),
+    'general' => range(3001, 3010),
+], ['speaker' => 75, 'recent' => 10, 'general' => 10], 10);
+assertSame(10, count($missingSourceSelection), 'Missing sources must not starve available sources.');
+assertSame($missingSourceSelection, $quotaGenerator->selectBySourceBudgets([
+    'speaker' => [], 'recent' => range(2001, 2010), 'general' => range(3001, 3010),
+], ['speaker' => 75, 'recent' => 10, 'general' => 10], 10), 'Quota ordering must be deterministic.');
+
+$onlySpeakerItems = [];
+for ($i = 0; $i < 20; $i++) {
+    $onlySpeakerItems[] = [
+        'narrative_id' => 7000 + $i,
+        'actor_type' => 'user',
+        'actor_id' => 700 + $i,
+        'actor_roles' => ['meydan_speaker'],
+        'source_names' => ['speaker'],
+        'score' => 100 - $i,
+        'age_hours' => 1.0,
+    ];
+}
+$onlySpeakerOutput = $diversity->rerank($onlySpeakerItems, $diversitySettings);
+assertSame(20, count($onlySpeakerOutput), 'Role caps must not empty an otherwise valid role-only feed.');
+
+$officialItems = [];
+for ($i = 0; $i < 20; $i++) {
+    $officialItems[] = [
+        'narrative_id' => 8000 + $i,
+        'actor_type' => 'user',
+        'actor_id' => 800 + $i,
+        'actor_roles' => ['meydan_official'],
+        'source_names' => ['recent'],
+        'score' => 100 - $i,
+        'age_hours' => 1.0,
+    ];
+}
+$officialOutput = $diversity->rerank($officialItems, $diversitySettings);
+assertSame(20, count($officialOutput), 'Official-only feeds must remain usable.');
 $mixed = $diversity->rerank($diversityItems, $diversitySettings);
 assertSame(count($diversityItems), count($mixed));
 for ($offset = 0; $offset < count($mixed); $offset += 20) {

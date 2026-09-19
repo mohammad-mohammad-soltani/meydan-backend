@@ -11,11 +11,15 @@ final class FeedDiversity
     {
         $chunkSize = max(1, (int) ($settings['diversity_top_n'] ?? 20));
         $actorCap = max(1, (int) ($settings['max_same_author_in_top_n'] ?? 3));
+        $roleCaps = [
+            'meydan_speaker' => (float) ($settings['max_speaker_ratio_top_20'] ?? 40) / 100,
+            'meydan_official' => (float) ($settings['max_official_ratio_top_20'] ?? 40) / 100,
+        ];
         $remaining = array_values($items);
         $output = [];
         $previousActor = null;
         while ($remaining !== []) {
-            [$chunk, $remaining, $previousActor] = $this->takeChunk($remaining, $chunkSize, $actorCap, $previousActor);
+            [$chunk, $remaining, $previousActor] = $this->takeChunk($remaining, $chunkSize, $actorCap, $roleCaps, $previousActor);
             if ($chunk === []) break;
             $output = [...$output, ...$chunk];
         }
@@ -23,35 +27,45 @@ final class FeedDiversity
     }
 
     /** @return array{0:list<array<string,mixed>>,1:list<array<string,mixed>>,2:?string} */
-    private function takeChunk(array $remaining, int $chunkSize, int $actorCap, ?string $previousActor): array
+    private function takeChunk(array $remaining, int $chunkSize, int $actorCap, array $roleCaps, ?string $previousActor): array
     {
         $chunk = [];
         $counts = [];
         $speakerCounts = [0, 0];
+        $roleCounts = [];
         for ($position = 0; $position < $chunkSize && $remaining !== []; $position++) {
             $block = intdiv($position, 10);
             $speakerCount = $speakerCounts[$block] ?? 0;
             $mustSpeaker = $position % 10 === 0 && $this->hasEligibleSpeaker($remaining, $counts, $actorCap);
-            $index = $this->findIndex($remaining, $counts, $speakerCount, $actorCap, $previousActor, $mustSpeaker, false);
-            if ($index === null) $index = $this->findIndex($remaining, $counts, $speakerCount, $actorCap, $previousActor, $mustSpeaker, true);
-            if ($index === null && $mustSpeaker) $index = $this->findIndex($remaining, $counts, $speakerCount, $actorCap, $previousActor, false, true);
+            $index = $this->findIndex($remaining, $counts, $roleCounts, $roleCaps, $speakerCount, $chunkSize, $actorCap, $previousActor, $mustSpeaker, false);
+            if ($index === null) $index = $this->findIndex($remaining, $counts, $roleCounts, $roleCaps, $speakerCount, $chunkSize, $actorCap, $previousActor, $mustSpeaker, true);
+            if ($index === null && $mustSpeaker) $index = $this->findIndex($remaining, $counts, $roleCounts, $roleCaps, $speakerCount, $chunkSize, $actorCap, $previousActor, false, true);
+            // A role cap is a diversity preference, not a hard filter: if no
+            // alternative role remains, keep the feed usable and retain it.
+            if ($index === null) $index = $this->findIndex($remaining, $counts, $roleCounts, $roleCaps, $speakerCount, $chunkSize, $actorCap, $previousActor, false, true, true);
             if ($index === null) break;
             $item = $remaining[$index];
             array_splice($remaining, $index, 1);
             $actor = $this->actorKey($item);
             $counts[$actor] = ($counts[$actor] ?? 0) + 1;
             if ($this->isSpeaker($item)) $speakerCounts[$block]++;
+            foreach ($roleCaps as $role => $_cap) if (in_array($role, (array) ($item['actor_roles'] ?? []), true)) $roleCounts[$role] = ($roleCounts[$role] ?? 0) + 1;
             $chunk[] = $item;
             $previousActor = $actor;
         }
         return [$chunk, $remaining, $previousActor];
     }
 
-    private function findIndex(array $items, array $counts, int $speakerCount, int $actorCap, ?string $previousActor, bool $speakerOnly, bool $allowAdjacent): ?int
+    private function findIndex(array $items, array $counts, array $roleCounts, array $roleCaps, int $speakerCount, int $chunkSize, int $actorCap, ?string $previousActor, bool $speakerOnly, bool $allowAdjacent, bool $ignoreRoleCaps = false): ?int
     {
         foreach ($items as $index => $item) {
             if ($speakerOnly && !$this->isSpeaker($item)) continue;
-            if (!$speakerOnly && $this->isSpeaker($item) && $speakerCount >= 3) continue;
+            if (!$speakerOnly && !$ignoreRoleCaps && $this->isSpeaker($item) && $speakerCount >= 3) continue;
+            $blocked = false;
+            if (!$ignoreRoleCaps) foreach ($roleCaps as $role => $ratio) {
+                if (in_array($role, (array) ($item['actor_roles'] ?? []), true) && ($roleCounts[$role] ?? 0) >= (int) floor($chunkSize * $ratio)) $blocked = true;
+            }
+            if ($blocked) continue;
             $actor = $this->actorKey($item);
             if (($counts[$actor] ?? 0) >= $actorCap) continue;
             if (!$allowAdjacent && $previousActor !== null && $actor === $previousActor) continue;

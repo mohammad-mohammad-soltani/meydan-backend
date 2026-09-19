@@ -7,43 +7,54 @@ namespace Meydan\Core\Feed;
 /** Retrieves deterministic, age-limited narrative ids only. */
 final class CandidateGenerator
 {
+    // Location combines the existing same_city and same_province sources under one budget.
     /** @return array<int,Candidate> keyed by narrative id */
     public function generate(FeedContext $context, int $requested = 0): array
     {
         $settings = $context->settings;
-        // `candidate_pool_size` preserves a healthy candidate pool for short
-        // requests, but a TimelineSession may legitimately need more ids than
-        // that. Never shorten an existing 600-item snapshot merely because the
-        // configurable pool defaults to 300.
         $requested = max(1, $requested);
         $pool = (int) $settings['candidate_pool_size'];
-        $pool = max($pool, $requested);
-        $candidates = [];
-        foreach ($this->followingIds($context, $pool) as $id) $this->add($candidates, $id, 'following');
-        foreach ($this->ids('', [], $settings, $pool) as $id) $this->add($candidates, $id, 'recent');
-        foreach ($this->speakerIds($settings, $pool) as $id) $this->add($candidates, $id, 'speaker');
-        foreach ($this->ids("EXISTS (SELECT 1 FROM {$GLOBALS['wpdb']->postmeta} em WHERE em.post_id=p.ID AND em.meta_key='meydan_editorial' AND em.meta_value='1')", [], $settings, $pool) as $id) $this->add($candidates, $id, 'editorial');
-        foreach ($this->ids("EXISTS (SELECT 1 FROM {$GLOBALS['wpdb']->postmeta} gm WHERE gm.post_id=p.ID AND gm.meta_key='meydan_initiative_id' AND CAST(gm.meta_value AS UNSIGNED)>0)", [], $settings, $pool) as $id) $this->add($candidates, $id, 'good_deed');
-        if ($context->viewer->cityId) foreach ($this->metaIds('meydan_city_id', (int) $context->viewer->cityId, $settings, $pool) as $id) $this->add($candidates, $id, 'same_city');
-        if ($context->viewer->provinceId) foreach ($this->metaIds('meydan_province_id', (int) $context->viewer->provinceId, $settings, $pool) as $id) $this->add($candidates, $id, 'same_province');
-        foreach ($this->ids('', [], $settings, $pool) as $id) $this->add($candidates, $id, 'general');
-        $selected = array_slice($candidates, 0, $pool, true);
-        $speakerIds = array_keys(array_filter(
-            $candidates,
-            static fn(Candidate $candidate): bool => in_array('speaker', $candidate->sourceNames(), true),
-        ));
-        $requiredSpeakers = min(3, max(1, intdiv(max(1, $requested), 10)));
-        $selectedSpeakerCount = count(array_intersect(array_keys($selected), $speakerIds));
-        foreach ($speakerIds as $speakerId) {
-            if ($selectedSpeakerCount >= $requiredSpeakers) break;
-            if (isset($selected[$speakerId])) continue;
-            foreach (array_reverse(array_keys($selected)) as $replaceId) {
-                if (in_array($replaceId, $speakerIds, true)) continue;
-                $selected[$replaceId] = $candidates[$speakerId];
-                $selectedSpeakerCount++;
-                break;
-            }
+        $pool = min($pool, $requested);
+        $quotas = (array) ($settings['source_quotas'] ?? []);
+        $sourceIds = [
+            'following' => $this->followingIds($context, (int) ($quotas['following'] ?? 0)),
+            'recent' => $this->ids('', [], $settings, (int) ($quotas['recent'] ?? 0)),
+            'speaker' => $this->speakerIds($settings, (int) ($quotas['speaker'] ?? 0)),
+            'editorial' => $this->ids("EXISTS (SELECT 1 FROM {$GLOBALS['wpdb']->postmeta} em WHERE em.post_id=p.ID AND em.meta_key='meydan_editorial' AND em.meta_value='1')", [], $settings, (int) ($quotas['editorial'] ?? 0)),
+            'good_deed' => $this->ids("EXISTS (SELECT 1 FROM {$GLOBALS['wpdb']->postmeta} gm WHERE gm.post_id=p.ID AND gm.meta_key='meydan_initiative_id' AND CAST(gm.meta_value AS UNSIGNED)>0)", [], $settings, (int) ($quotas['good_deed'] ?? 0)),
+            'location' => [],
+            'general' => $this->ids('', [], $settings, (int) ($quotas['general'] ?? 0)),
+        ];
+        if ($context->viewer->cityId) $sourceIds['location'] = $this->metaIds('meydan_city_id', (int) $context->viewer->cityId, $settings, (int) ($quotas['location'] ?? 0));
+        if ($context->viewer->provinceId && count($sourceIds['location']) < (int) ($quotas['location'] ?? 0)) {
+            $sourceIds['location'] = [...$sourceIds['location'], ...$this->metaIds('meydan_province_id', (int) $context->viewer->provinceId, $settings, (int) ($quotas['location'] ?? 0))];
         }
+        $selectedIds = $this->selectBySourceBudgets($sourceIds, $quotas, $pool);
+        $candidates = [];
+        foreach ($sourceIds as $source => $ids) foreach ($ids as $id) $this->add($candidates, (int) $id, $source);
+        $selected = [];
+        foreach ($selectedIds as $id) if (isset($candidates[$id])) $selected[$id] = $candidates[$id];
+        return $selected;
+    }
+
+    /** @param array<string,list<int>> $sourceIds @param array<string,mixed> $quotas @return list<int> */
+    public function selectBySourceBudgets(array $sourceIds, array $quotas, int $pool): array
+    {
+        $offsets = array_fill_keys(array_keys($sourceIds), 0);
+        $used = array_fill_keys(array_keys($sourceIds), 0);
+        $selected = [];
+        do {
+            $progress = false;
+            foreach ($sourceIds as $source => $ids) {
+                $budget = max(0, (int) ($quotas[$source] ?? 0));
+                if ($used[$source] >= $budget || !isset($ids[$offsets[$source]])) continue;
+                $id = (int) $ids[$offsets[$source]++];
+                $used[$source]++;
+                $progress = true;
+                if (!in_array($id, $selected, true)) $selected[] = $id;
+                if (count($selected) >= $pool) return $selected;
+            }
+        } while ($progress && count($selected) < $pool);
         return $selected;
     }
 

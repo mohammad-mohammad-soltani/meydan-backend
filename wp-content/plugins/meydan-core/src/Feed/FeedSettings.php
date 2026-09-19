@@ -25,6 +25,12 @@ final class FeedSettings
             'following_multiplier' => 1.6, 'max_total_boost' => 6.0,
             'max_post_age_hours' => 72, 'candidate_pool_size' => 300,
             'max_same_author_in_top_n' => 3, 'diversity_top_n' => 20,
+            'source_quotas' => [
+                'following' => 150, 'recent' => 100, 'speaker' => 75,
+                'editorial' => 50, 'good_deed' => 50, 'location' => 50, 'general' => 25,
+            ],
+            'max_speaker_ratio_top_20' => 40.0,
+            'max_official_ratio_top_20' => 40.0,
             'freshness_buckets' => [
                 ['min_hours' => 0, 'max_hours' => 6, 'multiplier' => 1.45],
                 ['min_hours' => 6, 'max_hours' => 12, 'multiplier' => 1.35],
@@ -80,6 +86,24 @@ final class FeedSettings
         foreach (['max_post_age_hours' => [1,168], 'candidate_pool_size' => [1,1000], 'max_same_author_in_top_n' => [1,100], 'diversity_top_n' => [1,100]] as $key => [$min,$max]) {
             if (filter_var($settings[$key], FILTER_VALIDATE_INT) === false || (int) $settings[$key] < $min || (int) $settings[$key] > $max) $errors[$key] = 'invalid';
             else $settings[$key] = (int) $settings[$key];
+        }
+        $quotas = $settings['source_quotas'];
+        $quotaKeys = ['following','recent','speaker','editorial','good_deed','location','general'];
+        if (!is_array($quotas)) {
+            $errors['source_quotas'] = 'invalid';
+        } else {
+            foreach ($quotaKeys as $key) {
+                if (filter_var($quotas[$key] ?? null, FILTER_VALIDATE_INT) === false || (int) $quotas[$key] < 0 || (int) $quotas[$key] > 1000) {
+                    $errors['source_quotas'] = 'invalid';
+                    break;
+                }
+                $quotas[$key] = (int) $quotas[$key];
+            }
+            $settings['source_quotas'] = $quotas;
+        }
+        foreach (['max_speaker_ratio_top_20', 'max_official_ratio_top_20'] as $key) {
+            if (!is_numeric($settings[$key]) || !is_finite((float) $settings[$key]) || (float) $settings[$key] < 0 || (float) $settings[$key] > 100) $errors[$key] = 'invalid';
+            else $settings[$key] = (float) $settings[$key];
         }
         $buckets = $settings['freshness_buckets'];
         if (!is_array($buckets) || $buckets === []) $errors['freshness_buckets'] = 'invalid';

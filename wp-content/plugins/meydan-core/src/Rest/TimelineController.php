@@ -22,6 +22,8 @@ final class TimelineController extends BaseController
 {
     /** @var array<int,array<string,mixed>> */
     private array $feedV2Debug = [];
+    /** @var array<string,mixed> */
+    private array $feedV2DebugSummary = [];
     public function timeline(WP_REST_Request $request)
     {
         $viewer = $this->viewer();
@@ -79,6 +81,7 @@ final class TimelineController extends BaseController
         if ($mode === 'for_you' && $filter === 'all' && FeedSettings::enabled()) {
             $result = (new FeedService())->forYou($viewer, $limit, $debug);
             foreach ($result['items'] as $item) $this->feedV2Debug[(int) $item['narrative_id']] = $item;
+            $this->feedV2DebugSummary = (array) ($result['debug_summary'] ?? []);
             return $result['ids'];
         }
         $generator = new CandidateGenerator();
@@ -249,6 +252,7 @@ final class TimelineController extends BaseController
             'count' => count($data),
         ];
         if ($debug !== null) $meta['debug_feed'] = $debug;
+        if ($debug !== null) $meta['debug_feed'] = ['items' => $meta['debug_feed'], 'summary' => $this->feedV2DebugSummary];
         return Response::cache(
             Response::ok($data, $meta),
             'private, no-store',
