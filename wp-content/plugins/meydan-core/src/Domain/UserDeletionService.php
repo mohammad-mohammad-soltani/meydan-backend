@@ -62,10 +62,13 @@ final class UserDeletionService
         }
 
         $phoneHash = (string) get_user_meta($userId, 'meydan_phone_hash', true);
-        $narrativeIds = self::userNarrativeIds($userId);
+        $squareIds = self::ownedSquareIds($userId);
+        $narrativeIds = self::ids(array_merge(
+            self::userNarrativeIds($userId),
+            self::squareNarrativeIds($squareIds),
+        ));
         $contentIds = self::derivedContentIds($userId, $narrativeIds);
         $initiativeIds = self::derivedInitiativeIds($narrativeIds);
-        $squareIds = self::ownedSquareIds($userId);
 
         // Stop channel imports before anything disappears. A sync worker that
         // races this request will fail its binding check instead of recreating
@@ -181,6 +184,30 @@ final class UserDeletionService
         ));
 
         return self::ids($ids ?: []);
+    }
+
+    /** @param list<int> $squareIds @return list<int> */
+    private static function squareNarrativeIds(array $squareIds): array
+    {
+        if (!$squareIds) {
+            return [];
+        }
+
+        return self::ids(get_posts([
+            'post_type' => 'meydan_narrative',
+            'post_status' => 'any',
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+            'meta_query' => [
+                ['key' => 'meydan_author_actor_type', 'value' => 'square'],
+                [
+                    'key' => 'meydan_author_actor_id',
+                    'value' => $squareIds,
+                    'compare' => 'IN',
+                    'type' => 'NUMERIC',
+                ],
+            ],
+        ]) ?: []);
     }
 
     /** @param list<int> $narrativeIds @return list<int> */
@@ -479,7 +506,13 @@ final class UserDeletionService
         $reactions = $wpdb->prefix . 'meydan_chat_reactions';
 
         $conversationIds = self::ids($wpdb->get_col($wpdb->prepare(
-            "SELECT conversation_id FROM {$participants} WHERE user_id=%d",
+            "SELECT conversation_id FROM {$participants} WHERE user_id=%d
+             UNION
+             SELECT conversation_id FROM {$messages} WHERE sender_user_id=%d
+             UNION
+             SELECT id FROM {$conversations} WHERE created_by=%d",
+            $userId,
+            $userId,
             $userId,
         )) ?: []);
 
@@ -553,7 +586,7 @@ final class UserDeletionService
                 $conversationId,
             ));
             $update = ['last_message_id' => $last > 0 ? $last : null];
-            $format = [$last > 0 ? '%d' : null];
+            $format = ['%d'];
             if ($createdBy === $userId) {
                 $replacement = (int) $wpdb->get_var($wpdb->prepare(
                     "SELECT MIN(user_id) FROM {$participants} WHERE conversation_id=%d",
@@ -567,7 +600,7 @@ final class UserDeletionService
                 $conversations,
                 $update,
                 ['id' => $conversationId],
-                array_values(array_filter($format)),
+                $format,
                 ['%d'],
             );
         }
