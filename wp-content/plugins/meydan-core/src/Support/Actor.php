@@ -8,7 +8,7 @@ use Meydan\Core\Domain\UserAccess;
 final class Actor
 {
     /**
-     * Canonical account type for a user: `square`, `speaker` or `user`.
+     * Canonical account type for a user: `square`, `speaker`, `official` or `user`.
      *
      * The WordPress role is authoritative — administrators may change it
      * directly — so a stale `meydan_account_type` meta is repaired on read.
@@ -22,6 +22,8 @@ final class Actor
             $type = 'square';
         } elseif (in_array('meydan_speaker', $roles, true)) {
             $type = 'speaker';
+        } elseif (in_array('meydan_official', $roles, true)) {
+            $type = 'official';
         } else {
             $type = 'user';
         }
@@ -85,6 +87,12 @@ final class Actor
         return self::isSpeaker($userId) && (bool) get_user_meta($userId, 'meydan_verified', true);
     }
 
+    /** Official accounts always carry the grey official badge. */
+    public static function isOfficial(int $userId): bool
+    {
+        return self::accountType($userId) === 'official';
+    }
+
     public static function forUser(int $userId): array
     {
         $type = self::accountType($userId);
@@ -97,6 +105,7 @@ final class Actor
 
         $user = get_userdata($userId);
         $isSpeaker = $type === 'speaker';
+        $isOfficial = $type === 'official';
         return [
             'id' => 'usr_' . $userId,
             'type' => 'user',
@@ -106,6 +115,8 @@ final class Actor
             'verified' => self::isVerifiedUser($userId),
             'is_speaker' => $isSpeaker,
             'verified_speaker' => self::isVerifiedSpeaker($userId),
+            'is_official' => $isOfficial,
+            'verified_official' => $isOfficial,
             // Both keys carry the user id now that a speaker *is* the account;
             // `speaker_creator_id` is kept for client compatibility.
             'speaker_user_id' => $isSpeaker ? $userId : null,
