@@ -51,13 +51,13 @@ final class CliCommand
                     $skipped++;
                     continue;
                 }
-                $path = AttachmentStorage::localPath($attachmentId);
+                $path = self::legacyOriginalPath($attachmentId);
                 if ($path === '' || !is_file($path)) {
                     $skipped++;
                     continue;
                 }
                 $attached = (string) get_post_meta($attachmentId, '_wp_attached_file', true);
-                $filename = basename($attached !== '' ? $attached : $path);
+                $filename = basename($path);
                 $relativeDir = trim(str_replace('\\', '/', dirname($attached)), '/.');
                 $directory = preg_match('#^\d{4}/\d{2}$#', $relativeDir) ? 'uploads/' . $relativeDir : 'uploads/' . gmdate('Y/m');
                 $key = self::legacyUniqueKey($storage, $directory, $filename);
@@ -98,6 +98,29 @@ final class CliCommand
             if (!$storage->exists($candidate)) return $candidate;
         }
         throw new \RuntimeException('Unable to allocate a unique legacy media key.');
+    }
+
+    private static function legacyOriginalPath(int $attachmentId): string
+    {
+        $attachedPath = AttachmentStorage::localPath($attachmentId);
+        if ($attachedPath === '' || !is_file($attachedPath)) return '';
+
+        $metadata = (array) wp_get_attachment_metadata($attachmentId);
+        $originalImage = (string) ($metadata['original_image'] ?? '');
+        if ($originalImage !== '') {
+            $candidate = dirname($attachedPath) . '/' . basename($originalImage);
+            if (is_file($candidate)) return $candidate;
+        }
+
+        $name = basename($attachedPath);
+        $extension = pathinfo($name, PATHINFO_EXTENSION);
+        $stem = $extension !== '' ? substr($name, 0, -strlen($extension) - 1) : $name;
+        if (str_ends_with($stem, '-scaled')) {
+            $candidate = dirname($attachedPath) . '/' . substr($stem, 0, -7) . ($extension !== '' ? '.' . $extension : '');
+            if (is_file($candidate)) return $candidate;
+        }
+
+        return $attachedPath;
     }
 
     /** Import the frontend fixtures into real WordPress entities. Use --force to rebuild seeded records. */
