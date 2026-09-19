@@ -52,7 +52,22 @@ final class BindingService
 
     public function user(int $userId): bool
     {
-        return $userId > 0 && get_userdata($userId) instanceof \WP_User && self::channelForUser($userId) !== '';
+        if ($userId <= 0) {
+            return false;
+        }
+
+        $user = get_userdata($userId);
+        if (!$user instanceof \WP_User) {
+            return false;
+        }
+
+        $isSquareAccount = (string) get_user_meta($userId, 'meydan_account_type', true) === 'square'
+            || in_array('meydan_square', (array) $user->roles, true);
+        if ($isSquareAccount) {
+            return false;
+        }
+
+        return self::channelForUser($userId) !== '';
     }
 
     public static function channelForUser(int $userId): string
