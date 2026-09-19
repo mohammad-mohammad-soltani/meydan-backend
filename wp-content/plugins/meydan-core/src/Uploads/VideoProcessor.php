@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Uploads;
 
+use Meydan\Core\Storage\AttachmentStorage;
+
 /**
  * MP4 "faststart" remux plus poster/duration extraction for uploaded videos.
  *
@@ -373,7 +375,7 @@ final class VideoProcessor
             }
 
             $mime = (string) get_post_mime_type($attachmentId);
-            $path = (string) get_attached_file($attachmentId);
+            $path = AttachmentStorage::localPath($attachmentId);
             $isVideo = str_starts_with($mime, 'video/') || ($path !== '' && self::isVideoPath($path));
             if (!$isVideo || $path === '' || !is_file($path)) {
                 return self::payload(null, null, null, null);

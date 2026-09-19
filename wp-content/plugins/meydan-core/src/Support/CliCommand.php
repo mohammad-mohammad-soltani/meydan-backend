@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Support;
 
+use Meydan\Core\Storage\AttachmentStorage;
+
 use Meydan\Core\Database\Migrations;
 use Meydan\Core\Domain\Registrations;
 
@@ -83,7 +85,7 @@ final class CliCommand
         $dryRun = isset($assocArgs['dry-run']);
         $postersOnly = isset($assocArgs['posters-only']);
         $limit = max(0, (int) ($assocArgs['limit'] ?? 0));
-        $index = self::attachmentIndex($basedir);
+        $index = self::attachmentIndex();
 
         \WP_CLI::log(sprintf(
             '%s uploads under %s (ffmpeg: %s)',
@@ -163,7 +165,7 @@ final class CliCommand
      *
      * @return array<string,int>
      */
-    private static function attachmentIndex(string $basedir): array
+    private static function attachmentIndex(): array
     {
         global $wpdb;
         $rows = $wpdb->get_results($wpdb->prepare(
@@ -171,14 +173,10 @@ final class CliCommand
             '_wp_attached_file'
         ));
 
-        $base = trailingslashit(wp_normalize_path($basedir));
         $index = [];
         foreach ((array) $rows as $row) {
-            $value = (string) $row->meta_value;
-            if ($value === '') {
-                continue;
-            }
-            $absolute = str_starts_with($value, '/') ? $value : $base . ltrim($value, '/');
+            $absolute = AttachmentStorage::localPath((int) $row->post_id);
+            if ($absolute === '') continue;
             $index[wp_normalize_path($absolute)] = (int) $row->post_id;
         }
 

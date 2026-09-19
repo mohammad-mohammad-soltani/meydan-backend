@@ -1,0 +1,14 @@
+{
+  "name": "meydan/meydan-core",
+  "description": "Meydan Core WordPress plugin runtime dependencies",
+  "license": "proprietary",
+  "type": "wordpress-plugin",
+  "require": {
+    "php": ">=8.1",
+    "aws/aws-sdk-php": "^3.0"
+  },
+  "config": {
+    "allow-plugins": {},
+    "sort-packages": true
+  }
+}

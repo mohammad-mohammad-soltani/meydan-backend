@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Domain;
 
+use Meydan\Core\Storage\AttachmentStorage;
+
 use Meydan\Core\Integrations\Channels\Channels;
 use Meydan\Core\Support\Stats;
 use Meydan\Core\Uploads\ChunkedUploadService;
@@ -397,7 +399,7 @@ final class UserDeletionService
         $deleted = 0;
         foreach (self::ids($ids ?: []) as $attachmentId) {
             $poster = (string) get_post_meta($attachmentId, 'meydan_poster_path', true);
-            if ($poster !== '' && is_file($poster)) {
+            if (!AttachmentStorage::isRemote($attachmentId) && $poster !== '' && is_file($poster)) {
                 @unlink($poster);
             }
             if (wp_delete_attachment($attachmentId, true)) {

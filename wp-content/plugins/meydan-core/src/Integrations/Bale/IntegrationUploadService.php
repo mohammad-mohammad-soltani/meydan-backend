@@ -25,7 +25,8 @@ final class IntegrationUploadService
             return new WP_Error('bale_square_invalid', 'میدان مقصد معتبر نیست.', ['status' => 422]);
         }
         $payload['purpose'] = 'narrative';
-        $result = $this->uploads->start($payload, $userId);
+        $channel = $squareId > 0 ? $this->bindings->channelForSquare($squareId) : (string) get_user_meta($userId, 'meydan_bale_channel', true);
+        $result = $this->uploads->start($payload, $userId, ['scope' => 'bale', 'owner' => $channel]);
         if (!is_wp_error($result)) {
             $result['square_id'] = $squareId;
         }

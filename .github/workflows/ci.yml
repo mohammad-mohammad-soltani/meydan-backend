@@ -10,8 +10,16 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
+      - name: Install plugin dependencies
+        run: composer install --working-dir=wp-content/plugins/meydan-core --no-interaction --prefer-dist
       - name: PHP syntax
         run: find wp-content/plugins/meydan-core -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Composer validation
+        run: composer validate --working-dir=wp-content/plugins/meydan-core --strict
+      - name: Media storage unit tests
+        run: php tests/media-storage-test.php
+      - name: Media storage contract
+        run: python3 tests/check-media-storage-contract.py
       - name: Required REST inventory
         run: python3 tests/check-route-inventory.py
       - name: Permanent user deletion contract
@@ -37,8 +45,13 @@ jobs:
     needs: lint-and-inventory
     steps:
       - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
       - name: Prepare environment
         run: cp .env.example .env
+      - name: Install plugin dependencies
+        run: composer install --working-dir=wp-content/plugins/meydan-core --no-interaction --prefer-dist
       - name: Create shared Eitaa network
         run: docker network inspect meydan_internal >/dev/null 2>&1 || docker network create meydan_internal
       - name: Validate Compose

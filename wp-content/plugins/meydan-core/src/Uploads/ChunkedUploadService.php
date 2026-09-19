@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace Meydan\Core\Uploads;
 
 use Meydan\Core\Support\Crypto;
+use Meydan\Core\Storage\MediaLogger;
+use Meydan\Core\Storage\MediaPipeline;
+use Meydan\Core\Storage\StorageFactory;
+use Meydan\Core\Storage\WordPressMediaHooks;
 use WP_Error;
 use WP_REST_Request;
 
@@ -17,7 +21,11 @@ final class ChunkedUploadService
         'bat', 'cmd', 'com', 'msi', 'dll', 'so', 'cgi', 'pl', 'py', 'rb',
     ];
 
-    public function start(array $params, int $userId): array|WP_Error
+    public function __construct(private readonly ?MediaPipeline $mediaPipeline = null)
+    {
+    }
+
+    public function start(array $params, int $userId, array $storageContext = []): array|WP_Error
     {
         $name = sanitize_file_name((string) ($params['filename'] ?? ''));
         $mime = sanitize_mime_type((string) ($params['mime_type'] ?? ''));
@@ -26,7 +34,8 @@ final class ChunkedUploadService
         $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
 
         $settings = (array) get_option('meydan_api_settings', []);
-        $max = (int) ($settings['max_upload_size'] ?? 0);
+        $environmentMax = (int) getenv('MEDIA_MAX_FILE_SIZE');
+        $max = $environmentMax > 0 ? $environmentMax : (int) ($settings['max_upload_size'] ?? 0);
         if ($max <= 0) {
             $max = 100 * 1024 * 1024;
         }
@@ -65,7 +74,25 @@ final class ChunkedUploadService
             );
         }
 
+        try {
+            $pipelineValidation = $this->pipeline()->validateDeclared($name, $size, $canonicalMime);
+        } catch (\Throwable) {
+            MediaLogger::log('validation_failed', ['driver' => (string) getenv('MEDIA_STORAGE'), 'status' => 'failed', 'error_category' => 'configuration']);
+            return new WP_Error('storage_configuration_failed', 'پیکربندی فضای ذخیره‌سازی معتبر نیست.', ['status' => 500]);
+        }
+        if ($pipelineValidation !== null) {
+            MediaLogger::log('validation_failed', ['driver' => (string) getenv('MEDIA_STORAGE'), 'status' => 'failed', 'error_category' => 'validation']);
+            return $pipelineValidation;
+        }
+
         $uploadId = Crypto::randomToken(18, 'upl_');
+        $scope = sanitize_key((string) ($storageContext['scope'] ?? ''));
+        $owner = sanitize_file_name((string) ($storageContext['owner'] ?? ''));
+        if (!in_array($scope, ['users', 'squares', 'posts', 'eitaa', 'bale'], true) || $owner === '') {
+            $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
+            $scope = $squareId > 0 ? 'squares' : 'users';
+            $owner = (string) ($squareId > 0 ? $squareId : $userId);
+        }
         global $wpdb;
         $wpdb->insert($wpdb->prefix . 'meydan_uploads', [
             'upload_id' => $uploadId,
@@ -74,6 +101,8 @@ final class ChunkedUploadService
             'mime_type' => $check['type'],
             'size' => $size,
             'purpose' => $purpose,
+            'storage_scope' => $scope,
+            'storage_owner' => $owner,
             'chunk_size' => self::CHUNK_SIZE,
             'status' => 'started',
             'created_at' => current_time('mysql', true),
@@ -87,6 +116,8 @@ final class ChunkedUploadService
         $dir = $this->dir($uploadId);
         wp_mkdir_p($dir);
         $this->denyExecution($dir);
+        MediaLogger::log('upload_started', ['upload_session_id' => $uploadId, 'driver' => (string) getenv('MEDIA_STORAGE'), 'status' => 'started']);
+        MediaLogger::log('staging_created', ['upload_session_id' => $uploadId, 'driver' => (string) getenv('MEDIA_STORAGE'), 'status' => 'completed']);
 
         return [
             'upload_id' => $uploadId,
@@ -177,6 +208,18 @@ final class ChunkedUploadService
             return new WP_Error('validation_failed', 'MIME واقعی فایل با نوع اعلام‌شده سازگار نیست.', ['status' => 422]);
         }
 
+        try {
+            $pipelineValidation = $this->pipeline()->validateFile($assembled, (string) $row->mime_type);
+        } catch (\Throwable) {
+            @unlink($assembled);
+            return new WP_Error('storage_configuration_failed', 'پیکربندی فضای ذخیره‌سازی معتبر نیست.', ['status' => 500]);
+        }
+        if ($pipelineValidation !== null) {
+            @unlink($assembled);
+            MediaLogger::log('validation_failed', ['upload_session_id' => $uploadId, 'driver' => (string) getenv('MEDIA_STORAGE'), 'status' => 'failed', 'error_category' => 'validation']);
+            return $pipelineValidation;
+        }
+
         // Do not feed the completed upload through wp_upload_bits(): it reads the
         // whole payload into PHP memory. Large chat videos must stay streaming
         // from first chunk to final placement on disk.
@@ -192,25 +235,32 @@ final class ChunkedUploadService
         }
 
         $filename = wp_unique_filename((string) $uploads['path'], (string) $row->filename);
-        $destination = trailingslashit((string) $uploads['path']) . $filename;
-        $moved = @rename($assembled, $destination);
-        if (!$moved) {
-            $moved = @copy($assembled, $destination);
-            if ($moved) {
+        $destination = $assembled;
+        if (strtolower(trim((string) getenv('MEDIA_STORAGE'))) !== 's3') {
+            $destination = trailingslashit((string) $uploads['path']) . $filename;
+            $moved = @rename($assembled, $destination);
+            if (!$moved) {
+                $moved = @copy($assembled, $destination);
+                if ($moved) {
+                    @unlink($assembled);
+                }
+            }
+            if (!$moved) {
                 @unlink($assembled);
+                return new WP_Error('internal_error', 'انتقال فایل نهایی ناموفق بود.', ['status' => 500]);
             }
         }
-        if (!$moved) {
-            @unlink($assembled);
-            return new WP_Error('internal_error', 'انتقال فایل نهایی ناموفق بود.', ['status' => 500]);
-        }
 
-        $attachmentId = wp_insert_attachment([
-            'post_author' => $userId,
-            'post_mime_type' => $check['type'],
-            'post_title' => sanitize_text_field(pathinfo((string) $row->filename, PATHINFO_FILENAME)),
-            'post_status' => 'inherit',
-        ], $destination, 0, true);
+        try {
+            $attachmentId = wp_insert_attachment([
+                'post_author' => $userId,
+                'post_mime_type' => $check['type'],
+                'post_title' => sanitize_text_field(pathinfo((string) $row->filename, PATHINFO_FILENAME)),
+                'post_status' => 'inherit',
+            ], $destination, 0, true);
+        } catch (\Throwable) {
+            return new WP_Error('storage_failed', 'پیکربندی یا اعتبارسنجی فضای ذخیره‌سازی ناموفق بود.', ['status' => 502]);
+        }
 
         if (is_wp_error($attachmentId)) {
             @unlink($destination);
@@ -218,6 +268,10 @@ final class ChunkedUploadService
         }
 
         update_attached_file((int) $attachmentId, $destination);
+        add_post_meta((int) $attachmentId, 'meydan_upload_session_id', $uploadId, true);
+        add_post_meta((int) $attachmentId, 'meydan_original_filename', (string) $row->filename, true);
+        add_post_meta((int) $attachmentId, 'meydan_storage_scope', (string) ($row->storage_scope ?? ''), true);
+        add_post_meta((int) $attachmentId, 'meydan_storage_owner', (string) ($row->storage_owner ?? ''), true);
         add_post_meta((int) $attachmentId, 'meydan_upload_owner_user_id', $userId, true);
         add_post_meta((int) $attachmentId, 'meydan_upload_purpose', (string) $row->purpose, true);
 
@@ -243,11 +297,16 @@ final class ChunkedUploadService
             }
         } catch (\Throwable $error) {
             error_log('Meydan upload metadata generation failed for attachment ' . (int) $attachmentId . ': ' . $error->getMessage());
+            if (get_post((int) $attachmentId)) wp_delete_attachment((int) $attachmentId, true);
+            return new WP_Error('storage_failed', 'انتقال فایل به فضای ذخیره‌سازی ناموفق بود.', ['status' => 502]);
         }
 
         $attachmentUrl = wp_get_attachment_url((int) $attachmentId);
         if (!$attachmentUrl) {
             $attachmentUrl = trailingslashit((string) $uploads['url']) . rawurlencode($filename);
+        }
+        if (str_starts_with((string) $check['type'], 'video/')) {
+            $video = VideoProcessor::describe((int) $attachmentId, (string) $attachmentUrl, '', $metadata);
         }
 
         global $wpdb;
@@ -396,5 +455,18 @@ final class ChunkedUploadService
                     : (str_contains($mime, 'pdf') || str_contains($mime, 'word') || str_contains($mime, 'presentation')
                         ? 'document'
                         : 'file')));
+    }
+
+    private function pipeline(): MediaPipeline
+    {
+        return $this->mediaPipeline ?? new MediaPipeline(
+            StorageFactory::create(),
+            WordPressMediaHooks::maxFileSize(),
+            WordPressMediaHooks::allowedMimes(),
+            static function (string $path): string {
+                $check = wp_check_filetype_and_ext($path, basename($path));
+                return !empty($check['type']) ? (string) $check['type'] : (string) (mime_content_type($path) ?: 'application/octet-stream');
+            },
+        );
     }
 }

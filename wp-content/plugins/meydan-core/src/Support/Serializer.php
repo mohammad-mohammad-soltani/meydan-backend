@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Support;
 
+use Meydan\Core\Storage\AttachmentStorage;
+
 use Meydan\Core\Domain\CreatorService;
 use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Domain\UserAccess;
@@ -67,7 +69,7 @@ final class Serializer
     {
         $mediaId = (int) ($item['media_id'] ?? $item['id'] ?? 0);
         $url = $mediaId ? (string) wp_get_attachment_url($mediaId) : (string) ($item['url'] ?? '');
-        $path = $mediaId ? (string) get_attached_file($mediaId) : '';
+        $path = $mediaId ? AttachmentStorage::localPath($mediaId) : '';
         $mime = $mediaId ? (string) get_post_mime_type($mediaId) : (string) ($item['mime_type'] ?? '');
         $metadata = $mediaId ? (array) wp_get_attachment_metadata($mediaId) : [];
         $type = self::mediaType($mime, $url);

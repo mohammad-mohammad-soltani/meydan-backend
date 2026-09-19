@@ -20,6 +20,11 @@ define('MEYDAN_CORE_VERSION', '1.0.0');
 define('MEYDAN_CORE_FILE', __FILE__);
 define('MEYDAN_CORE_DIR', plugin_dir_path(__FILE__));
 
+$meydanComposerAutoload = MEYDAN_CORE_DIR . 'vendor/autoload.php';
+if (is_readable($meydanComposerAutoload)) {
+    require_once $meydanComposerAutoload;
+}
+
 spl_autoload_register(static function (string $class): void {
     $prefix = 'Meydan\\Core\\';
     if (!str_starts_with($class, $prefix)) {

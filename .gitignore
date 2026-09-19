@@ -3,10 +3,11 @@
 !.env.example
 
 node_modules/
+vendor/
+wp-content/plugins/meydan-core/vendor/
 *.log
 .DS_Store
 
 # local scratch space for test fixtures and tool caches
 .tmp/
 .npm-cache/
-

@@ -35,6 +35,7 @@ use Meydan\Core\Support\RootResponse;
 use Meydan\Core\Support\SquareActivity;
 use Meydan\Core\Support\UserEmails;
 use Meydan\Core\Uploads\UploadCache;
+use Meydan\Core\Storage\WordPressMediaHooks;
 
 final class Plugin
 {
@@ -92,6 +93,7 @@ final class Plugin
         add_action('init', [GuestSessionService::class, 'ensureGuestCookie'], 1);
         // Uploads are immutable by filename; keep their long-lived cache rule in place.
         add_action('init', [UploadCache::class, 'ensure'], 5);
+        WordPressMediaHooks::register();
 
         CampaignCurrentGuard::register();
         GoodAction::register();

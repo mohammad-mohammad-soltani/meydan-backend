@@ -9,7 +9,7 @@ use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.2.0';
+    public const VERSION = '1.3.0';
 
     /**
      * Legacy speaker-post meta holding the linked user id.
@@ -230,6 +230,8 @@ final class Migrations
             mime_type VARCHAR(190) NOT NULL,
             size BIGINT UNSIGNED NOT NULL,
             purpose VARCHAR(64) NOT NULL,
+            storage_scope VARCHAR(32) NULL,
+            storage_owner VARCHAR(190) NULL,
             chunk_size INT UNSIGNED NOT NULL DEFAULT 5242880,
             status VARCHAR(32) NOT NULL DEFAULT 'started',
             created_at DATETIME NOT NULL,

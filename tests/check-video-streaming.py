@@ -38,7 +38,7 @@ assert "poster_url" in processor and "thumbnail_url" in processor, "both still k
 # 3) the upload completion path runs the pass and never rejects on failure.
 assert "VideoProcessor::processAttachment" in uploads, "video processing must run on upload completion"
 assert "catch (\\Throwable" in uploads or "catch(\\Throwable" in uploads, "video failure must not fail the upload"
-assert "$payload+=$video" in uploads, "upload response must carry the poster/duration fields"
+assert "$payload+=$video" in uploads.replace(" ", ""), "upload response must carry the poster/duration fields"
 
 # 4) the API payload exposes the fields on every attachment surface.
 for key in ["poster_url", "thumbnail_url", "duration", "width", "height"]:

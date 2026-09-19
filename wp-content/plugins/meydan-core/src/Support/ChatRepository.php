@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Support;
 
+use Meydan\Core\Storage\AttachmentStorage;
+
 use Meydan\Core\Uploads\VideoProcessor;
 use WP_Error;
 
@@ -349,12 +351,12 @@ final class ChatRepository
         $mediaId = (int) ($attachment['id'] ?? 0);
         $path = '';
         if ($mediaId > 0 && get_post_type($mediaId) === 'attachment') {
-            $path = (string) get_attached_file($mediaId);
-        } elseif ($url !== '' && function_exists('attachment_url_to_postid')) {
-            $found = (int) attachment_url_to_postid($url);
+            $path = AttachmentStorage::localPath($mediaId);
+        } elseif ($url !== '') {
+            $found = AttachmentStorage::attachmentIdFromUrl($url);
             if ($found > 0) {
                 $mediaId = $found;
-                $path = (string) get_attached_file($found);
+                $path = AttachmentStorage::localPath($found);
             }
         }
 
