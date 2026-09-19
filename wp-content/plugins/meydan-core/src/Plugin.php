@@ -12,6 +12,7 @@ use Meydan\Core\Auth\GuestSessionService;
 use Meydan\Core\Database\ChatMigrations;
 use Meydan\Core\Database\Migrations;
 use Meydan\Core\Database\PushMigrations;
+use Meydan\Core\Domain\NarrativeCleanup;
 use Meydan\Core\Domain\Registrations;
 use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Integrations\Eitaa\AdminPage;
@@ -83,6 +84,7 @@ final class Plugin
         // Data migrations need the post types registered above, so they cannot
         // run from maybeRun() on plugins_loaded.
         add_action('init', [Migrations::class, 'runDeferred'], 25);
+        NarrativeCleanup::register();
 
         add_filter('determine_current_user', [SessionService::class, 'authenticateBearer'], 30);
         add_filter('determine_current_user', [UserAccess::class, 'currentUser'], 99);
