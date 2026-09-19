@@ -8,6 +8,7 @@ use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Auth\OtpService;
 use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Domain\UserAccess;
+use Meydan\Core\Domain\UserDeletionService;
 use Meydan\Core\Integrations\Channels\Channels;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Crypto;
@@ -120,6 +121,37 @@ final class AdminUserController extends BaseController
         $this->saveProfile($id, $p, $validated);
         AuditLogger::log('user_updated', 'user', $id, ['role' => $before['role']], ['role' => (string) get_userdata($id)->roles[0], 'fields' => array_keys($p)]);
         return Response::ok($this->serialize($id));
+    }
+
+    public function delete(WP_REST_Request $r)
+    {
+        $id = (int) $r['id'];
+        $user = $id > 0 ? get_userdata($id) : false;
+        if (!$user) return Response::error('not_found', 'کاربر پیدا نشد.', 404);
+
+        $before = [
+            'role' => (string) ($user->roles[0] ?? ''),
+            'disabled' => UserAccess::disabled($id),
+            'full_name' => (string) get_user_meta($id, 'meydan_full_name', true) ?: $user->display_name,
+        ];
+
+        $deleted = UserDeletionService::deletePermanently($id, get_current_user_id());
+        if (is_wp_error($deleted)) return $this->error($deleted);
+
+        AuditLogger::log(
+            'user_deleted_permanently',
+            'user',
+            $id,
+            $before,
+            ['status' => 'deleted_permanently', 'purged' => $deleted],
+        );
+
+        return Response::ok([
+            'deleted' => true,
+            'permanent' => true,
+            'id' => $id,
+            'purged' => $deleted,
+        ]);
     }
 
     public function status(WP_REST_Request $r)
