@@ -27,3 +27,13 @@ for stage in ['FeedContext', 'CandidateGenerator', 'CandidateHydrator', 'FeedFil
 for side_effect in ['incrementViews', 'served_history', 'EventLogger', 'wp_cache_set', 'wp_cache_add']:
     assert side_effect not in service
 print('Feed V2 orchestration contract OK.')
+
+routes = (root / 'Rest/Routes.php').read_text(encoding='utf-8')
+timeline = (root / 'Rest/TimelineController.php').read_text(encoding='utf-8')
+assert "'/admin/feed/settings','GET'" in routes
+assert "'/admin/feed/settings','PUT'" in routes
+assert "'/admin/feed/preview','GET'" in routes
+assert 'FeedSettings::enabled()' in timeline
+assert 'debug_feed' in timeline and 'isAdministrator' in timeline
+assert 'Stats::incrementViewsBulk($ids)' in timeline
+print('Feed V2 REST integration contract OK.')

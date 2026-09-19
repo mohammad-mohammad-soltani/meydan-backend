@@ -13,11 +13,15 @@ use Meydan\Core\Timeline\FeatureHydrator;
 use Meydan\Core\Timeline\Mixer;
 use Meydan\Core\Timeline\Ranker;
 use Meydan\Core\Timeline\TimelineSession;
+use Meydan\Core\Feed\FeedService;
+use Meydan\Core\Feed\FeedSettings;
 use WP_Query;
 use WP_REST_Request;
 
 final class TimelineController extends BaseController
 {
+    /** @var array<int,array<string,mixed>> */
+    private array $feedV2Debug = [];
     public function timeline(WP_REST_Request $request)
     {
         $viewer = $this->viewer();
@@ -25,6 +29,8 @@ final class TimelineController extends BaseController
         $filter = sanitize_key((string) ($request->get_param('filter') ?: 'all'));
         $limit = min(50, max(1, (int) ($request->get_param('limit') ?: 20)));
         $cursor = trim((string) $request->get_param('cursor'));
+        // Debug data is intentionally gated; ordinary public timeline responses stay unchanged.
+        $debugFeed = (string) $request->get_param('debug_feed') === '1' && $this->isAdministrator();
 
         if (!in_array($mode, ['for_you', 'following'], true)) {
             $mode = 'for_you';
@@ -48,14 +54,14 @@ final class TimelineController extends BaseController
                 );
             }
 
-            return $this->respondPage($viewer, $page, $mode, $filter);
+            return $this->respondPage($viewer, $page, $mode, $filter, $debugFeed ? [] : null);
         }
 
         $snapshotSize = $this->snapshotSize($limit);
-        $ids = $this->buildSnapshot($viewer, $mode, $filter, $snapshotSize);
+        $ids = $this->buildSnapshot($viewer, $mode, $filter, $snapshotSize, $debugFeed);
         $page = TimelineSession::start($viewer, $mode, $filter, $ids, $limit);
 
-        return $this->respondPage($viewer, $page, $mode, $filter);
+        return $this->respondPage($viewer, $page, $mode, $filter, $debugFeed ? $this->debugForIds($page['ids']) : null);
     }
 
     private function snapshotSize(int $limit): int
@@ -67,8 +73,14 @@ final class TimelineController extends BaseController
     }
 
     /** @return array<int,int> */
-    private function buildSnapshot(Viewer $viewer, string $mode, string $filter, int $limit): array
+    private function buildSnapshot(Viewer $viewer, string $mode, string $filter, int $limit, bool $debug = false): array
     {
+        // Cursor requests return before this method, so V2 runs only for a newly created snapshot.
+        if ($mode === 'for_you' && $filter === 'all' && FeedSettings::enabled()) {
+            $result = (new FeedService())->forYou($viewer, $limit, $debug);
+            foreach ($result['items'] as $item) $this->feedV2Debug[(int) $item['narrative_id']] = $item;
+            return $result['ids'];
+        }
         $generator = new CandidateGenerator();
 
         if ($mode === 'following') {
@@ -223,7 +235,7 @@ final class TimelineController extends BaseController
     /**
      * @param array{ids:array<int,int>,next_cursor:?string} $page
      */
-    private function respondPage(Viewer $viewer, array $page, string $mode, string $filter)
+    private function respondPage(Viewer $viewer, array $page, string $mode, string $filter, ?array $debug = null)
     {
         $ids = $page['ids'];
         Stats::incrementViewsBulk($ids);
@@ -232,13 +244,27 @@ final class TimelineController extends BaseController
 
         $data = array_values(array_filter(array_map([Serializer::class, 'narrative'], $ids)));
 
+        $meta = [
+            'next_cursor' => $page['next_cursor'],
+            'count' => count($data),
+        ];
+        if ($debug !== null) $meta['debug_feed'] = $debug;
         return Response::cache(
-            Response::ok($data, [
-                'next_cursor' => $page['next_cursor'],
-                'count' => count($data),
-            ]),
+            Response::ok($data, $meta),
             'private, no-store',
         );
+    }
+
+    private function isAdministrator(): bool
+    {
+        $user = wp_get_current_user();
+        return $user instanceof \WP_User && in_array('administrator', (array) $user->roles, true);
+    }
+
+    /** @param array<int,int> $ids @return list<array<string,mixed>> */
+    private function debugForIds(array $ids): array
+    {
+        return array_values(array_filter(array_map(fn(int $id): ?array => $this->feedV2Debug[$id] ?? null, $ids)));
     }
 
     private function matches(int $id, string $filter): bool
