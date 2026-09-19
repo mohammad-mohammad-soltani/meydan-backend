@@ -22,7 +22,7 @@ for token in [
     "Channels::store($userId, 'eitaa', '')",
     "Channels::store($userId, 'bale', '')",
     'NarrativeCleanup::deleteUserNarratives($userId)',
-    "'meydan_push_subscriptions'",
+    "'push_subscriptions'",
     "'meydan_idempotency'",
     "'meydan_auth_challenges'",
     "'meydan_chat_participants'",
@@ -33,6 +33,8 @@ for token in [
     "'meydan_actor_affinity'",
     "'meydan_notifications'",
     "'meydan_events'",
+    "'meydan_speaker_user_map'",
+    "'meydan_speaker_user_id'",
 ]:
     assert token in service, token
 
