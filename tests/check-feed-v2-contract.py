@@ -8,3 +8,15 @@ assert "meydan_feed_settings" in settings
 assert "wp_cache_delete" in settings
 assert "function validate" in settings
 print('Feed V2 settings contract OK.')
+
+generator = (root / 'Feed/CandidateGenerator.php').read_text(encoding='utf-8')
+hydrator = (root / 'Feed/CandidateHydrator.php').read_text(encoding='utf-8')
+for source in ['following', 'recent', 'editorial', 'good_deed', 'same_city', 'same_province', 'general']:
+    assert source in generator
+assert 'post_date_gmt >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)' in generator
+assert "ORDER BY p.post_date_gmt DESC, p.ID DESC" in generator
+assert 'RAND(' not in generator and 'mt_rand' not in generator
+assert 'score' not in generator.lower() and 'rank' not in generator.lower()
+assert 'get_post(' not in hydrator and 'get_post_meta(' not in hydrator
+assert 'IN (' in hydrator
+print('Feed V2 candidate pipeline contract OK.')
