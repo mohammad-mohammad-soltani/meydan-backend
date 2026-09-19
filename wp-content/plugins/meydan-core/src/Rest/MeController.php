@@ -45,6 +45,17 @@ final class MeController extends BaseController
             );
         }
 
+        if ($type === 'official') {
+            return Response::cache(
+                Response::ok([
+                    'account_type' => 'official',
+                    ...$this->rolePayload($uid),
+                    'profile' => $this->profile($uid),
+                ]),
+                'private, no-store'
+            );
+        }
+
         return Response::cache(
             Response::ok([
                 'account_type' => 'user',
@@ -357,6 +368,7 @@ final class MeController extends BaseController
             'cover_url' => Actor::coverUrl($uid),
             'headline' => (string) get_user_meta($uid, 'meydan_headline', true),
             'verified' => Actor::isVerifiedUser($uid),
+            'verified_official' => Actor::isOfficial($uid),
             'province_id' => (int) get_user_meta($uid, 'meydan_province_id', true) ?: null,
             'city_id' => (int) get_user_meta($uid, 'meydan_city_id', true) ?: null,
             'location_label' => (string) get_user_meta($uid, 'meydan_location_label', true),
