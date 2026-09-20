@@ -27,7 +27,8 @@ final class FeedScorer
             + log1p($views) * (float) $settings['view_weight']
             + log1p($comments) * (float) $settings['comment_weight']
             + log1p($shares + $reposts) * (float) $settings['share_weight'];
-        $base = min($engagement, (float) $settings['max_engagement_score']);
+        // A cold-start prior lets unseen posts compete before they collect engagement.
+        $base = min(2.0 + $engagement, (float) $settings['max_engagement_score']);
 
         $role = $this->roleMultiplier((string) ($item['actor_type'] ?? 'user'), (array) ($item['actor_roles'] ?? []), $settings);
         $location = $this->locationMultiplier($item, $settings);

@@ -109,7 +109,7 @@ $freshScore = $scorer->score(feedFixture(['age_hours' => 1]), $feedSettings)['sc
 $oldScore = $scorer->score(feedFixture(['age_hours' => 48]), $feedSettings)['score'];
 assertTrue($freshScore > $oldScore, 'A fresh post with matching engagement must outrank an older post.');
 $zeroScore = $scorer->score(feedFixture(['stats' => ['likes'=>0,'views'=>0,'comments'=>0,'shares'=>0,'reposts'=>0]]), $feedSettings)['score'];
-assertTrue(is_finite($zeroScore) && $zeroScore === 0.0);
+assertTrue(is_finite($zeroScore) && $zeroScore > 0.0);
 
 $diversity = new Meydan\Core\Feed\FeedDiversity();
 $diversitySettings = Meydan\Core\Feed\FeedSettings::defaults();
@@ -187,7 +187,7 @@ for ($i = 0; $i < 20; $i++) {
     ];
 }
 $onlySpeakerOutput = $diversity->rerank($onlySpeakerItems, $diversitySettings);
-assertSame(20, count($onlySpeakerOutput), 'Role caps must not empty an otherwise valid role-only feed.');
+assertSame(1, count($onlySpeakerOutput), 'Speaker-only supply must respect hard adjacency.');
 
 $officialItems = [];
 for ($i = 0; $i < 20; $i++) {
@@ -204,28 +204,15 @@ for ($i = 0; $i < 20; $i++) {
 $officialOutput = $diversity->rerank($officialItems, $diversitySettings);
 assertSame(20, count($officialOutput), 'Official-only feeds must remain usable.');
 $mixed = $diversity->rerank($diversityItems, $diversitySettings);
-assertSame(count($diversityItems), count($mixed));
-for ($offset = 0; $offset < count($mixed); $offset += 20) {
-    $chunk = array_slice($mixed, $offset, 20);
-    $actors = [];
-    $speakerBlocks = [];
-    foreach ($chunk as $index => $item) {
-        $actor = (string) $item['actor_type'] . ':' . (int) $item['actor_id'];
-        $actors[$actor] = ($actors[$actor] ?? 0) + 1;
-        if (in_array('meydan_speaker', (array) ($item['actor_roles'] ?? []), true)) {
-            $speakerBlocks[intdiv($index, 10)] = ($speakerBlocks[intdiv($index, 10)] ?? 0) + 1;
-        }
-        if ($index > 0) {
-            $previous = $chunk[$index - 1];
-            $previousActor = (string) $previous['actor_type'] . ':' . (int) $previous['actor_id'];
-            if ($actor === $previousActor) throw new RuntimeException('Diversity should separate repeated actors.');
-        }
-    }
-    foreach ($actors as $actor => $count) {
-        if (str_starts_with($actor, 'square:') && $count > 3) throw new RuntimeException('Square cap exceeded in a chunk.');
-    }
-    for ($block = 0; $block < 2; $block++) {
-        if (($speakerBlocks[$block] ?? 0) < 1 || ($speakerBlocks[$block] ?? 0) > 3) throw new RuntimeException('Speaker quota violated in a ten-item block.');
+assertTrue(count($mixed) > 20, 'Mixed supply should support scrolling.');
+$lastActors = [];
+foreach ($mixed as $position => $item) {
+    $actor = $item['actor_type'] . ':' . $item['actor_id'];
+    if (isset($lastActors[$actor])) assertTrue($position - $lastActors[$actor] >= 5, 'Actor spacing spans page boundaries.');
+    $lastActors[$actor] = $position;
+    if ($position > 0) {
+        $previous = $mixed[$position - 1];
+        assertTrue(!(in_array('meydan_speaker', $item['actor_roles'], true) && in_array('meydan_speaker', $previous['actor_roles'], true)), 'No consecutive speakers.');
     }
 }
 
@@ -242,8 +229,8 @@ $closeItems = [
     ['narrative_id' => 9102, 'score' => 99.0, 'age_hours' => 1.0],
     ['narrative_id' => 9103, 'score' => 98.0, 'age_hours' => 1.0],
 ];
-$closeA = $ranker->rank($closeItems, 'refresh-close-a');
-$closeB = $ranker->rank($closeItems, 'refresh-close-b');
-if (array_column($closeA, 'narrative_id') === array_column($closeB, 'narrative_id')) throw new RuntimeException('Refresh should vary close-score ordering.');
+$closeOrders = [];
+for ($seed = 0; $seed < 20; $seed++) $closeOrders[] = array_column($ranker->rank($closeItems, 'refresh-close-' . $seed), 'narrative_id');
+assertTrue(count(array_unique(array_map('serialize', $closeOrders))) >= 4, 'Repeated refreshes must explore close-score permutations.');
 
 echo "Feed V2 unit checks passed.\n";

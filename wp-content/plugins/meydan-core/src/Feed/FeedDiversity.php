@@ -1,88 +1,72 @@
 <?php
 
 declare(strict_types=1);
-
 namespace Meydan\Core\Feed;
 
+/** Greedy constrained selection; history spans the whole cursor snapshot. */
 final class FeedDiversity
 {
-    /** @param array<int,array<string,mixed>> $items @param array<string,mixed> $settings @return array<int,array<string,mixed>> */
-    public function rerank(array $items, array $settings): array
+    /** @param list<array<string,mixed>> $items @return list<array<string,mixed>> */
+    public function rerank(array $items, array $settings, int $previousFirstId = 0): array
     {
-        $chunkSize = max(1, (int) ($settings['diversity_top_n'] ?? 20));
-        $actorCap = min(3, max(1, (int) ($settings['max_same_author_in_top_n'] ?? 3)));
-        $roleCaps = [
-            'meydan_speaker' => (float) ($settings['max_speaker_ratio_top_20'] ?? 40) / 100,
-            'meydan_official' => (float) ($settings['max_official_ratio_top_20'] ?? 40) / 100,
-        ];
         $remaining = array_values($items);
-        $output = [];
-        $previousActor = null;
+        $output = $lastSeen = $counts = $seenIds = [];
+        $window = max(5, (int) ($settings['diversity_top_n'] ?? 20));
         while ($remaining !== []) {
-            [$chunk, $remaining, $previousActor] = $this->takeChunk($remaining, $chunkSize, $actorCap, $roleCaps, $previousActor);
-            if ($chunk === []) break;
-            $output = [...$output, ...$chunk];
+            $position = count($output);
+            $recent = array_slice($output, -($window - 1));
+            $mediaCounts = $roleCounts = $actorCounts = [];
+            foreach ($recent as $item) {
+                $media = $item['media_type'] ?? 'text';
+                $mediaCounts[$media] = ($mediaCounts[$media] ?? 0) + 1;
+                $actor = $this->actorKey($item);
+                $actorCounts[$actor] = ($actorCounts[$actor] ?? 0) + 1;
+                foreach ((array) ($item['actor_roles'] ?? []) as $role) $roleCounts[$role] = ($roleCounts[$role] ?? 0) + 1;
+            }
+            $previous = $output[$position - 1] ?? null;
+            $best = null;
+            $bestPriority = null;
+            foreach ($remaining as $index => $item) {
+                if (isset($seenIds[$item['narrative_id']])) continue;
+                if ($position === 0 && count($remaining) > 1 && (int) $item['narrative_id'] === $previousFirstId) continue;
+                $speaker = $this->isSpeaker($item);
+                if ($previous !== null && $speaker && $this->isSpeaker($previous)) continue;
+                $actor = $this->actorKey($item);
+                // Never fill a sparse feed with A/B/A repetitions.
+                if (isset($lastSeen[$actor]) && $position - $lastSeen[$actor] < 5) continue;
+                if (($actorCounts[$actor] ?? 0) >= max(1, (int) ($settings['max_same_author_in_top_n'] ?? 3))) continue;
+                $roleOverflow = 0;
+                foreach (['meydan_speaker'=>'max_speaker_ratio_top_20','meydan_official'=>'max_official_ratio_top_20'] as $role=>$key) {
+                    if (in_array($role, (array) ($item['actor_roles'] ?? []), true) && ($roleCounts[$role] ?? 0) >= (int) floor($window * (float) ($settings[$key] ?? 40) / 100)) $roleOverflow++;
+                }
+                $media = $item['media_type'] ?? 'text';
+                $sameMedia = $previous !== null && ($previous['media_type'] ?? 'text') === $media;
+                // New actors (including speakers) precede repeated squares. Format
+                // deficits and role caps are preferences when supply is sparse.
+                $priority = [
+                    $counts[$actor] ?? 0,
+                    $roleOverflow,
+                    ($mediaCounts[$media] ?? 0) + ($sameMedia ? 2 : 0),
+                    $index,
+                ];
+                if ($bestPriority === null || $priority < $bestPriority) { $best = $index; $bestPriority = $priority; }
+            }
+            // Hard spacing wins over padding the snapshot with repetitive posts.
+            if ($best === null) break;
+            $item = $remaining[$best];
+            unset($remaining[$best]);
+            $actor = $this->actorKey($item);
+            $lastSeen[$actor] = $position;
+            $counts[$actor] = ($counts[$actor] ?? 0) + 1;
+            $seenIds[$item['narrative_id']] = true;
+            $output[] = $item;
         }
         return $output;
     }
 
-    /** @return array{0:list<array<string,mixed>>,1:list<array<string,mixed>>,2:?string} */
-    private function takeChunk(array $remaining, int $chunkSize, int $actorCap, array $roleCaps, ?string $previousActor): array
-    {
-        $chunk = [];
-        $counts = [];
-        $speakerCounts = [0, 0];
-        $roleCounts = [];
-        for ($position = 0; $position < $chunkSize && $remaining !== []; $position++) {
-            $block = intdiv($position, 10);
-            $speakerCount = $speakerCounts[$block] ?? 0;
-            $mustSpeaker = $position % 10 === 0 && $this->hasEligibleSpeaker($remaining, $counts, $actorCap);
-            $index = $this->findIndex($remaining, $counts, $roleCounts, $roleCaps, $speakerCount, $chunkSize, $actorCap, $previousActor, $mustSpeaker, false);
-            if ($index === null) $index = $this->findIndex($remaining, $counts, $roleCounts, $roleCaps, $speakerCount, $chunkSize, $actorCap, $previousActor, $mustSpeaker, true);
-            if ($index === null && $mustSpeaker) $index = $this->findIndex($remaining, $counts, $roleCounts, $roleCaps, $speakerCount, $chunkSize, $actorCap, $previousActor, false, true);
-            // A role cap is a diversity preference, not a hard filter: if no
-            // alternative role remains, keep the feed usable and retain it.
-            if ($index === null) $index = $this->findIndex($remaining, $counts, $roleCounts, $roleCaps, $speakerCount, $chunkSize, $actorCap, $previousActor, false, true, true);
-            if ($index === null) break;
-            $item = $remaining[$index];
-            array_splice($remaining, $index, 1);
-            $actor = $this->actorKey($item);
-            $counts[$actor] = ($counts[$actor] ?? 0) + 1;
-            if ($this->isSpeaker($item)) $speakerCounts[$block]++;
-            foreach ($roleCaps as $role => $_cap) if (in_array($role, (array) ($item['actor_roles'] ?? []), true)) $roleCounts[$role] = ($roleCounts[$role] ?? 0) + 1;
-            $chunk[] = $item;
-            $previousActor = $actor;
-        }
-        return [$chunk, $remaining, $previousActor];
-    }
-
-    private function findIndex(array $items, array $counts, array $roleCounts, array $roleCaps, int $speakerCount, int $chunkSize, int $actorCap, ?string $previousActor, bool $speakerOnly, bool $allowAdjacent, bool $ignoreRoleCaps = false): ?int
-    {
-        foreach ($items as $index => $item) {
-            if ($speakerOnly && !$this->isSpeaker($item)) continue;
-            if (!$speakerOnly && !$ignoreRoleCaps && $this->isSpeaker($item) && $speakerCount >= 3) continue;
-            $blocked = false;
-            if (!$ignoreRoleCaps) foreach ($roleCaps as $role => $ratio) {
-                if (in_array($role, (array) ($item['actor_roles'] ?? []), true) && ($roleCounts[$role] ?? 0) >= (int) floor($chunkSize * $ratio)) $blocked = true;
-            }
-            if ($blocked) continue;
-            $actor = $this->actorKey($item);
-            if (($counts[$actor] ?? 0) >= $actorCap) continue;
-            if (!$allowAdjacent && $previousActor !== null && $actor === $previousActor) continue;
-            return $index;
-        }
-        return null;
-    }
-
-    private function hasEligibleSpeaker(array $items, array $counts, int $actorCap): bool
-    {
-        foreach ($items as $item) if ($this->isSpeaker($item) && (($counts[$this->actorKey($item)] ?? 0) < $actorCap)) return true;
-        return false;
-    }
-
     private function isSpeaker(array $item): bool
     {
-        return in_array('meydan_speaker', (array) ($item['actor_roles'] ?? []), true);
+        return ($item['actor_type'] ?? 'user') === 'user' && in_array('meydan_speaker', (array) ($item['actor_roles'] ?? []), true);
     }
 
     private function actorKey(array $item): string

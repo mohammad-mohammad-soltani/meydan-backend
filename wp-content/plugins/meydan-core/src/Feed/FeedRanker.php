@@ -20,10 +20,11 @@ final class FeedRanker
                 $score = (float) ($item['score'] ?? 0.0);
                 $hash = hash('sha256', $refreshSeed . ':' . (int) ($item['narrative_id'] ?? 0));
                 $fraction = hexdec(substr($hash, 0, 8)) / 4294967295;
-                // Keep score/breakdown untouched while allowing a fresh
-                // snapshot to reshuffle genuinely close candidates.
-                $jitter = $fraction * max(0.000001, abs($score) * 0.05);
-                $item['_rank_key'] = $score + $jitter;
+                // Seeded Gumbel jitter: weighted sampling without replacement.
+                // Log compression lets fresh, less popular posts compete while
+                // preserving a preference for higher quality scores.
+                $uniform = max(0.000000001, min(0.999999999, $fraction));
+                $item['_rank_key'] = log1p(max(0.0, $score)) - 0.85 * log(-log($uniform));
             }
             unset($item);
             usort($items, static function (array $left, array $right): int {

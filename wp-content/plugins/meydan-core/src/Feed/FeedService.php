@@ -19,7 +19,7 @@ final class FeedService
     ) {}
 
     /** @return array{ids:list<int>,items:list<array<string,mixed>>,algorithm_version:string,debug_summary?:array<string,mixed>} */
-    public function forYou(Viewer $viewer, int $limit, bool $explain = false): array
+    public function forYou(Viewer $viewer, int $limit, bool $explain = false, int $previousFirstId = 0): array
     {
         $settings = FeedSettings::get();
         $context = new FeedContext($viewer, $settings, []);
@@ -29,7 +29,7 @@ final class FeedService
         $scored = $this->scorer->scoreAll($eligible, $settings);
         $refreshSeed = bin2hex(random_bytes(16));
         $ranked = $this->ranker->rank($scored, $refreshSeed);
-        $selected = array_slice($this->diversity->rerank($ranked, $settings), 0, max(1, $limit));
+        $selected = array_slice($this->diversity->rerank($ranked, $settings, $previousFirstId), 0, max(1, $limit));
         foreach ($selected as $index => &$item) $item['rank'] = $index + 1;
         unset($item);
         $result = ['ids' => array_values(array_map(static fn(array $item): int => (int) $item['narrative_id'], $selected)), 'items' => $explain ? $selected : [], 'algorithm_version' => 'feed-v2'];

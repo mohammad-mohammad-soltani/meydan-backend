@@ -17,7 +17,7 @@ final class FeedSettings
     {
         return [
             'feed_algorithm_v2_enabled' => false,
-            'like_weight' => 1.0, 'view_weight' => 0.08, 'comment_weight' => 2.0, 'share_weight' => 1.5,
+            'like_weight' => 1.0, 'view_weight' => 0.03, 'comment_weight' => 2.5, 'share_weight' => 3.0,
             'max_engagement_score' => 25.0,
             'square_role_multiplier' => 1.25, 'speaker_role_multiplier' => 1.5, 'official_role_multiplier' => 2.25,
             'editorial_multiplier' => 1.7, 'good_deed_multiplier' => 1.25,
