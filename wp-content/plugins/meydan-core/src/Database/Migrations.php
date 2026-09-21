@@ -9,7 +9,7 @@ use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.3.0';
+    public const VERSION = '1.4.0';
 
     /**
      * Legacy speaker-post meta holding the linked user id.
@@ -129,6 +129,18 @@ final class Migrations
             bookmarks BIGINT UNSIGNED NOT NULL DEFAULT 0,
             updated_at DATETIME NOT NULL,
             PRIMARY KEY (content_id)
+        ) {$charset};";
+
+        $sql[] = "CREATE TABLE {$p}report_days (
+            report_date DATE NOT NULL,
+            title VARCHAR(255) NULL,
+            subtitle VARCHAR(255) NULL,
+            description TEXT NULL,
+            text_color CHAR(7) NULL,
+            background_color CHAR(7) NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY (report_date)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}served_history (

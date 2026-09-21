@@ -70,7 +70,13 @@ final class OtpService
             return $sent;
         }
 
-        return ['challenge_id' => $challenge, 'expires_in' => self::expiresIn(), 'resend_after' => self::RESEND_AFTER];
+        $response = ['challenge_id' => $challenge, 'expires_in' => self::expiresIn(), 'resend_after' => self::RESEND_AFTER];
+        // Never expose an OTP outside local development. Local SMS is intentionally
+        // bypassed, so the frontend needs a visible development code to continue.
+        if ($dev !== '' && wp_get_environment_type() === 'local') {
+            $response['dev_code'] = $code;
+        }
+        return $response;
     }
 
     public function verify(string $challengeId, string $code): array|WP_Error

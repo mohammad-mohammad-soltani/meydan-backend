@@ -98,7 +98,7 @@ final class Serializer
             'url' => $url,
             'poster_url' => $poster,
             'thumbnail_url' => $poster,
-            'size' => ($path && is_file($path)) ? (int) filesize($path) : (int) ($item['size'] ?? 0),
+            'size' => ($path && is_file($path)) ? (int) filesize($path) : (int) ($metadata['filesize'] ?? $item['size'] ?? 0),
             'width' => $width,
             'height' => $height,
             'duration' => $duration,
@@ -125,12 +125,36 @@ final class Serializer
             'is_array'
         ));
         usort($attachments, static fn(array $a, array $b): int => ((int) ($a['order'] ?? 0)) <=> ((int) ($b['order'] ?? 0)));
+        $isUser = (bool) get_post_meta($id, 'meydan_is_user', true);
+        $userId = (int) get_post_meta($id, 'meydan_user_id', true);
+        $creatorId = (int) get_post_meta($id, 'meydan_creator_id', true);
+        $coverId = (int) get_post_meta($id, 'meydan_media_cover', true);
+        $attachedMedia = array_values(array_map(static function (array $item): array {
+            $attachment = self::attachment($item);
+            return [
+                'media_id' => (int) $attachment['id'],
+                'media_title' => (string) ($item['media_title'] ?? $item['label'] ?? ''),
+                'media_subtitle' => (string) ($item['media_subtitle'] ?? $item['caption'] ?? ''),
+                'media_mime_type' => (string) $attachment['mime_type'],
+                'media_size' => (int) $attachment['size'],
+            ];
+        }, $attachments));
         $categories = wp_get_post_terms($id, 'meydan_content_category');
         return [
             'id' => $id,
             'title' => get_the_title($post),
             'excerpt' => $post->post_excerpt,
             'body' => $post->post_content,
+            'is_user' => $isUser,
+            'user_id' => $isUser && $userId > 0 ? $userId : null,
+            'creator_id' => !$isUser && $creatorId > 0 ? $creatorId : null,
+            'content_type' => (string) get_post_meta($id, 'meydan_content_type', true) ?: null,
+            'view_counts' => Stats::content($id)['views'],
+            'attached_media' => $attachedMedia,
+            'media_cover' => $coverId > 0 ? $coverId : null,
+            'media_cover_url' => $coverId > 0 ? (wp_get_attachment_url($coverId) ?: null) : null,
+            'time' => self::isoMeta((string) get_post_meta($id, 'meydan_time', true)),
+            'created_at' => self::date($post->post_date_gmt),
             'format' => (string) get_post_meta($id, 'meydan_format', true) ?: 'mixed',
             'category' => $categories && !is_wp_error($categories) ? ['id' => $categories[0]->term_id, 'name' => $categories[0]->name, 'slug' => $categories[0]->slug] : null,
             'attachments' => array_values(array_map([self::class, 'attachment'], $attachments)),

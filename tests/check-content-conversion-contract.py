@@ -16,8 +16,8 @@ assert "'producer'" in serializer
 assert "meydan_source_narrative_id" in content
 assert "meydan_producer_actor_type" in content
 assert "meydan_producer_actor_id" in content
-assert "normalizeProducerInput" in content
-assert "creator_id" in content and "_producer_actor" in content
+assert "validateOwner" in content
+assert "meydan_user_id" in content and "meydan_creator_id" in content
 assert "content_creators" in serializer and "display_name" in serializer
 conversion = content.split('public function convertNarrative', 1)[1].split('public function removeNarrativeContent', 1)[0]
 assert "format" in conversion
