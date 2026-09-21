@@ -61,6 +61,7 @@ final class Serializer
             'viewer_state' => $viewer->isAuthenticated() ? [
                 'liked' => self::interactionExists($viewer->userId, 'narrative', $id, 'like'),
                 'reposted' => self::interactionExists($viewer->userId, 'narrative', $id, 'repost'),
+                'can_delete' => (int) $post->post_author === $viewer->userId || current_user_can('moderate_meydan_narratives') || current_user_can('manage_options'),
             ] : null,
         ];
     }

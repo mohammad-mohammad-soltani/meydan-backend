@@ -52,9 +52,9 @@ final class SquareAdminService
         if ($email !== '' && (!is_email($email) || email_exists($email))) {
             return new WP_Error('validation_failed', 'ایمیل معتبر نیست یا قبلاً ثبت شده است.', ['status' => 422, 'fields' => ['email' => 'invalid_or_taken']]);
         }
-        $lat = self::coordinate($input['latitude'] ?? null, 35.6892);
-        $lng = self::coordinate($input['longitude'] ?? null, 51.3890);
-        if (abs($lat) > 90 || abs($lng) > 180) {
+        $lat = self::coordinate($input['latitude'] ?? null, NAN);
+        $lng = self::coordinate($input['longitude'] ?? null, NAN);
+        if (!is_finite($lat) || !is_finite($lng) || abs($lat) > 90 || abs($lng) > 180 || ($lat === 0.0 && $lng === 0.0)) {
             return new WP_Error('validation_failed', 'مختصات خارج از محدوده مجاز است.', ['status' => 422, 'fields' => ['latitude' => 'invalid', 'longitude' => 'invalid']]);
         }
 

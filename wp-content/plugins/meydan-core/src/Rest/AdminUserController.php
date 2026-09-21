@@ -26,7 +26,7 @@ final class AdminUserController extends BaseController
         'meydan_moderator', 'meydan_manager', 'meydan_support', 'administrator',
     ];
     private const ROLE_LABELS = [
-        'meydan_user' => 'کاربر عادی', 'meydan_speaker' => 'سخنران', 'meydan_official' => 'رسمی', 'meydan_square' => 'مالک میدان',
+        'meydan_user' => 'کاربر عادی', 'meydan_speaker' => 'سخنران', 'meydan_official' => 'رسمی', 'meydan_square' => 'خادم میدان',
         'meydan_content_editor' => 'ویرایشگر محتوا', 'meydan_moderator' => 'ناظر',
         'meydan_manager' => 'مدیر میدان', 'meydan_support' => 'پشتیبان', 'administrator' => 'مدیرکل',
     ];
