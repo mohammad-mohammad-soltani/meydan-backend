@@ -33,6 +33,7 @@ final class SpeakerService
         'maarif' => 'معارف',
         'resanei' => 'رسانه‌ای',
         'ejtemaei' => 'اجتماعی',
+        'namayande' => 'نماینده',
     ];
 
     /**
