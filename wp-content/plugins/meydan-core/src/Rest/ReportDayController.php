@@ -10,6 +10,8 @@ use DateTimeImmutable;
 use DateTimeZone;
 use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Support\Response;
+use Meydan\Core\Support\Serializer;
+use WP_Query;
 use WP_REST_Request;
 
 /** Aggregates report content by its editorial `time` in the Tehran timezone. */
@@ -21,6 +23,16 @@ final class ReportDayController extends BaseController
     public function list(): \WP_REST_Response
     {
         return Response::cache(Response::ok(array_values($this->eligibleDays())), 'public, max-age=60, stale-while-revalidate=300');
+    }
+
+    public function get(WP_REST_Request $request): \WP_REST_Response
+    {
+        $date = (string) $request['date'];
+        if (!$this->validDate($date) || $date < self::START_DATE || $date > $this->today()) return Response::error('not_found', 'شب پیدا نشد.', 404);
+        $reports = $this->reportsForDate($date);
+        $saved = $this->storedByDate($date);
+        if (!$reports && !$saved) return Response::error('not_found', 'شب پیدا نشد.', 404);
+        return Response::cache(Response::ok(['day' => $this->day($date, count($reports), $saved), 'items' => $reports]), 'public, max-age=60, stale-while-revalidate=300');
     }
 
     public function adminList(): \WP_REST_Response
@@ -92,6 +104,22 @@ final class ReportDayController extends BaseController
             try { $date = (new DateTimeImmutable((string) $time, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone(self::TIMEZONE))->format('Y-m-d'); $counts[$date] = ($counts[$date] ?? 0) + 1; } catch (\Exception) { }
         }
         return $counts;
+    }
+
+    private function reportsForDate(string $date): array
+    {
+        global $wpdb;
+        $start = new DateTimeImmutable($date . ' 00:00:00', new DateTimeZone(self::TIMEZONE));
+        $end = $start->modify('+1 day');
+        $sql = "SELECT p.ID FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} type ON type.post_id=p.ID AND type.meta_key='meydan_content_type' AND type.meta_value='report' INNER JOIN {$wpdb->postmeta} tm ON tm.post_id=p.ID AND tm.meta_key='meydan_time' WHERE p.post_type='meydan_content' AND p.post_status='publish' AND tm.meta_value >= %s AND tm.meta_value < %s ORDER BY tm.meta_value DESC, p.ID DESC";
+        $rows = $wpdb->get_col($wpdb->prepare($sql, $start->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'), $end->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'))) ?: [];
+        return array_values(array_filter(array_map(static function ($id): ?array {
+            $content = Serializer::content((int) $id);
+            if (!$content) return null;
+            $source = (int) ($content['source_narrative_id'] ?? 0);
+            $content['source_narrative'] = $source > 0 ? Serializer::narrative($source) : null;
+            return $content;
+        }, $rows)));
     }
 
     private function stored(): array

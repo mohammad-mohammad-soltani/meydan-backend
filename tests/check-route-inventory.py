@@ -64,6 +64,7 @@ GET /actors/(?P<type>user|square)/(?P<id>\\d+)/followers
 GET /actors/(?P<type>user|square)/(?P<id>\\d+)/following
 GET /content
 GET /report-days
+GET /report-days/(?P<date>\d{4}-\d{2}-\d{2})
 GET /content/(?P<id>\\d+)
 PUT /content/(?P<id>\\d+)/bookmark
 DELETE /content/(?P<id>\\d+)/bookmark

@@ -155,6 +155,7 @@ final class Serializer
             'media_cover_url' => $coverId > 0 ? (wp_get_attachment_url($coverId) ?: null) : null,
             'time' => self::isoMeta((string) get_post_meta($id, 'meydan_time', true)),
             'created_at' => self::date($post->post_date_gmt),
+            'source_narrative_id' => $sourceNarrative > 0 ? $sourceNarrative : null,
             'format' => (string) get_post_meta($id, 'meydan_format', true) ?: 'mixed',
             'category' => $categories && !is_wp_error($categories) ? ['id' => $categories[0]->term_id, 'name' => $categories[0]->name, 'slug' => $categories[0]->slug] : null,
             'attachments' => array_values(array_map([self::class, 'attachment'], $attachments)),

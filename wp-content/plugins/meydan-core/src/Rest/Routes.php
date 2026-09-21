@@ -23,7 +23,7 @@ final class Routes
   self::r('/content','GET',[$content,'list']);self::r('/content/(?P<id>\d+)','GET',[$content,'get']);self::r('/content/(?P<id>\d+)/bookmark','PUT',[$content,'bookmark']);self::r('/content/(?P<id>\d+)/bookmark','DELETE',[$content,'unbookmark']);self::r('/content/(?P<id>\d+)/share','POST',[$content,'share']);self::r('/content/(?P<id>\d+)/files/(?P<file_id>\d+)/download','POST',[$content,'download']);
   self::r('/admin/content','GET',[$content,'adminList']);self::r('/admin/content','POST',[$content,'adminCreate']);self::r('/admin/content/(?P<id>\d+)','GET',[$content,'adminGet']);self::r('/admin/content/(?P<id>\d+)','PATCH',[$content,'adminUpdate']);self::r('/admin/content/(?P<id>\d+)','DELETE',[$content,'adminDelete']);
   self::r('/admin/content/poster','GET',[$content,'poster']);self::r('/admin/content/poster','PATCH',[$content,'updatePoster']);
-  self::r('/report-days','GET',[$reportDays,'list']);self::r('/admin/report-days','GET',[$reportDays,'adminList']);self::r('/admin/report-days/(?P<date>\d{4}-\d{2}-\d{2})','PATCH',[$reportDays,'update']);
+  self::r('/report-days','GET',[$reportDays,'list']);self::r('/report-days/(?P<date>\d{4}-\d{2}-\d{2})','GET',[$reportDays,'get']);self::r('/admin/report-days','GET',[$reportDays,'adminList']);self::r('/admin/report-days/(?P<date>\d{4}-\d{2}-\d{2})','PATCH',[$reportDays,'update']);
   self::r('/creators','GET',[$creator,'list']);self::r('/creators/(?P<id>\d+)','GET',[$creator,'get']);self::r('/admin/creators','GET',[$creator,'adminList']);self::r('/admin/creators','POST',[$creator,'adminCreate']);self::r('/admin/creators/(?P<id>\d+)','GET',[$creator,'adminGet']);self::r('/admin/creators/(?P<id>\d+)','PATCH',[$creator,'adminUpdate']);self::r('/admin/creators/(?P<id>\d+)','DELETE',[$creator,'adminDelete']);
   self::r('/speakers','GET',[$spk,'list']);self::r('/speakers/(?P<id>\d+)','GET',[$spk,'get']);self::r('/speaker-categories','GET',[$spk,'categories']);self::r('/admin/speakers','GET',[$spk,'adminList']);self::r('/admin/speakers','POST',[$spk,'adminCreate']);self::r('/admin/speakers/new-account','POST',[$spk,'adminCreateAccount']);self::r('/admin/speakers/(?P<id>\d+)','PATCH',[$spk,'adminUpdate']);self::r('/admin/speakers/(?P<id>\d+)','DELETE',[$spk,'adminDelete']);self::r('/admin/speakers/linkable-users','GET',[$spk,'linkableUsers']);
   self::r('/admin/squares','GET',[$adminSquare,'list']);self::r('/admin/squares','POST',[$adminSquare,'create']);self::r('/admin/squares/(?P<id>\d+)','GET',[$adminSquare,'get']);self::r('/admin/squares/(?P<id>\d+)','PATCH',[$adminSquare,'update']);self::r('/admin/squares/(?P<id>\d+)','DELETE',[$adminSquare,'delete']);self::r('/admin/squares/(?P<id>\d+)/status','POST',[$adminSquare,'status']);self::r('/admin/squares/map','GET',[$adminSquare,'map']);
@@ -60,6 +60,7 @@ final class Routes
   $isPublic = in_array($route,$public,true)
    || ($method === 'GET' && (
     str_starts_with($route,'/content/(?P<id>')
+    || str_starts_with($route,'/report-days/(?P<date>')
     || str_starts_with($route,'/creators/(?P<id>')
     || str_starts_with($route,'/media-outlets/(?P<id>')
     || str_starts_with($route,'/speakers/(?P<id>')
