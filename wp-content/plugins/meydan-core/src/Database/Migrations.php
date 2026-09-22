@@ -9,7 +9,7 @@ use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.4.0';
+    public const VERSION = '1.4.1';
 
     /**
      * Legacy speaker-post meta holding the linked user id.
@@ -610,6 +610,18 @@ final class Migrations
 
     private static function seedOptions(): void
     {
+        if (get_option('meydan_speaker_category_options', null) === null) {
+            $categories = SpeakerService::SPEAKER_CATEGORIES;
+            global $wpdb;
+            $ids = $wpdb->get_col($wpdb->prepare("SELECT DISTINCT user_id FROM {$wpdb->usermeta} WHERE meta_key = %s", 'meydan_speaker_categories'));
+            foreach ($ids as $id) {
+                foreach ((array) get_user_meta((int) $id, 'meydan_speaker_categories', true) as $slug) {
+                    $slug = sanitize_key((string) $slug);
+                    if ($slug !== '' && !isset($categories[$slug])) $categories[$slug] = $slug;
+                }
+            }
+            add_option('meydan_speaker_category_options', $categories, '', false);
+        }
         if (get_option('meydan_feature_flags', null) === null) {
             add_option('meydan_feature_flags', [
                 'chat' => false,

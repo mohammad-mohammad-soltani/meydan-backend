@@ -23,7 +23,44 @@ final class SpeakerController extends BaseController
 {
     public function list(WP_REST_Request $r): WP_REST_Response
     {
-        return $this->query($r);
+        return $this->publicQuery($r);
+    }
+
+    private function publicQuery(WP_REST_Request $r): WP_REST_Response
+    {
+        global $wpdb;
+        $page = max(1, (int) ($r->get_param('page') ?: 1));
+        $perPage = min(50, max(1, (int) ($r->get_param('per_page') ?: 20)));
+        $category = sanitize_key((string) $r->get_param('speaker_category'));
+        $search = trim(mb_strtolower(sanitize_text_field((string) $r->get_param('q'))));
+        $all = get_users(['role' => SpeakerService::ROLE, 'fields' => 'ID', 'number' => -1]);
+        $matches = [];
+        $cityNames = [];
+        if ($search !== '') {
+            foreach ($wpdb->get_results("SELECT id, name FROM {$wpdb->prefix}meydan_cities", ARRAY_A) ?: [] as $city) {
+                $cityNames[(int) $city['id']] = (string) $city['name'];
+            }
+        }
+        foreach ($all as $id) {
+            $id = (int) $id;
+            $item = Serializer::speaker($id);
+            if (!$item || (string) get_user_meta($id, 'meydan_disabled', true) === '1') continue;
+            if ($category !== '' && !in_array($category, (array) get_user_meta($id, 'meydan_speaker_categories', true), true)) continue;
+            if ($search !== '') {
+                $cities = array_map(static fn($cityId): string => $cityNames[(int) $cityId] ?? '', $item['cities']);
+                $haystack = mb_strtolower(implode(' ', [$item['name'], get_user_meta($id, 'meydan_handle', true), get_user_meta($id, 'meydan_expertise', true), $item['bio'], $item['role'], implode(' ', $cities)]));
+                if (!str_contains($haystack, $search)) continue;
+            }
+            $matches[] = ['id' => $id, 'name' => (string) $item['name']];
+        }
+        usort($matches, static fn(array $a, array $b): int => strcmp($a['name'], $b['name']) ?: ($a['id'] <=> $b['id']));
+        $total = count($matches);
+        $data = [];
+        foreach (array_slice($matches, ($page - 1) * $perPage, $perPage) as $match) {
+            $item = $this->enrich(Serializer::speaker($match['id']));
+            if ($item) $data[] = $item;
+        }
+        return Response::ok($data, ['page' => $page, 'per_page' => $perPage, 'total' => $total, 'pages' => max(1, (int) ceil($total / $perPage))]);
     }
 
     /** Administrator list keeps the same speaker shape but is explicitly private. */
@@ -59,7 +96,58 @@ final class SpeakerController extends BaseController
     /** Topical categories for the filter UI. Public and cheap. */
     public function categories(WP_REST_Request $r): WP_REST_Response
     {
-        return Response::cache(Response::ok(SpeakerService::categoryTerms()), 'public, max-age=60, stale-while-revalidate=300');
+        return Response::ok(SpeakerService::categoryTerms());
+    }
+
+    public function createCategory(WP_REST_Request $r): WP_REST_Response
+    {
+        if (!$this->speakerAdmin()) return Response::error('forbidden', 'دسترسی کافی ندارید.', 403);
+        $input = $this->json($r);
+        $name = sanitize_text_field(trim((string) ($input['name'] ?? '')));
+        $slug = sanitize_key((string) ($input['slug'] ?? ''));
+        if ($slug === '') $slug = 'category-' . strtolower(wp_generate_password(10, false, false));
+        $options = SpeakerService::categoryOptions();
+        if ($name === '' || $slug === '') return Response::error('validation_failed', 'نام دسته‌بندی الزامی است.', 422);
+        if (isset($options[$slug])) return Response::error('validation_failed', 'این دسته‌بندی قبلاً ثبت شده است.', 422);
+        $options[$slug] = $name;
+        update_option('meydan_speaker_category_options', $options, false);
+        AuditLogger::log('speaker_category_created', 'speaker_category', 0, null, ['slug' => $slug, 'name' => $name]);
+        return Response::ok(['slug' => $slug, 'name' => $name], [], 201);
+    }
+
+    public function updateCategory(WP_REST_Request $r): WP_REST_Response
+    {
+        if (!$this->speakerAdmin()) return Response::error('forbidden', 'دسترسی کافی ندارید.', 403);
+        $slug = sanitize_key((string) $r['slug']);
+        $options = SpeakerService::categoryOptions();
+        if (!isset($options[$slug])) return Response::error('not_found', 'دسته‌بندی پیدا نشد.', 404);
+        $name = sanitize_text_field(trim((string) ($this->json($r)['name'] ?? '')));
+        if ($name === '') return Response::error('validation_failed', 'نام دسته‌بندی الزامی است.', 422);
+        $before = ['slug' => $slug, 'name' => $options[$slug]];
+        $options[$slug] = $name;
+        update_option('meydan_speaker_category_options', $options, false);
+        AuditLogger::log('speaker_category_updated', 'speaker_category', 0, $before, ['slug' => $slug, 'name' => $name]);
+        return Response::ok(['slug' => $slug, 'name' => $name]);
+    }
+
+    public function deleteCategory(WP_REST_Request $r): WP_REST_Response
+    {
+        if (!$this->speakerAdmin()) return Response::error('forbidden', 'دسترسی کافی ندارید.', 403);
+        $slug = sanitize_key((string) $r['slug']);
+        $options = SpeakerService::categoryOptions();
+        if (!isset($options[$slug])) return Response::error('not_found', 'دسته‌بندی پیدا نشد.', 404);
+        $before = ['slug' => $slug, 'name' => $options[$slug]];
+        global $wpdb;
+        $ids = $wpdb->get_col($wpdb->prepare("SELECT DISTINCT user_id FROM {$wpdb->usermeta} WHERE meta_key = %s", 'meydan_speaker_categories'));
+        foreach ($ids as $id) {
+            $current = (array) get_user_meta((int) $id, 'meydan_speaker_categories', true);
+            if (!in_array($slug, $current, true)) continue;
+            update_user_meta((int) $id, 'meydan_speaker_categories', array_values(array_filter($current, static fn($value): bool => $value !== $slug)));
+        }
+        unset($options[$slug]);
+        update_option('meydan_speaker_category_options', $options, false);
+        AuditLogger::log('speaker_category_deleted', 'speaker_category', 0, $before, null);
+        return Response::ok(['deleted' => true]);
     }
 
     /** Promotes an existing account, then saves the supplied profile fields. */
@@ -137,7 +225,7 @@ final class SpeakerController extends BaseController
         }
         // Topical category is the speaker filter axis.
         if ($category = sanitize_key((string) $r->get_param('speaker_category'))) {
-            $meta[] = ['key' => 'meydan_speaker_categories', 'value' => $category, 'compare' => 'LIKE'];
+            $meta[] = ['key' => 'meydan_speaker_categories', 'value' => '"' . $category . '"', 'compare' => 'LIKE'];
         }
 
         $city = (int) $r->get_param('city_id');

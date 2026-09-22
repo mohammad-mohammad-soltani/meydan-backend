@@ -169,7 +169,7 @@ final class SpeakerService
             // silently create a stray term. A speaker may hold several.
             $categories = array_values(array_intersect(
                 array_map('sanitize_key', (array) $input['categories']),
-                array_keys(self::SPEAKER_CATEGORIES)
+                array_keys(self::categoryOptions())
             ));
             update_user_meta($userId, 'meydan_speaker_categories', $categories);
         }
@@ -184,14 +184,15 @@ final class SpeakerService
      */
     public static function categoryOptions(): array
     {
-        return self::SPEAKER_CATEGORIES;
+        $stored = get_option('meydan_speaker_category_options', null);
+        return is_array($stored) ? $stored : self::SPEAKER_CATEGORIES;
     }
 
     /** Category vocabulary in the API shape used by clients. */
     public static function categoryTerms(): array
     {
         $out = [];
-        foreach (self::SPEAKER_CATEGORIES as $slug => $name) {
+        foreach (self::categoryOptions() as $slug => $name) {
             $out[] = [
                 'slug' => $slug,
                 'name' => $name,
@@ -210,10 +211,12 @@ final class SpeakerService
         )));
 
         $out = [];
+        $options = self::categoryOptions();
         foreach ($slugs as $slug) {
+            if (!isset($options[$slug])) continue;
             $out[] = [
                 'slug' => $slug,
-                'name' => self::SPEAKER_CATEGORIES[$slug] ?? $slug,
+                'name' => $options[$slug],
             ];
         }
         return $out;
@@ -243,7 +246,7 @@ final class SpeakerService
                 'compare' => 'LIKE',
             ]],
         ]);
-        return is_array($ids) ? count($ids) : 0;
+        return is_array($ids) ? count(array_filter($ids, static fn($id): bool => in_array($slug, (array) get_user_meta((int) $id, 'meydan_speaker_categories', true), true))) : 0;
     }
 
     private static function applyAvatar(int $userId, int $mediaId): void
