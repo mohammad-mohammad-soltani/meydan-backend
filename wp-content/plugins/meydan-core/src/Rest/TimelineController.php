@@ -13,6 +13,7 @@ use Meydan\Core\Timeline\FeatureHydrator;
 use Meydan\Core\Timeline\Mixer;
 use Meydan\Core\Timeline\Ranker;
 use Meydan\Core\Timeline\TimelineSession;
+use Meydan\Core\Timeline\VideoTimeline;
 use Meydan\Core\Feed\FeedService;
 use Meydan\Core\Feed\FeedSettings;
 use WP_Query;
@@ -77,6 +78,10 @@ final class TimelineController extends BaseController
     /** @return array<int,int> */
     private function buildSnapshot(Viewer $viewer, string $mode, string $filter, int $limit, bool $debug = false): array
     {
+        if ($mode === 'for_you' && $filter === 'video') {
+            return (new VideoTimeline())->ids($limit);
+        }
+
         // Cursor requests return before this method, so V2 runs only for a newly created snapshot.
         if ($mode === 'for_you' && $filter === 'all' && FeedSettings::enabled()) {
             // Keep refresh history out of preview/scoring and out of cursor reads.
@@ -303,6 +308,13 @@ final class TimelineController extends BaseController
             'visual' => $hasVisual,
             'audio' => $hasAudio,
             'media' => $hasVisual || $hasAudio,
+            'video' => (bool) array_filter(
+                $attachments,
+                static fn ($attachment): bool => str_starts_with(
+                    (string) get_post_mime_type((int) ($attachment['media_id'] ?? 0)),
+                    'video/',
+                ),
+            ),
             'ideas' => !$hasVisual
                 && !$hasAudio
                 && !((bool) get_post_meta($id, 'meydan_is_echo', true)),
