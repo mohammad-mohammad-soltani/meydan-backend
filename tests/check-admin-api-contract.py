@@ -21,6 +21,9 @@ for route in [
 
 for method in ['create', 'update']:
     assert f'function {method}' in service
+assert "location_source" in service
+assert "Geocoder::reverse($lat, $lng)" in service
+assert "($input['location_source'] ?? 'manual')" in service
 for method in ['list', 'create', 'get', 'update', 'delete', 'status', 'map']:
     assert f'function {method}' in square
 assert "SquareDeletionService::deletePermanently($id)" in square

@@ -9,6 +9,7 @@ use Meydan\Core\Auth\OtpService;
 use Meydan\Core\Integrations\Channels\Channels;
 use Meydan\Core\Notifications\NotificationService;
 use Meydan\Core\Support\Crypto;
+use Meydan\Core\Support\Geocoder;
 use Meydan\Core\Support\Serializer;
 use Meydan\Core\Support\SquareActivity;
 use Meydan\Core\Support\UserEmails;
@@ -39,23 +40,22 @@ final class SquareAdminService
         if ($ownerName === '') {
             return new WP_Error('validation_failed', 'نام و نام خانوادگی مالک الزامی است.', ['status' => 422, 'fields' => ['full_name' => 'required']]);
         }
-        $province = (int) ($input['province_id'] ?? 0);
-        $city = (int) ($input['city_id'] ?? 0);
+        $lat = self::coordinate($input['latitude'] ?? null, NAN);
+        $lng = self::coordinate($input['longitude'] ?? null, NAN);
+        $location = self::resolveLocation($input, $lat, $lng);
+        if (is_wp_error($location)) return $location;
+        $province = $location['province'];
+        $city = $location['city'];
         if ($province <= 0 || $city <= 0 || !self::cityBelongsTo($city, $province)) {
             return new WP_Error('validation_failed', 'استان و شهر معتبر نیستند.', ['status' => 422, 'fields' => ['city_id' => 'invalid']]);
         }
-        $address = sanitize_textarea_field((string) ($input['address'] ?? ''));
+        $address = $location['address'];
         if ($address === '') {
             return new WP_Error('validation_failed', 'نشانی میدان الزامی است.', ['status' => 422, 'fields' => ['address' => 'required']]);
         }
         $email = sanitize_email((string) ($input['email'] ?? ''));
         if ($email !== '' && (!is_email($email) || email_exists($email))) {
             return new WP_Error('validation_failed', 'ایمیل معتبر نیست یا قبلاً ثبت شده است.', ['status' => 422, 'fields' => ['email' => 'invalid_or_taken']]);
-        }
-        $lat = self::coordinate($input['latitude'] ?? null, NAN);
-        $lng = self::coordinate($input['longitude'] ?? null, NAN);
-        if (!is_finite($lat) || !is_finite($lng) || abs($lat) > 90 || abs($lng) > 180 || ($lat === 0.0 && $lng === 0.0)) {
-            return new WP_Error('validation_failed', 'مختصات خارج از محدوده مجاز است.', ['status' => 422, 'fields' => ['latitude' => 'invalid', 'longitude' => 'invalid']]);
         }
 
         $status = sanitize_key((string) ($input['status'] ?? 'pending_verification'));
@@ -142,9 +142,13 @@ final class SquareAdminService
         if (array_key_exists('start_date', $input)) SquareActivity::setStartDate($id, sanitize_text_field((string) $input['start_date']));
         $geo = self::geo($id);
         if (isset($input['province_id'], $input['city_id'], $input['address'], $input['latitude'], $input['longitude'])) {
-            $province = (int) $input['province_id']; $city = (int) $input['city_id'];
+            $lat = self::coordinate($input['latitude'], NAN);
+            $lng = self::coordinate($input['longitude'], NAN);
+            $location = self::resolveLocation($input, $lat, $lng);
+            if (is_wp_error($location)) return $location;
+            $province = $location['province']; $city = $location['city'];
             if (!self::cityBelongsTo($city, $province)) return new WP_Error('validation_failed', 'استان و شهر معتبر نیستند.', ['status' => 422]);
-            self::saveGeo($id, $province, $city, (string) $input['address'], (float) $input['latitude'], (float) $input['longitude']);
+            self::saveGeo($id, $province, $city, $location['address'], $lat, $lng);
         } elseif ($geo && array_key_exists('address', $input)) {
             self::saveGeo($id, (int) $geo['province_id'], (int) $geo['city_id'], (string) $input['address'], (float) $geo['latitude'], (float) $geo['longitude']);
         }
@@ -182,6 +186,32 @@ final class SquareAdminService
     {
         global $wpdb;
         return (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}meydan_cities WHERE id=%d AND province_id=%d AND active=1", $city, $province)) > 0;
+    }
+
+    /**
+     * Coordinates are authoritative for a map selection. Requests without the
+     * source flag remain manual for compatibility with existing clients.
+     * @return array{province:int,city:int,address:string}|WP_Error
+     */
+    private static function resolveLocation(array $input, float $lat, float $lng): array|WP_Error
+    {
+        if (!is_finite($lat) || !is_finite($lng) || abs($lat) > 90 || abs($lng) > 180 || ($lat === 0.0 && $lng === 0.0)) {
+            return new WP_Error('validation_failed', 'مختصات خارج از محدوده مجاز است.', ['status' => 422, 'fields' => ['latitude' => 'invalid', 'longitude' => 'invalid']]);
+        }
+        $address = sanitize_textarea_field((string) ($input['address'] ?? ''));
+        if (sanitize_key((string) ($input['location_source'] ?? 'manual')) !== 'map') {
+            return ['province' => (int) ($input['province_id'] ?? 0), 'city' => (int) ($input['city_id'] ?? 0), 'address' => $address];
+        }
+        $resolved = Geocoder::reverse($lat, $lng);
+        if (is_wp_error($resolved) || empty($resolved['province_id']) || empty($resolved['city_id'])) {
+            return new WP_Error('validation_failed', 'استان و شهر این مختصات پیدا نشد.', ['status' => 422, 'fields' => ['latitude' => 'unresolved']]);
+        }
+        return [
+            'province' => (int) $resolved['province_id'],
+            'city' => (int) $resolved['city_id'],
+            // A manager may refine a detected address before saving.
+            'address' => $address !== '' ? $address : sanitize_textarea_field((string) ($resolved['address'] ?? '')),
+        ];
     }
 
     private static function phoneOwner(string $phone): int
