@@ -10,7 +10,7 @@ final class ActorController extends BaseController
  public function followState(WP_REST_Request $r){
   if(!is_user_logged_in())return Response::error('unauthenticated','برای مشاهده وضعیت دنبال‌کردن باید وارد شوید.',401);
   $type=sanitize_key((string)$r['type']);$id=(int)$r['id'];
-  if(!Actor::parse($type,$id))return Response::error('not_found','Actor پیدا نشد.',404);
+  if(!($type==='user' ? UserAccess::visibleUser($id) : ($type==='square' && UserAccess::visibleSquare($id))))return Response::error('not_found','Actor پیدا نشد.',404);
   global $wpdb;
   $following=(bool)$wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->prefix}meydan_interactions WHERE user_id=%d AND object_type=%s AND object_id=%d AND action='follow' LIMIT 1",get_current_user_id(),$type,$id));
   return Response::ok(['following'=>$following]);
