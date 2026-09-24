@@ -7,6 +7,14 @@ final class ActorController extends BaseController
  public function userNarratives(WP_REST_Request $r){$id=(int)$r['id'];if(!UserAccess::visibleUser($id))return Response::error('not_found','کاربر پیدا نشد.',404);$meta=[['key'=>'meydan_author_actor_type','value'=>'user'],['key'=>'meydan_author_actor_id','value'=>$id]];return ProfileNarrativePage::list($meta,$r,'user:'.$id);}
 
  public function replies(WP_REST_Request $r){$type=sanitize_key((string)$r['type']);$id=(int)$r['id'];$ownerId=Actor::ownerUserId($type,$id);if(!$ownerId||UserAccess::disabled($ownerId))return Response::error('not_found','کاربر پیدا نشد.',404);$comments=get_comments(['user_id'=>$ownerId,'type'=>'meydan_comment','status'=>'approve','number'=>50,'orderby'=>'comment_date_gmt','order'=>'DESC']);return Response::ok(array_values(array_filter(array_map([Serializer::class,'comment'],$comments))));}
+ public function followState(WP_REST_Request $r){
+  if(!is_user_logged_in())return Response::error('unauthenticated','برای مشاهده وضعیت دنبال‌کردن باید وارد شوید.',401);
+  $type=sanitize_key((string)$r['type']);$id=(int)$r['id'];
+  if(!($type==='user' ? UserAccess::visibleUser($id) : ($type==='square' && UserAccess::visibleSquare($id))))return Response::error('not_found','Actor پیدا نشد.',404);
+  global $wpdb;
+  $following=(bool)$wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->prefix}meydan_interactions WHERE user_id=%d AND object_type=%s AND object_id=%d AND action='follow' LIMIT 1",get_current_user_id(),$type,$id));
+  return Response::ok(['following'=>$following]);
+ }
  public function follow(WP_REST_Request $r){return $this->toggle((string)$r['type'],(int)$r['id'],true);}
  public function unfollow(WP_REST_Request $r){return $this->toggle((string)$r['type'],(int)$r['id'],false);}
  public function followers(WP_REST_Request $r){$type=sanitize_key((string)$r['type']);$id=(int)$r['id'];$limit=$this->limit($r);global $wpdb;if(!Actor::parse($type,$id))return Response::error('not_found','Actor پیدا نشد.',404);$uids=$wpdb->get_col($wpdb->prepare("SELECT user_id FROM {$wpdb->prefix}meydan_interactions WHERE object_type=%s AND object_id=%d AND action='follow' ORDER BY created_at DESC LIMIT %d",$type,$id,$limit));return Response::ok(array_values(array_filter(array_map(static fn($uid)=>Actor::parse('user',(int)$uid),$uids?:[]))));}
