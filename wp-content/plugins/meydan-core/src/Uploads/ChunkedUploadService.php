@@ -279,8 +279,7 @@ final class ChunkedUploadService
         // Video finalisation can take longer than the network upload. The client
         // shows this as a separate "processing" phase after upload reaches 100%.
         $video = [];
-        if (str_starts_with((string) $check['type'], 'video/')
-            && strtolower(trim((string) getenv('MEDIA_STORAGE'))) !== 's3') {
+        if (str_starts_with((string) $check['type'], 'video/')) {
             try {
                 $video = VideoProcessor::processAttachment((int) $attachmentId);
             } catch (\Throwable $error) {
