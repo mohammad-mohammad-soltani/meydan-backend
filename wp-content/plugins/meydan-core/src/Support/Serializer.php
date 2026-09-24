@@ -281,7 +281,7 @@ final class Serializer
             return (int) $cached;
         }
 
-        $query = new \\WP_Query([
+        $query = new \WP_Query([
             'post_type' => 'meydan_narrative',
             'post_status' => 'publish',
             'meta_query' => [
