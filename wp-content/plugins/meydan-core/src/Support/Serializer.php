@@ -268,9 +268,32 @@ final class Serializer
             ] : null,
             'schedule' => self::squareSchedule($id),
             'stats' => [
-                'narratives' => (int) (new \WP_Query(['post_type' => 'meydan_narrative', 'post_status' => 'publish', 'meta_query' => [['key' => 'meydan_author_actor_type', 'value' => 'square'], ['key' => 'meydan_author_actor_id', 'value' => $id]], 'fields' => 'ids', 'posts_per_page' => 1]))->found_posts,
+                'narratives' => self::squareNarrativeCount($id),
             ],
         ];
+    }
+
+    private static function squareNarrativeCount(int $squareId): int
+    {
+        $key = 'meydan_square_narratives_' . $squareId;
+        $cached = get_transient($key);
+        if ($cached !== false) {
+            return (int) $cached;
+        }
+
+        $query = new \WP_Query([
+            'post_type' => 'meydan_narrative',
+            'post_status' => 'publish',
+            'meta_query' => [
+                ['key' => 'meydan_author_actor_type', 'value' => 'square'],
+                ['key' => 'meydan_author_actor_id', 'value' => $squareId],
+            ],
+            'fields' => 'ids',
+            'posts_per_page' => 1,
+        ]);
+        $count = (int) $query->found_posts;
+        set_transient($key, $count, MINUTE_IN_SECONDS);
+        return $count;
     }
 
     public static function initiative(int|WP_Post $post): ?array
