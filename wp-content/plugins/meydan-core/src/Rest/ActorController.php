@@ -7,6 +7,31 @@ final class ActorController extends BaseController
  public function userNarratives(WP_REST_Request $r){$id=(int)$r['id'];if(!UserAccess::visibleUser($id))return Response::error('not_found','کاربر پیدا نشد.',404);$meta=[['key'=>'meydan_author_actor_type','value'=>'user'],['key'=>'meydan_author_actor_id','value'=>$id]];return ProfileNarrativePage::list($meta,$r,'user:'.$id);}
 
  public function replies(WP_REST_Request $r){$type=sanitize_key((string)$r['type']);$id=(int)$r['id'];$ownerId=Actor::ownerUserId($type,$id);if(!$ownerId||UserAccess::disabled($ownerId))return Response::error('not_found','کاربر پیدا نشد.',404);$comments=get_comments(['user_id'=>$ownerId,'type'=>'meydan_comment','status'=>'approve','number'=>50,'orderby'=>'comment_date_gmt','order'=>'DESC']);return Response::ok(array_values(array_filter(array_map([Serializer::class,'comment'],$comments))));}
+ public function followStates(WP_REST_Request $r){
+  if(!is_user_logged_in())return Response::error('unauthenticated','برای مشاهده وضعیت دنبال‌کردن باید وارد شوید.',401);
+  $input=$this->json($r);$actors=$input['actors']??[];
+  if(!is_array($actors)||count($actors)>100)return Response::error('validation_failed','حداکثر ۱۰۰ شناسه مجاز است.',422);
+  $groups=['user'=>[],'square'=>[]];
+  foreach($actors as $actor){
+   if(!is_array($actor))continue;
+   $type=(string)($actor['type']??'');$id=(int)($actor['id']??0);
+   if(isset($groups[$type])&&$id>0)$groups[$type][$id]=$id;
+  }
+  global $wpdb;$table=$wpdb->prefix.'meydan_interactions';$uid=get_current_user_id();
+  $hasAny=(bool)$wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$table} WHERE user_id=%d AND action='follow' LIMIT 1",$uid));
+  $where=[];$args=[$uid];
+  foreach($groups as $type=>$ids){
+   if(!$ids)continue;
+   $where[]="(object_type=%s AND object_id IN (".implode(',',array_fill(0,count($ids),'%d'))."))";
+   $args[]=$type;array_push($args,...array_values($ids));
+  }
+  $keys=[];
+  if($where){
+   $sql="SELECT object_type,object_id FROM {$table} WHERE user_id=%d AND action='follow' AND (".implode(' OR ',$where).")";
+   foreach($wpdb->get_results($wpdb->prepare($sql,...$args),ARRAY_A)?:[] as $row)$keys[]=$row['object_type'].':'.$row['object_id'];
+  }
+  return Response::ok(['following_keys'=>$keys,'has_following'=>$hasAny]);
+ }
  public function followState(WP_REST_Request $r){
   if(!is_user_logged_in())return Response::error('unauthenticated','برای مشاهده وضعیت دنبال‌کردن باید وارد شوید.',401);
   $type=sanitize_key((string)$r['type']);$id=(int)$r['id'];
