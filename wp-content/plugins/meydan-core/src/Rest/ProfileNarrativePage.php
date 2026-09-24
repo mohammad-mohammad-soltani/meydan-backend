@@ -26,6 +26,7 @@ final class ProfileNarrativePage
             'post_type' => 'meydan_narrative',
             'post_status' => 'publish',
             'posts_per_page' => $limit + 1,
+            'no_found_rows' => true,
             'offset' => $offset,
             'meta_query' => $metaQuery,
             'orderby' => ['date' => 'DESC', 'ID' => 'DESC'],
