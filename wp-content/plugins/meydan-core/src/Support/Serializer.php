@@ -240,7 +240,7 @@ final class Serializer
         ];
     }
 
-    public static function square(int|WP_Post $post): ?array
+    public static function square(int|WP_Post $post, bool $includeNarrativeCount = true): ?array
     {
         $post = $post instanceof WP_Post ? $post : get_post($post);
         if (!$post || $post->post_type !== 'meydan_square' || in_array($post->post_status, ['trash', 'auto-draft'], true) || !UserAccess::visibleSquare((int) $post->ID)) {
@@ -268,7 +268,7 @@ final class Serializer
             ] : null,
             'schedule' => self::squareSchedule($id),
             'stats' => [
-                'narratives' => self::squareNarrativeCount($id),
+                'narratives' => $includeNarrativeCount ? self::squareNarrativeCount($id) : null,
             ],
         ];
     }
