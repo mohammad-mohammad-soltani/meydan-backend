@@ -131,6 +131,8 @@ final class Actor
             'type' => 'square',
             'display_name' => self::squareDisplayName($squareId),
             'avatar_url' => self::squareAvatarUrl($squareId),
+            'handle' => (string) get_post_meta($squareId, 'meydan_handle', true),
+            'location_address' => self::squareAddress($squareId),
             'verified' => (bool) get_post_meta($squareId, 'meydan_verified', true),
         ];
     }

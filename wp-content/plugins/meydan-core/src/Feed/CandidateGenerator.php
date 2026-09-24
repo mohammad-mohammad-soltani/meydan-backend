@@ -71,11 +71,15 @@ final class CandidateGenerator
     {
         if (!$context->viewer->isAuthenticated()) return [];
         global $wpdb;
-        $rows = $wpdb->get_results($wpdb->prepare("SELECT object_type,object_id FROM {$wpdb->prefix}meydan_interactions WHERE user_id=%d AND action='follow' ORDER BY created_at DESC, id DESC LIMIT 1000", $context->viewer->userId), ARRAY_A) ?: [];
-        $clauses=[]; $args=[];
-        foreach ($rows as $row) { if (!in_array($row['object_type'], ['user','square'], true)) continue; $context->addFollowing($row['object_type'], (int)$row['object_id']); $clauses[]='(at.meta_value=%s AND ai.meta_value=%d)'; $args[]=$row['object_type']; $args[]=(int)$row['object_id']; }
-        if (!$clauses) return [];
-        return $this->ids('('.implode(' OR ', $clauses).')', $args, $context->settings, $limit, true);
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT object_type,object_id FROM {$wpdb->prefix}meydan_interactions WHERE user_id=%d AND action='follow'", $context->viewer->userId), ARRAY_A) ?: [];
+        foreach ($rows as $row) {
+            if (in_array($row['object_type'], ['user', 'square'], true)) {
+                $context->addFollowing($row['object_type'], (int) $row['object_id']);
+            }
+        }
+        if (!$rows) return [];
+        $where = "EXISTS (SELECT 1 FROM {$wpdb->prefix}meydan_interactions f WHERE f.user_id=%d AND f.action='follow' AND f.object_type=at.meta_value AND f.object_id=CAST(ai.meta_value AS UNSIGNED))";
+        return $this->ids($where, [$context->viewer->userId], $context->settings, $limit, true);
     }
 
     /** @return list<int> */
@@ -90,21 +94,14 @@ final class CandidateGenerator
         $users = get_users([
             'role' => 'meydan_speaker',
             'fields' => ['ID'],
-            'number' => 1000,
+            'number' => -1,
             'orderby' => 'ID',
             'order' => 'ASC',
         ]);
-        $clauses = [];
-        $args = [];
-        foreach ($users as $user) {
-            $id = (int) ($user->ID ?? 0);
-            if ($id <= 0) continue;
-            $clauses[] = '(at.meta_value=%s AND ai.meta_value=%d)';
-            $args[] = 'user';
-            $args[] = $id;
-        }
-        if (!$clauses) return [];
-        return $this->ids('(' . implode(' OR ', $clauses) . ')', $args, $settings, $limit, true);
+        $ids = array_values(array_filter(array_map(static fn($user): int => (int) ($user->ID ?? 0), $users)));
+        if (!$ids) return [];
+        $where = "at.meta_value='user' AND ai.meta_value IN (" . implode(',', array_fill(0, count($ids), '%s')) . ")";
+        return $this->ids($where, array_map('strval', $ids), $settings, $limit, true);
     }
 
     /** @return list<int> */
