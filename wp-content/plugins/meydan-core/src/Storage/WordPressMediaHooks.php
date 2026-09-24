@@ -80,11 +80,24 @@ final class WordPressMediaHooks
         try {
             $original = $pipeline->upload($localPath, $logicalKey, $mime);
             $uploaded[] = $original['key'];
-            // Deliberately do not upload WordPress image sizes, alternate
-            // originals, posters, or other derivatives. One input file maps
-            // to one S3 object. removeStaging() still removes any temporary
-            // files produced by third-party processing before this hook ran.
+            // Videos have one small poster derivative. It lets a feed paint the
+            // cover without downloading any bytes of the much larger video.
+            // Other generated WordPress sizes remain disabled for S3 uploads.
             $derivatives = [];
+            $posterPath = (string) get_post_meta($attachmentId, 'meydan_poster_path', true);
+            if ($posterPath !== '' && is_file($posterPath)) {
+                try {
+                    $poster = $pipeline->upload($posterPath, self::posterLogicalKey($logicalKey), 'image/jpeg');
+                    $uploaded[] = $poster['key'];
+                    $derivatives['poster'] = $poster['key'];
+                } catch (Throwable $posterError) {
+                    // A poster improves first paint but must never make the
+                    // completed original video unavailable.
+                    error_log('Meydan video poster upload failed for attachment ' . $attachmentId . ': ' . $posterError->getMessage());
+                    delete_post_meta($attachmentId, 'meydan_poster_path');
+                    delete_post_meta($attachmentId, 'meydan_poster_url');
+                }
+            }
 
             update_post_meta($attachmentId, self::DRIVER, 's3');
             update_post_meta($attachmentId, self::KEY, $original['key']);
@@ -237,6 +250,14 @@ final class WordPressMediaHooks
             if (!$storage->exists($candidate)) return $candidate;
         }
         throw new RuntimeException('Unable to allocate a unique storage key.');
+    }
+
+    private static function posterLogicalKey(string $originalKey): string
+    {
+        $directory = trim(dirname($originalKey), '/.');
+        $stem = pathinfo($originalKey, PATHINFO_FILENAME);
+        $suffix = substr(hash('sha256', $originalKey), 0, 12);
+        return ($directory !== '' ? $directory . '/' : '') . $stem . '-poster-' . $suffix . '.jpg';
     }
 
     /** @return array<string,string> */
