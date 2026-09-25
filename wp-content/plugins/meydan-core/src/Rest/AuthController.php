@@ -36,7 +36,7 @@ final class AuthController extends BaseController
         }
     }
 
-    public function verifyOtp(WP_REST_Request $r){$p=$this->json($r);$v=(new OtpService())->verify((string)($p['challenge_id']??''),(string)($p['code']??''));return is_wp_error($v)?$this->error($v):Response::ok($v);}
+    public function verifyOtp(WP_REST_Request $r){$p=$this->json($r);$native=$this->nativeDevice($r);$v=(new OtpService())->verify((string)($p['challenge_id']??''),(string)($p['code']??''),$native);return is_wp_error($v)?$this->error($v):Response::ok($v);}
     public function refresh(WP_REST_Request $r){$p=$this->json($r);$v=(new SessionService())->refresh(isset($p['refresh_token'])?(string)$p['refresh_token']:null);return is_wp_error($v)?$this->error($v):Response::ok($v);}
     public function logout(){(new SessionService())->logoutCurrent();return Response::ok(['logged_out'=>true]);}
     public function logoutAll(){if($a=$this->auth()){} if(is_wp_error($a))return $this->error($a);(new SessionService())->logoutAll(get_current_user_id());return Response::ok(['logged_out'=>true]);}
@@ -68,7 +68,12 @@ final class AuthController extends BaseController
             global $wpdb;$wpdb->replace($wpdb->prefix.'meydan_square_geo',['square_id'=>$sid,'province_id'=>(int)$p['province_id'],'city_id'=>(int)$p['city_id'],'address'=>sanitize_textarea_field((string)$p['address']),'latitude'=>(float)$p['latitude'],'longitude'=>(float)$p['longitude'],'updated_at'=>current_time('mysql',true)]);
             AuditLogger::log('square_registration','square',$sid,null,['status'=>'pending_verification'],$uid);
         }
-        $session=(new SessionService())->issue($uid);if(is_wp_error($session))return $this->error($session);
-        return Response::ok(['authenticated'=>true,'access_token'=>$session['access_token'],'expires_in'=>$session['expires_in'],'account'=>['id'=>$uid,'account_type'=>$type]],[],201);
+        $native=$this->nativeDevice($r);$session=(new SessionService())->issue($uid,$native?'Naghshman Android':null,$native);if(is_wp_error($session))return $this->error($session);
+        return Response::ok(['authenticated'=>true,'access_token'=>$session['access_token'],'expires_in'=>$session['expires_in'],'refresh_token'=>$session['refresh_token'],'account'=>['id'=>$uid,'account_type'=>$type]],[],201);
+    }
+
+    private function nativeDevice(WP_REST_Request $request): bool
+    {
+        return $request->get_header('x-meydan-client') === 'naghshman-native';
     }
 }

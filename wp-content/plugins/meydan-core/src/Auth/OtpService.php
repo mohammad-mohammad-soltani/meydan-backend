@@ -79,7 +79,7 @@ final class OtpService
         return $response;
     }
 
-    public function verify(string $challengeId, string $code): array|WP_Error
+    public function verify(string $challengeId, string $code, bool $persistentDevice = false): array|WP_Error
     {
         $code = self::normalizeDigits(trim($code));
         global $wpdb;
@@ -107,7 +107,11 @@ final class OtpService
 
         if ($userId > 0) {
             if (UserAccess::disabled($userId)) return new WP_Error('account_disabled', 'این حساب غیرفعال است.', ['status' => 403]);
-            $session = (new SessionService())->issue($userId);
+            $session = (new SessionService())->issue(
+                $userId,
+                $persistentDevice ? 'Naghshman Android' : null,
+                $persistentDevice,
+            );
             if (is_wp_error($session)) {
                 return $session;
             }
