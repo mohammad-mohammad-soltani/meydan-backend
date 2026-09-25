@@ -11,7 +11,7 @@ response = (root / "Support/Response.php").read_text(encoding="utf-8")
 assert "private function otpOperation" in auth
 assert "return $this->otpOperation('request'" in auth
 assert "return $this->otpOperation('verify'" in auth
-assert "otp_verify_exception" in auth
+assert '"otp_{$operation}_exception"' in auth
 
 # A transport timeout is ambiguous: the provider may already have sent the SMS.
 # Keep the challenge usable and return a 202 response to the client.
