@@ -275,19 +275,34 @@ final class Serializer
 
     private static function squareNarrativeCount(int $squareId): int
     {
-        $key = 'meydan_square_narratives_' . $squareId;
+        $key = 'meydan_square_narratives_v2_' . $squareId;
         $cached = get_transient($key);
         if ($cached !== false) {
             return (int) $cached;
         }
 
+        // The square profile includes narratives authored by its owning user.
+        // Count with the same author conditions as SquareController::narratives.
+        $ownerId = Actor::squareOwnerUserId($squareId);
+        $squareAuthor = [
+            'relation' => 'AND',
+            ['key' => 'meydan_author_actor_type', 'value' => 'square'],
+            ['key' => 'meydan_author_actor_id', 'value' => $squareId],
+        ];
+        $metaQuery = $ownerId > 0 ? [
+            'relation' => 'OR',
+            $squareAuthor,
+            [
+                'relation' => 'AND',
+                ['key' => 'meydan_author_actor_type', 'value' => 'user'],
+                ['key' => 'meydan_author_actor_id', 'value' => $ownerId],
+            ],
+        ] : $squareAuthor;
+
         $query = new \WP_Query([
             'post_type' => 'meydan_narrative',
             'post_status' => 'publish',
-            'meta_query' => [
-                ['key' => 'meydan_author_actor_type', 'value' => 'square'],
-                ['key' => 'meydan_author_actor_id', 'value' => $squareId],
-            ],
+            'meta_query' => $metaQuery,
             'fields' => 'ids',
             'posts_per_page' => 1,
         ]);
