@@ -38,6 +38,10 @@ try {
             'post_type' => 'meydan_square',
             'post_status' => 'publish',
             'post_title' => sprintf('میدان آزمون صفحه‌بندی %02d', $i),
+            // Keep all fixtures ahead of unrelated database content and make
+            // their order deterministic even when the loop finishes quickly.
+            'post_date' => gmdate('Y-m-d H:i:s', time() + ($i * MINUTE_IN_SECONDS)),
+            'post_date_gmt' => gmdate('Y-m-d H:i:s', time() + ($i * MINUTE_IN_SECONDS)),
             'post_author' => $ownerId,
         ], true);
         checkAdminSquareList(!is_wp_error($squareId), 'Could not create test square');
