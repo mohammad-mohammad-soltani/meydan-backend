@@ -6,8 +6,8 @@ routes = (root / 'Rest/Routes.php').read_text(encoding='utf-8')
 content = (root / 'Rest/ContentController.php').read_text(encoding='utf-8')
 serializer = (root / 'Support/Serializer.php').read_text(encoding='utf-8')
 
-assert r"self::r('/admin/narratives/(?P<id>\d+)/content','POST'" in routes
-assert r"self::r('/admin/narratives/(?P<id>\d+)/content','DELETE'" in routes
+assert r"self::r('/admin/narratives/(?P<id>\\d+)/content','POST'" in routes
+assert r"self::r('/admin/narratives/(?P<id>\\d+)/content','DELETE'" in routes
 assert 'function convertNarrative' in content
 assert 'function removeNarrativeContent' in content
 assert "'is_content'" in serializer
@@ -22,4 +22,7 @@ assert "content_creators" in serializer and "display_name" in serializer
 conversion = content.split('public function convertNarrative', 1)[1].split('public function removeNarrativeContent', 1)[0]
 assert "format" in conversion
 assert "meydan_format" in conversion
+assert "['title']" in conversion
+assert "عنوان محتوا الزامی است." in conversion
+assert "'post_title'=>$title" in conversion
 print('Content conversion contract OK.')
