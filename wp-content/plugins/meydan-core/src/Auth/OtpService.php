@@ -65,18 +65,34 @@ final class OtpService
         }
 
         $sent = (new SmsProvider())->send($phone, $code);
+        $deliveryStatus = 'sent';
         if (is_wp_error($sent)) {
-            $wpdb->delete($table, ['challenge_id' => $challenge]);
-            return $sent;
+            // A timeout means the provider might already have accepted and sent
+            // the SMS. Preserve this challenge so a received code remains usable.
+            if (!$this->isTransportUncertain($sent)) {
+                $wpdb->delete($table, ['challenge_id' => $challenge]);
+                return $sent;
+            }
+            $deliveryStatus = 'uncertain';
         }
 
-        $response = ['challenge_id' => $challenge, 'expires_in' => self::expiresIn(), 'resend_after' => self::RESEND_AFTER];
+        $response = [
+            'challenge_id' => $challenge,
+            'expires_in' => self::expiresIn(),
+            'resend_after' => self::RESEND_AFTER,
+            'delivery_status' => $deliveryStatus,
+        ];
         // Never expose an OTP outside local development. Local SMS is intentionally
         // bypassed, so the frontend needs a visible development code to continue.
         if ($dev !== '' && wp_get_environment_type() === 'local') {
             $response['dev_code'] = $code;
         }
         return $response;
+    }
+
+    private function isTransportUncertain(WP_Error $error): bool
+    {
+        return $error->get_error_code() === 'sms_transport_error';
     }
 
     public function verify(string $challengeId, string $code, bool $persistentDevice = false): array|WP_Error
