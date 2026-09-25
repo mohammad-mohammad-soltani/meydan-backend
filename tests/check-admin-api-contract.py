@@ -36,3 +36,12 @@ assert "get_post($id)" in creators and "post_type!=='meydan_creator'" in creator
 assert "wp_trash_post($id)" in creators
 assert "self::isAdministrator()" in routes
 print('Admin API contract OK.')
+
+
+auth = (root / 'Rest/AuthController.php').read_text(encoding='utf-8')
+users = (root / 'Rest/AdminUserController.php').read_text(encoding='utf-8')
+assert "is_student_or_seminarian" in auth
+assert "meydan_is_student_or_seminarian" in auth
+assert "is_student_or_seminarian" in users
+assert "meydan_is_student_or_seminarian" in users
+print('Student/seminarian registration contract OK.')

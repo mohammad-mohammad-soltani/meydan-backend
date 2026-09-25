@@ -58,7 +58,7 @@ final class AuthController extends BaseController
         update_user_meta($uid,'meydan_account_type',$type);update_user_meta($uid,'meydan_phone_hash',Crypto::hash($phone));update_user_meta($uid,'meydan_phone_ciphertext',Crypto::encrypt($phone));
         update_user_meta($uid,'meydan_province_id',(int)$p['province_id']);update_user_meta($uid,'meydan_city_id',(int)$p['city_id']);
         if($type==='user'){
-            update_user_meta($uid,'meydan_full_name',$display);update_user_meta($uid,'meydan_avatar_media_id',(int)($p['avatar_media_id']??0));
+            update_user_meta($uid,'meydan_full_name',$display);update_user_meta($uid,'meydan_avatar_media_id',(int)($p['avatar_media_id']??0));update_user_meta($uid,'meydan_is_student_or_seminarian',($p['is_student_or_seminarian']??false)===true?'1':'0');
         }else{
             $sid=wp_insert_post(['post_type'=>'meydan_square','post_status'=>'pending','post_title'=>$display,'post_content'=>wp_kses_post((string)($p['description']??'')),'post_author'=>$uid],true);
             if(is_wp_error($sid)){wp_delete_user($uid);return $this->error(new WP_Error('registration_failed','ساخت میدان ناموفق بود.',['status'=>500]));}
