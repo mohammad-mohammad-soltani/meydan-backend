@@ -36,6 +36,8 @@ jobs:
         run: python3 tests/check-bale-integration.py
       - name: Manual square and internal email contract
         run: python3 tests/check-manual-square.py
+      - name: Admin square create response contract
+        run: python3 tests/check-admin-square-create-response.py
       - name: Map location picker contract
         run: python3 tests/check-location-picker.py
       - name: Video streaming contract

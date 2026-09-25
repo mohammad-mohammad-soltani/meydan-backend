@@ -51,7 +51,18 @@ final class AdminSquareController extends BaseController
         if (!$this->allowed()) return $this->forbidden();
         $result = SquareAdminService::create($this->json($r));
         if (is_wp_error($result)) return $this->error($result);
-        return Response::ok($this->adminSquare(get_post((int) $result['square_id'])), [], 201);
+        // Creation already has every field the client needs. Hydrating the
+        // square here would run schedule and narrative-count queries after the
+        // write has succeeded, turning a successful create into a timeout/500.
+        $squareId = (int) $result['square_id'];
+        return Response::ok([
+            'id' => $squareId,
+            'name' => (string) $result['name'],
+            'owner_user_id' => (int) $result['user_id'],
+            'post_status' => (string) get_post_status($squareId),
+            'approval_status' => (string) get_post_meta($squareId, 'meydan_approval_status', true),
+            'verified' => (bool) get_post_meta($squareId, 'meydan_verified', true),
+        ], [], 201);
     }
 
     public function get(WP_REST_Request $r)
