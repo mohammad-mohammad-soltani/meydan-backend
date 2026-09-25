@@ -184,6 +184,7 @@ final class AdminUserController extends BaseController
                 if (array_filter($matches, static fn($candidate) => (int) $candidate !== $id)) $fields['phone'] = 'taken';
             }
         }
+        if (array_key_exists('is_student_or_seminarian', $p) && !is_bool($p['is_student_or_seminarian'])) $fields['is_student_or_seminarian'] = 'invalid';
         if (array_key_exists('email', $p)) {
             $email = sanitize_email((string) $p['email']);
             if ($email !== '' && (!is_email($email) || (($owner = email_exists($email)) && (int) $owner !== $id))) $fields['email'] = 'invalid_or_taken';
@@ -223,6 +224,7 @@ final class AdminUserController extends BaseController
         foreach (['headline', 'location_label'] as $key) if (array_key_exists($key, $p)) update_user_meta($id, 'meydan_' . $key, sanitize_text_field((string) $p[$key]));
         if (array_key_exists('about', $p)) update_user_meta($id, 'meydan_about', wp_kses_post((string) $p['about']));
         foreach (['province_id', 'city_id', 'avatar_media_id', 'cover_media_id'] as $key) if (array_key_exists($key, $p)) update_user_meta($id, 'meydan_' . $key, max(0, (int) $p[$key]));
+        if (array_key_exists('is_student_or_seminarian', $p)) update_user_meta($id, 'meydan_is_student_or_seminarian', $p['is_student_or_seminarian'] ? '1' : '0');
         foreach (['eitaa' => 'eitaa_channel', 'bale' => 'bale_channel'] as $kind => $key) {
             if (array_key_exists($key, $p)) Channels::store($id, $kind, (string) $p[$key]);
         }
@@ -325,6 +327,7 @@ final class AdminUserController extends BaseController
             'avatar_media_id' => $avatar ?: null, 'avatar_url' => $avatar ? wp_get_attachment_url($avatar) : null,
             'cover_media_id' => $cover ?: null, 'cover_url' => $cover ? wp_get_attachment_url($cover) : null,
             'eitaa_channel' => Channels::value($id, 'eitaa'), 'bale_channel' => Channels::value($id, 'bale'),
-            'square_id' => Actor::squareId($id) ?: null, 'registered_at' => $user->user_registered];
+            'square_id' => Actor::squareId($id) ?: null, 'registered_at' => $user->user_registered,
+            'is_student_or_seminarian' => get_user_meta($id, 'meydan_is_student_or_seminarian', true) === '1'];
     }
 }
