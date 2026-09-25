@@ -30,7 +30,7 @@ final class SmsProvider
         $settings = (array) get_option('meydan_sms_settings', []);
         $enabled = !array_key_exists('enabled', $settings) || (bool) $settings['enabled'];
         if (!$enabled) {
-            return $this->failure('sms_not_configured', 'ارسال پیامک در تنظیمات غیرفعال است.', ['reason' => 'disabled']);
+            return $this->failure('sms_not_configured', 'ارسال پیامک در تنظیمات غیرفعال است.', ['reason' => 'disabled', 'status' => 503]);
         }
         $endpoint = trim((string) ($settings['endpoint'] ?? (defined('MEYDAN_SMS_ENDPOINT') ? MEYDAN_SMS_ENDPOINT : 'https://api.iranpayamak.com/ws/v1/sms/pattern')));
         if ($endpoint === '' || $endpoint === 'https://edge.ippanel.com/v1/api/send') {
@@ -43,6 +43,7 @@ final class SmsProvider
             return $this->failure('sms_not_configured', 'سرویس پیامک پیکربندی نشده است.', [
                 'provider' => 'iranpayamak',
                 'reason' => 'missing_token_or_line_or_pattern',
+                'status' => 503,
             ]);
         }
 
@@ -51,6 +52,7 @@ final class SmsProvider
             return $this->failure('sms_invalid_recipient', 'شماره گیرنده پیامک معتبر نیست.', [
                 'provider' => 'iranpayamak',
                 'reason' => 'invalid_recipient_format',
+                'status' => 422,
             ]);
         }
 
@@ -79,6 +81,7 @@ final class SmsProvider
                 'provider' => 'iranpayamak',
                 'reason' => 'wp_http_error',
                 'transport_error' => $response->get_error_message(),
+                'status' => 503,
             ]);
         }
         $status = wp_remote_retrieve_response_code($response);
@@ -92,6 +95,7 @@ final class SmsProvider
                 'provider' => 'iranpayamak',
                 'http_status' => $status,
                 'response_body' => $body,
+                'status' => 502,
             ]);
         }
         return true;

@@ -22,6 +22,7 @@ final class Response
                 'message' => $message,
                 'fields' => (object) $fields,
             ],
+            'meta' => ['request_id' => self::requestId()],
         ], $status);
     }
 
