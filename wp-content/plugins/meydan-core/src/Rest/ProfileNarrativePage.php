@@ -15,6 +15,16 @@ final class ProfileNarrativePage
 {
     public static function list(array $metaQuery, WP_REST_Request $request, string $actorKey)
     {
+        return self::query(['meta_query' => $metaQuery], $request, $actorKey);
+    }
+
+    public static function listByAuthor(int $authorId, WP_REST_Request $request, string $actorKey)
+    {
+        return self::query(['author' => $authorId], $request, $actorKey);
+    }
+
+    private static function query(array $filter, WP_REST_Request $request, string $actorKey)
+    {
         $limit = min(50, max(1, (int) ($request->get_param('limit') ?: 20)));
         $rawCursor = trim((string) $request->get_param('cursor'));
         $cursor = Cursor::decode($rawCursor);
@@ -22,13 +32,12 @@ final class ProfileNarrativePage
             return Response::error('invalid_cursor', 'صفحهٔ روایت‌ها معتبر نیست.', 400);
         }
         $offset = $rawCursor === '' ? 0 : $cursor['offset'];
-        $query = new WP_Query([
+        $query = new WP_Query($filter + [
             'post_type' => 'meydan_narrative',
             'post_status' => 'publish',
             'posts_per_page' => $limit + 1,
             'no_found_rows' => true,
             'offset' => $offset,
-            'meta_query' => $metaQuery,
             'orderby' => ['date' => 'DESC', 'ID' => 'DESC'],
         ]);
         $hasMore = count($query->posts) > $limit;
