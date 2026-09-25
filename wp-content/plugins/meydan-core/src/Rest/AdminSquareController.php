@@ -8,6 +8,7 @@ use Meydan\Core\Admin\Admin;
 use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Domain\SquareAdminService;
 use Meydan\Core\Domain\SquareDeletionService;
+use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\Serializer;
 use WP_Query;
@@ -39,10 +40,10 @@ final class AdminSquareController extends BaseController
         }
         if ($meta) $args['meta_query'] = $meta;
         $q = new WP_Query($args);
-        $items = array_values(array_filter(
-            array_map([$this, 'adminSquare'], $q->posts),
-            static fn ($item): bool => is_array($item) && isset($item['id']),
-        ));
+        // A paginated table needs only row data. The public square serializer
+        // also loads schedules, channels and narrative counts per square, which
+        // turns every cold page into dozens of N+1 queries.
+        $items = $this->adminSquareList($q->posts);
         return Response::ok($items, ['page' => $page, 'per_page' => $perPage, 'total' => (int) $q->found_posts, 'pages' => (int) $q->max_num_pages]);
     }
 
@@ -129,6 +130,89 @@ final class AdminSquareController extends BaseController
             $id = (int) $row['square_id'];
             return ['id' => $id, 'name' => (string) $row['post_title'], 'post_status' => (string) $row['post_status'], 'approval_status' => (string) get_post_meta($id, 'meydan_approval_status', true), 'verified' => (bool) get_post_meta($id, 'meydan_verified', true), 'location' => ['province_id' => (int) $row['province_id'], 'city_id' => (int) $row['city_id'], 'address' => (string) $row['address'], 'latitude' => (float) $row['latitude'], 'longitude' => (float) $row['longitude']]];
         }, $rows ?: []));
+    }
+
+    /**
+     * Hydrate one admin-list page in batches.
+     *
+     * @param array<int,\WP_Post> $posts
+     * @return array<int,array<string,mixed>>
+     */
+    private function adminSquareList(array $posts): array
+    {
+        if ($posts === []) return [];
+
+        global $wpdb;
+        $ids = array_values(array_map(static fn (\WP_Post $post): int => (int) $post->ID, $posts));
+
+        // WP_Query normally primes post meta, but keeping the method safe when
+        // called independently avoids one meta lookup per field and per row.
+        update_meta_cache('post', $ids);
+
+        $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+        $geoRows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT square_id,province_id,city_id,address,latitude,longitude
+                 FROM {$wpdb->prefix}meydan_square_geo
+                 WHERE square_id IN ($placeholders)",
+                ...$ids
+            ),
+            ARRAY_A
+        );
+        $geoBySquare = [];
+        foreach ($geoRows ?: [] as $row) {
+            $geoBySquare[(int) $row['square_id']] = $row;
+        }
+
+        $ownerIds = [];
+        foreach ($posts as $post) {
+            $ownerId = (int) get_post_meta((int) $post->ID, 'meydan_owner_user_id', true);
+            if ($ownerId <= 0) $ownerId = (int) $post->post_author;
+            if ($ownerId > 0) $ownerIds[] = $ownerId;
+        }
+        $ownerIds = array_values(array_unique($ownerIds));
+        if ($ownerIds !== []) cache_users($ownerIds);
+
+        // Avatar attachment posts are primed once as well; otherwise
+        // wp_get_attachment_url() can add another query for every table row.
+        $avatarIds = [];
+        foreach ($posts as $post) {
+            $squareId = (int) $post->ID;
+            $ownerId = (int) get_post_meta($squareId, 'meydan_owner_user_id', true);
+            if ($ownerId <= 0) $ownerId = (int) $post->post_author;
+            $avatarId = $ownerId > 0 ? (int) get_user_meta($ownerId, 'meydan_avatar_media_id', true) : 0;
+            if ($avatarId <= 0) $avatarId = (int) get_post_meta($squareId, 'meydan_avatar_media_id', true);
+            if ($avatarId > 0) $avatarIds[] = $avatarId;
+        }
+        $avatarIds = array_values(array_unique($avatarIds));
+        if ($avatarIds !== []) _prime_post_caches($avatarIds, false, true);
+
+        return array_map(function (\WP_Post $post) use ($geoBySquare): array {
+            $id = (int) $post->ID;
+            $ownerId = (int) get_post_meta($id, 'meydan_owner_user_id', true);
+            if ($ownerId <= 0) $ownerId = (int) $post->post_author;
+            $owner = $ownerId > 0 ? get_userdata($ownerId) : false;
+            $geo = $geoBySquare[$id] ?? null;
+
+            return [
+                'id' => $id,
+                'name' => trim((string) $post->post_title) ?: 'میدان',
+                'avatar_url' => Actor::squareAvatarUrl($id) ?: null,
+                'post_status' => (string) $post->post_status,
+                'approval_status' => (string) get_post_meta($id, 'meydan_approval_status', true) ?: 'pending_verification',
+                'verified' => (bool) get_post_meta($id, 'meydan_verified', true),
+                'owner_user_id' => $ownerId > 0 ? $ownerId : null,
+                'owner' => $owner ? ['id' => $ownerId, 'name' => (string) $owner->display_name] : null,
+                'admin_note' => (string) get_post_meta($id, 'meydan_admin_note', true),
+                'location' => $geo ? [
+                    'province_id' => (int) $geo['province_id'],
+                    'city_id' => (int) $geo['city_id'],
+                    'address' => (string) $geo['address'],
+                    'latitude' => (float) $geo['latitude'],
+                    'longitude' => (float) $geo['longitude'],
+                ] : null,
+            ];
+        }, $posts);
     }
 
     private function adminSquare(?\WP_Post $post): ?array
