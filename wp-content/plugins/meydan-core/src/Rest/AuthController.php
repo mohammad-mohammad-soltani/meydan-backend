@@ -40,8 +40,11 @@ final class AuthController extends BaseController
     {
         try {
             $value = $handler();
+            if (is_wp_error($value)) {
+                return $this->error($value);
+            }
             $status = $operation === 'request' && (($value['delivery_status'] ?? '') === 'uncertain') ? 202 : 200;
-            return is_wp_error($value) ? $this->error($value) : Response::ok($value, [], $status);
+            return Response::ok($value, [], $status);
         } catch (\Throwable $e) {
             $requestId = Response::requestId();
             error_log("[meydan-auth][$requestId] OTP $operation failed: " . $e->getMessage());
