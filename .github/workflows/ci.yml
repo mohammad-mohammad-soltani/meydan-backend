@@ -13,9 +13,11 @@ jobs:
       - name: Install plugin dependencies
         run: composer install --working-dir=wp-content/plugins/meydan-core --no-interaction --prefer-dist
       - name: PHP syntax
-        run: find wp-content/plugins/meydan-core -name '*.php' -print0 | xargs -0 -n1 php -l
+        run: find wp-content/plugins/meydan-core -path '*/vendor' -prune -o -name '*.php' -print0 | xargs -0 -n1 php -l && php -l tests/candidate-query-test.php
       - name: Composer validation
         run: composer validate --working-dir=wp-content/plugins/meydan-core --strict
+      - name: Candidate query regression checks
+        run: php tests/candidate-query-test.php
       - name: Media storage unit tests
         run: php tests/media-storage-test.php
       - name: Media storage contract

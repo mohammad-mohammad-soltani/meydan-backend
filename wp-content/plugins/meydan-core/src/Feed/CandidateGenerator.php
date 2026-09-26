@@ -91,17 +91,18 @@ final class CandidateGenerator
     /** @return list<int> */
     private function speakerIds(array $settings, int $limit): array
     {
-        $users = get_users([
-            'role' => 'meydan_speaker',
-            'fields' => ['ID'],
-            'number' => -1,
-            'orderby' => 'ID',
-            'order' => 'ASC',
-        ]);
-        $ids = array_values(array_filter(array_map(static fn($user): int => (int) ($user->ID ?? 0), $users)));
-        if (!$ids) return [];
-        $where = "at.meta_value='user' AND ai.meta_value IN (" . implode(',', array_fill(0, count($ids), '%s')) . ")";
-        return $this->ids($where, array_map('strval', $ids), $settings, $limit, true);
+        if ($limit <= 0) return [];
+        global $wpdb;
+        // Match the role on the author account in SQL. Loading every speaker
+        // into PHP produced an unbounded IN list on each feed refresh.
+        $capabilitiesKey = $wpdb->prefix . 'capabilities';
+        $rolePattern = '%"meydan_speaker";b:1%';
+        $where = "at.meta_value='user' AND EXISTS (
+            SELECT 1 FROM {$wpdb->usermeta} um
+            WHERE um.user_id=CAST(ai.meta_value AS UNSIGNED)
+              AND um.meta_key=%s AND um.meta_value LIKE %s
+        )";
+        return $this->ids($where, [$capabilitiesKey, $rolePattern], $settings, $limit, true);
     }
 
     /** @return list<int> */
