@@ -209,8 +209,8 @@ final class ChatController extends BaseController
 
         NativeWebPush::sendToUsers(
             $recipients,
-            $name,
-            mb_substr($body, 0, 500),
+            'پیام جدید',
+            mb_substr($name . ': ' . $body, 0, 500),
             '/chat/' . $conversationId,
             $avatar !== '' ? $avatar : null,
             [

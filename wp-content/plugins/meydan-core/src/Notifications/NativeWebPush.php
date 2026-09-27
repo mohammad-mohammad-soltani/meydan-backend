@@ -172,8 +172,11 @@ final class NativeWebPush
         }
 
         $payload = [
-            'title' => mb_substr(sanitize_text_field($title), 0, 160),
-            'body' => mb_substr(sanitize_textarea_field($body), 0, 700),
+            // Every browser push has the same app title and a two-part body,
+            // mirroring a Telegram-style notification: event type, then text.
+            'title' => 'نقش من',
+            'type' => mb_substr(sanitize_text_field($title), 0, 160),
+            'message' => mb_substr(sanitize_textarea_field($body), 0, 700),
             'url' => self::deepLink($deepLink),
             'icon' => self::icon($iconUrl),
             'tag' => isset($safeData['tag']) ? mb_substr((string) $safeData['tag'], 0, 100) : null,
@@ -188,9 +191,9 @@ final class NativeWebPush
             return $json;
         }
 
-        // Keep metadata and navigation intact; only the human-readable body is
-        // shortened if a very long notification would exceed a push record.
-        $payload['body'] = mb_substr((string) $payload['body'], 0, 260) . '…';
+        // Keep metadata and navigation intact; only the human-readable message
+        // is shortened if a very long notification would exceed a push record.
+        $payload['message'] = mb_substr((string) $payload['message'], 0, 260) . '…';
         $json = wp_json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         return is_string($json) ? $json : '';
     }
