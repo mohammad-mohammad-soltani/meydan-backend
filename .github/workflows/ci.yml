@@ -18,6 +18,12 @@ jobs:
         run: composer validate --working-dir=wp-content/plugins/meydan-core --strict
       - name: Candidate query regression checks
         run: php tests/candidate-query-test.php
+      - name: Native OTP session regression
+        run: php wp-content/plugins/meydan-core/tests/check-native-otp.php
+      - name: Native session and cookie contract
+        run: php wp-content/plugins/meydan-core/tests/check-native-session.php
+      - name: Session persistence contract
+        run: python3 tests/check-session-persistence.py
       - name: Media storage unit tests
         run: php tests/media-storage-test.php
       - name: Media storage contract
