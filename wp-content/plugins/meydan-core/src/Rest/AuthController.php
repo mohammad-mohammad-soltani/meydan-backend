@@ -95,7 +95,11 @@ final class AuthController extends BaseController
             AuditLogger::log('square_registration','square',$sid,null,['status'=>'pending_verification'],$uid);
         }
         $native=$this->nativeDevice($r);$session=(new SessionService())->issue($uid,$native?'Naghshman Android':null,$native);if(is_wp_error($session))return $this->error($session);
-        return Response::ok(['authenticated'=>true,'access_token'=>$session['access_token'],'expires_in'=>$session['expires_in'],'refresh_token'=>$session['refresh_token'],'account'=>['id'=>$uid,'account_type'=>$type]],[],201);
+        $result=['authenticated'=>true,'access_token'=>$session['access_token'],'expires_in'=>$session['expires_in'],'account'=>['id'=>$uid,'account_type'=>$type]];
+        // Keep browser refresh tokens in HttpOnly cookies; expose them only to
+        // the native bridge, which persists the credential in SecureStore.
+        if($native){$result['refresh_token']=$session['refresh_token'];}
+        return Response::ok($result,[],201);
     }
 
     private function nativeDevice(WP_REST_Request $request): bool
