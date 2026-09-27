@@ -9,7 +9,7 @@ use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.4.2';
+    public const VERSION = '1.4.3';
 
     /**
      * Legacy speaker-post meta holding the linked user id.
@@ -86,7 +86,6 @@ final class Migrations
             refresh_token_hash CHAR(64) NOT NULL,
             access_expires_at DATETIME NOT NULL,
             refresh_expires_at DATETIME NULL,
-            persistent_device TINYINT(1) NOT NULL DEFAULT 0,
             device_name VARCHAR(190) NULL,
             last_used_at DATETIME NULL,
             created_at DATETIME NOT NULL,
@@ -390,8 +389,30 @@ final class Migrations
             dbDelta($statement);
         }
 
+        self::repairSessionSchema();
+
         self::seedOptions();
         update_option('meydan_db_version', self::VERSION, false);
+    }
+
+    /**
+     * dbDelta does not reliably relax an existing NOT NULL column. Native
+     * sessions deliberately have no refresh expiry, so repair pre-1.4.2
+     * installs explicitly before any session can be issued.
+     */
+    private static function repairSessionSchema(): void
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_sessions';
+        $refreshExpiry = $wpdb->get_row("SHOW COLUMNS FROM {$table} LIKE 'refresh_expires_at'");
+        if ($refreshExpiry && strtoupper((string) $refreshExpiry->Null) !== 'YES') {
+            $wpdb->query("ALTER TABLE {$table} MODIFY refresh_expires_at DATETIME NULL");
+        }
+
+        $persistentDevice = $wpdb->get_row("SHOW COLUMNS FROM {$table} LIKE 'persistent_device'");
+        if (!$persistentDevice) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN persistent_device TINYINT(1) NOT NULL DEFAULT 0");
+        }
     }
 
     /**
