@@ -6,7 +6,7 @@ namespace Meydan\Core\Database;
 
 final class PushMigrations
 {
-    private const VERSION = '1.0.0';
+    private const VERSION = '1.1.0';
     private const OPTION = 'meydan_push_db_version';
 
     public static function maybeRun(): void
@@ -42,6 +42,23 @@ final class PushMigrations
         ) {$charset};";
 
         dbDelta($sql);
+
+        $native = $wpdb->prefix . 'meydan_native_push_tokens';
+        dbDelta("CREATE TABLE {$native} (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT UNSIGNED NOT NULL,
+            token_hash CHAR(64) NOT NULL,
+            token VARCHAR(600) NOT NULL,
+            platform VARCHAR(16) NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            last_success_at DATETIME NULL,
+            failure_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+            PRIMARY KEY (id),
+            UNIQUE KEY token_hash (token_hash),
+            KEY user_id (user_id),
+            KEY updated_at (updated_at)
+        ) {$charset};");
         update_option(self::OPTION, self::VERSION, false);
     }
 }

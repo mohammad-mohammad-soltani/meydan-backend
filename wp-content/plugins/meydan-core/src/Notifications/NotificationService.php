@@ -129,7 +129,7 @@ final class NotificationService
                 $id = (int) $existing['id'];
                 SoketiRealtime::publishToUser($recipientUserId, 'notification:updated', ['id' => (string) $id]);
                 if ($sendPush) {
-                    NativeWebPush::sendToUser(
+                    self::sendPushToUser(
                         $recipientUserId,
                         (string) ($existing['title'] ?: $title),
                         $newBody,
@@ -173,7 +173,7 @@ final class NotificationService
                 'read_at' => null,
             ]);
             if ($sendPush) {
-                NativeWebPush::sendToUser(
+                self::sendPushToUser(
                     $recipientUserId,
                     $title,
                     $body,
@@ -210,7 +210,7 @@ final class NotificationService
             }
         }
         if ($pushUsers) {
-            NativeWebPush::sendToUsers(
+            self::sendPushToUsers(
                 $pushUsers,
                 $title,
                 $body,
@@ -220,6 +220,20 @@ final class NotificationService
             );
         }
         return $count;
+    }
+
+    /** @param array<string,mixed> $data */
+    private static function sendPushToUser(int $userId, string $title, string $body, ?string $deepLink, ?string $iconUrl, array $data): void
+    {
+        NativeWebPush::sendToUser($userId, $title, $body, $deepLink, $iconUrl, $data);
+        NativeExpoPush::sendToUsers([$userId], $title, $body, $deepLink, $data);
+    }
+
+    /** @param int[] $userIds @param array<string,mixed> $data */
+    private static function sendPushToUsers(array $userIds, string $title, string $body, ?string $deepLink, ?string $iconUrl, array $data): void
+    {
+        NativeWebPush::sendToUsers($userIds, $title, $body, $deepLink, $iconUrl, $data);
+        NativeExpoPush::sendToUsers($userIds, $title, $body, $deepLink, $data);
     }
 
     /** @return int[] */

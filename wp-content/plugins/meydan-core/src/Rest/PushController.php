@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Meydan\Core\Rest;
 
 use Meydan\Core\Notifications\NativeWebPush;
+use Meydan\Core\Notifications\NativeExpoPush;
 use Meydan\Core\Support\Response;
 use WP_REST_Request;
 
@@ -58,5 +59,21 @@ final class PushController extends BaseController
         }
 
         return Response::ok(['unsubscribed' => true]);
+    }
+
+    public function subscribeNative(WP_REST_Request $request)
+    {
+        if (!is_user_logged_in()) return Response::error('unauthenticated', 'فعال‌سازی اعلان Native نیاز به ورود دارد.', 401);
+        $payload = $this->json($request);
+        $result = NativeExpoPush::subscribe(get_current_user_id(), (string) ($payload['token'] ?? ''), (string) ($payload['platform'] ?? ''));
+        return is_wp_error($result) ? $result : Response::ok(['subscribed' => true], [], 201);
+    }
+
+    public function unsubscribeNative(WP_REST_Request $request)
+    {
+        if (!is_user_logged_in()) return Response::error('unauthenticated', 'غیرفعال‌سازی اعلان Native نیاز به ورود دارد.', 401);
+        $payload = $this->json($request);
+        $result = NativeExpoPush::unsubscribe(get_current_user_id(), (string) ($payload['token'] ?? ''));
+        return is_wp_error($result) ? $result : Response::ok(['unsubscribed' => true]);
     }
 }
