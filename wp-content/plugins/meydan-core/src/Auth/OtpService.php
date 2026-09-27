@@ -131,7 +131,7 @@ final class OtpService
             if (is_wp_error($session)) {
                 return $session;
             }
-            return [
+            $result = [
                 'authenticated' => true,
                 'access_token' => $session['access_token'],
                 'expires_in' => $session['expires_in'],
@@ -140,6 +140,12 @@ final class OtpService
                     'account_type' => (string) get_user_meta($userId, 'meydan_account_type', true) ?: 'user',
                 ],
             ];
+            // Only native clients may receive the refresh credential in JSON.
+            // Browsers continue using the HttpOnly cookie set by SessionService.
+            if ($persistentDevice) {
+                $result['refresh_token'] = $session['refresh_token'];
+            }
+            return $result;
         }
 
         $registrationToken = Crypto::randomToken(32, 'reg_');
