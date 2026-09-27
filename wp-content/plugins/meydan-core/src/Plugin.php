@@ -24,6 +24,7 @@ use Meydan\Core\Integrations\Eitaa\SquareChannelField;
 use Meydan\Core\Integrations\Bale\ErrorReporter as BaleErrorReporter;
 use Meydan\Core\Integrations\Bale\EventSubscriber as BaleEventSubscriber;
 use Meydan\Core\Integrations\Bale\WebhookController as BaleWebhookController;
+use Meydan\Core\Notifications\NativeExpoPush;
 use Meydan\Core\Rest\ChatRoutes;
 use Meydan\Core\Rest\PushRoutes;
 use Meydan\Core\Rest\Routes;
@@ -76,6 +77,7 @@ final class Plugin
         Migrations::maybeRun();
         ChatMigrations::maybeRun();
         PushMigrations::maybeRun();
+        NativeExpoPush::register();
         EitaaMigrations::maybeRun();
         BaleMigrations::maybeRun();
 

@@ -6,7 +6,7 @@ namespace Meydan\Core\Database;
 
 final class PushMigrations
 {
-    private const VERSION = '1.1.0';
+    private const VERSION = '1.2.2';
     private const OPTION = 'meydan_push_db_version';
 
     public static function maybeRun(): void
@@ -59,6 +59,26 @@ final class PushMigrations
             KEY user_id (user_id),
             KEY updated_at (updated_at)
         ) {$charset};");
+        self::repairNativeTokenSchema();
         update_option(self::OPTION, self::VERSION, false);
+    }
+
+    /** dbDelta does not reliably add columns/indexes to an already-live table. */
+    private static function repairNativeTokenSchema(): void
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_native_push_tokens';
+        $columns = [
+            'receipt_id' => 'ALTER TABLE ' . $table . ' ADD COLUMN receipt_id VARCHAR(255) NULL',
+            'receipt_pending_at' => 'ALTER TABLE ' . $table . ' ADD COLUMN receipt_pending_at DATETIME NULL',
+        ];
+        foreach ($columns as $name => $query) {
+            if (!$wpdb->get_row("SHOW COLUMNS FROM {$table} LIKE '{$name}'")) {
+                $wpdb->query($query);
+            }
+        }
+        if (!$wpdb->get_row("SHOW INDEX FROM {$table} WHERE Key_name='receipt_pending_at'")) {
+            $wpdb->query("ALTER TABLE {$table} ADD KEY receipt_pending_at (receipt_pending_at)");
+        }
     }
 }

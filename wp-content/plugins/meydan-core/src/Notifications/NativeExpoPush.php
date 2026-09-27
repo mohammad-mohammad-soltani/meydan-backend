@@ -10,11 +10,26 @@ use WP_Error;
 final class NativeExpoPush
 {
     private const ENDPOINT = 'https://exp.host/--/api/v2/push/send';
+    private const RECEIPTS_ENDPOINT = 'https://exp.host/--/api/v2/push/getReceipts';
+    private const RECEIPT_HOOK = 'meydan_native_push_check_receipts';
     private const TOKEN = '/^(?:ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_-]{1,512}\]$/';
 
     public static function isValidToken(string $token): bool
     {
         return (bool) preg_match(self::TOKEN, $token);
+    }
+
+    public static function register(): void
+    {
+        add_action(self::RECEIPT_HOOK, [self::class, 'checkReceipts']);
+    }
+
+    /** @param array<string,mixed> $receipt */
+    public static function receiptAction(array $receipt): string
+    {
+        if (($receipt['status'] ?? '') === 'ok') return 'success';
+        if (($receipt['details']['error'] ?? '') === 'DeviceNotRegistered') return 'delete';
+        return 'retry';
     }
 
     public static function subscribe(int $userId, string $token, string $platform): true|WP_Error
@@ -72,7 +87,7 @@ final class NativeExpoPush
             }
         }
         $safeData['url'] = self::deepLink($deepLink);
-        return [
+        $payload = [
             'to' => $token,
             'title' => mb_substr(sanitize_text_field($title), 0, 160),
             'body' => mb_substr(sanitize_textarea_field($body), 0, 700),
@@ -81,6 +96,10 @@ final class NativeExpoPush
             'channelId' => 'default',
             'data' => $safeData,
         ];
+        if (isset($safeData['tag']) && is_scalar($safeData['tag'])) {
+            $payload['tag'] = mb_substr((string) $safeData['tag'], 0, 100);
+        }
+        return $payload;
     }
 
     /** @param int[] $userIds @param array<string,mixed> $data */
@@ -122,14 +141,51 @@ final class NativeExpoPush
         $tickets = is_array($body['data'] ?? null) ? $body['data'] : [];
         foreach ($tokens as $index => $row) {
             $ticket = is_array($tickets[$index] ?? null) ? $tickets[$index] : [];
-            if (($ticket['status'] ?? '') === 'ok') {
-                self::markSuccess((int) ($row['id'] ?? 0));
+            if (($ticket['status'] ?? '') === 'ok' && is_string($ticket['id'] ?? null)) {
+                self::awaitReceipt((int) ($row['id'] ?? 0), $ticket['id']);
             } elseif (($ticket['details']['error'] ?? '') === 'DeviceNotRegistered') {
                 self::delete((int) ($row['id'] ?? 0));
             } else {
                 self::markFailure((int) ($row['id'] ?? 0));
             }
         }
+        self::scheduleReceiptCheck();
+    }
+
+    /** Checks Expo's final handoff result rather than treating a ticket as delivery. */
+    public static function checkReceipts(): void
+    {
+        global $wpdb;
+        $rows = $wpdb->get_results(
+            'SELECT id,receipt_id,receipt_pending_at FROM ' . self::table()
+            . ' WHERE receipt_id IS NOT NULL AND receipt_pending_at <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 MINUTE)'
+            . ' ORDER BY receipt_pending_at ASC LIMIT 1000',
+            ARRAY_A,
+        ) ?: [];
+        if (!$rows) return;
+        $ids = array_values(array_filter(array_map(static fn(array $row): string => (string) ($row['receipt_id'] ?? ''), $rows)));
+        $response = wp_safe_remote_post(self::RECEIPTS_ENDPOINT, [
+            'timeout' => 8,
+            'headers' => ['content-type' => 'application/json', 'accept' => 'application/json'],
+            'body' => wp_json_encode(['ids' => $ids]),
+        ]);
+        if (is_wp_error($response) || (int) wp_remote_retrieve_response_code($response) < 200 || (int) wp_remote_retrieve_response_code($response) >= 300) {
+            self::scheduleReceiptCheck(300);
+            return;
+        }
+        $body = json_decode((string) wp_remote_retrieve_body($response), true);
+        $receipts = is_array($body['data'] ?? null) ? $body['data'] : [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            $receiptId = (string) ($row['receipt_id'] ?? '');
+            $receipt = is_array($receipts[$receiptId] ?? null) ? $receipts[$receiptId] : null;
+            if (!$receipt) continue;
+            $action = self::receiptAction($receipt);
+            if ($action === 'success') self::markSuccess($id);
+            elseif ($action === 'delete') self::delete($id);
+            else self::markFailure($id);
+        }
+        self::scheduleReceiptCheck();
     }
 
     private static function deepLink(?string $value): string
@@ -139,7 +195,9 @@ final class NativeExpoPush
     }
 
     private static function table(): string { global $wpdb; return $wpdb->prefix . 'meydan_native_push_tokens'; }
-    private static function markSuccess(int $id): void { global $wpdb; if ($id > 0) $wpdb->update(self::table(), ['last_success_at' => current_time('mysql', true), 'failure_count' => 0], ['id' => $id]); }
-    private static function markFailure(int $id): void { global $wpdb; if ($id > 0) $wpdb->query($wpdb->prepare('UPDATE ' . self::table() . ' SET failure_count=failure_count+1 WHERE id=%d', $id)); }
+    private static function awaitReceipt(int $id, string $receiptId): void { global $wpdb; if ($id > 0) $wpdb->update(self::table(), ['receipt_id' => $receiptId, 'receipt_pending_at' => current_time('mysql', true)], ['id' => $id]); }
+    private static function markSuccess(int $id): void { global $wpdb; if ($id > 0) $wpdb->update(self::table(), ['last_success_at' => current_time('mysql', true), 'failure_count' => 0, 'receipt_id' => null, 'receipt_pending_at' => null], ['id' => $id]); }
+    private static function markFailure(int $id): void { global $wpdb; if ($id > 0) $wpdb->query($wpdb->prepare('UPDATE ' . self::table() . ' SET failure_count=failure_count+1,receipt_id=NULL,receipt_pending_at=NULL WHERE id=%d', $id)); }
     private static function delete(int $id): void { global $wpdb; if ($id > 0) $wpdb->delete(self::table(), ['id' => $id], ['%d']); }
+    private static function scheduleReceiptCheck(int $delay = 900): void { if (!wp_next_scheduled(self::RECEIPT_HOOK)) wp_schedule_single_event(time() + $delay, self::RECEIPT_HOOK); }
 }

@@ -39,6 +39,19 @@ namespace {
     if (($payload['channelId'] ?? '') !== 'default') {
         throw new RuntimeException('Android notifications must use the configured channel.');
     }
+    if (($payload['tag'] ?? '') !== 'post-42') {
+        throw new RuntimeException('Grouped notifications must replace their earlier Android tray entry.');
+    }
+
+    if (NativeExpoPush::receiptAction(['status' => 'ok']) !== 'success') {
+        throw new RuntimeException('A successful Expo receipt must complete the delivery.');
+    }
+    if (NativeExpoPush::receiptAction(['status' => 'error', 'details' => ['error' => 'DeviceNotRegistered']]) !== 'delete') {
+        throw new RuntimeException('An unregistered device must be removed after its receipt arrives.');
+    }
+    if (NativeExpoPush::receiptAction(['status' => 'error', 'details' => ['error' => 'InvalidCredentials']]) !== 'retry') {
+        throw new RuntimeException('Transient provider receipt failures must remain observable for retry.');
+    }
 
     echo "Native Expo Push contract OK.\n";
 }
