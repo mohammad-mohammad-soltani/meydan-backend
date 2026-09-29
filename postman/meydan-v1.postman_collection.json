@@ -13,6 +13,10 @@
     {
       "key": "access_token",
       "value": ""
+    },
+    {
+      "key": "banner_media_id",
+      "value": ""
     }
   ],
   "item": [
@@ -2584,6 +2588,163 @@
           ]
         }
       }
+    },
+    {
+      "name": "Content banners",
+      "description": "Ordered banner list. Public GET returns enabled banners with available images. Admin GET includes disabled banners. PUT atomically replaces the list; array order is display order. Fields: id (unique stable string), media_id (image attachment ID), title (required), href (internal path or http/https URL), enabled (boolean). image_url is read-only. Validation errors: HTTP 422 with error.fields keys banners.<index>.<field>; access failures: 401/403. The old poster is migrated once; saving [] permanently clears the new list. Legacy poster endpoints remain independent after migration.",
+      "item": [
+        {
+          "name": "GET /content/banners",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/content/banners",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "content",
+                "banners"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Banner list contract\", () => {",
+                  "  const rows = pm.response.json().data;",
+                  "  pm.expect(rows).to.be.an(\"array\");",
+                  "  rows.forEach(row => {",
+                  "    pm.expect(row.id).to.be.a(\"string\");",
+                  "    pm.expect(row.media_id).to.be.a(\"number\");",
+                  "    pm.expect(row.title).to.be.a(\"string\");",
+                  "    pm.expect(row.href).to.be.a(\"string\");",
+                  "    pm.expect(row.enabled).to.be.a(\"boolean\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/content/banners",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "disabled": false
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/content/banners",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "content",
+                "banners"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Banner list contract\", () => {",
+                  "  const rows = pm.response.json().data;",
+                  "  pm.expect(rows).to.be.an(\"array\");",
+                  "  rows.forEach(row => {",
+                  "    pm.expect(row.id).to.be.a(\"string\");",
+                  "    pm.expect(row.media_id).to.be.a(\"number\");",
+                  "    pm.expect(row.title).to.be.a(\"string\");",
+                  "    pm.expect(row.href).to.be.a(\"string\");",
+                  "    pm.expect(row.enabled).to.be.a(\"boolean\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /admin/content/banners",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "disabled": false
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/content/banners",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "content",
+                "banners"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"banners\": [\n    {\n      \"id\": \"example-banner\",\n      \"media_id\": {{banner_media_id}},\n      \"title\": \"بنر نمونه\",\n      \"href\": \"/content\",\n      \"enabled\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Replaces the entire list. Set banner_media_id to an uploaded image ID. Send {\"banners\":[]} to remove all banners."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Banner list contract\", () => {",
+                  "  const rows = pm.response.json().data;",
+                  "  pm.expect(rows).to.be.an(\"array\");",
+                  "  rows.forEach(row => {",
+                  "    pm.expect(row.id).to.be.a(\"string\");",
+                  "    pm.expect(row.media_id).to.be.a(\"number\");",
+                  "    pm.expect(row.title).to.be.a(\"string\");",
+                  "    pm.expect(row.href).to.be.a(\"string\");",
+                  "    pm.expect(row.enabled).to.be.a(\"boolean\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }
