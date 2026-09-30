@@ -134,6 +134,23 @@ work. It finishes with the counts, for example
 `15 video file(s): 9 remuxed, 6 already had moov in the first 64 KB, 15 poster(s) generated, 0 error(s).`
 Remuxed files get a new `ETag`/`Last-Modified`, so clients refetch them once.
 
+### Posters for videos already on S3
+
+The local-upload pass above cannot read S3 originals. On an S3 installation,
+new uploads now get a JPEG poster before their local staging file is removed.
+After deploying this version, generate posters for older S3 videos with:
+
+```bash
+docker compose run --rm --entrypoint wp wpcli meydan media-video-posters --dry-run
+docker compose run --rm --entrypoint wp wpcli meydan media-video-posters
+```
+
+The command skips attachments that already have a poster. Use `--limit=<n>` for
+a small batch and `--after=<attachment-id>` to resume after a particular ID.
+It reads video originals through their public storage URLs, uploads only the
+small JPEGs, and records `poster_url` for the API. Run it where `MEDIA_STORAGE=s3`
+and `ffmpeg` are available.
+
 ## Source specification
 
 The implementation target is preserved in [`SPEC.md`](./SPEC.md).

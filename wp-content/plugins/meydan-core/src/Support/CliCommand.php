@@ -8,12 +8,91 @@ use Meydan\Core\Storage\AttachmentStorage;
 use Meydan\Core\Storage\StorageFactory;
 use Meydan\Core\Storage\WordPressMediaHooks;
 use Meydan\Core\Storage\S3Storage;
+use Meydan\Core\Storage\VideoDerivatives;
 
 use Meydan\Core\Database\Migrations;
 use Meydan\Core\Domain\Registrations;
 
 final class CliCommand
 {
+    /**
+     * Generate missing stills for video originals already stored on S3.
+     *
+     * ## OPTIONS
+     *
+     * [--dry-run]
+     * : Count eligible video attachments without writing objects or metadata.
+     *
+     * [--after=<id>]
+     * : Resume after this WordPress attachment id.
+     *
+     * [--limit=<number>]
+     * : Stop after this many eligible attachments.
+     *
+     * @subcommand media-video-posters
+     * @param array<int,string> $args
+     * @param array<string,string> $assocArgs
+     */
+    public function media_video_posters(array $args = [], array $assocArgs = []): void
+    {
+        if (strtolower(trim((string) getenv('MEDIA_STORAGE'))) !== 's3') {
+            \WP_CLI::error('MEDIA_STORAGE must be s3.');
+        }
+        if (!\Meydan\Core\Uploads\VideoProcessor::available()) {
+            \WP_CLI::error('ffmpeg is required to generate video posters.');
+        }
+
+        $dryRun = isset($assocArgs['dry-run']);
+        $after = max(0, (int) ($assocArgs['after'] ?? 0));
+        $limit = max(0, (int) ($assocArgs['limit'] ?? 0));
+        $pipeline = WordPressMediaHooks::pipeline();
+        $storage = $pipeline->storage();
+        $page = 1;
+        $eligible = $created = $failed = 0;
+
+        do {
+            $attachments = get_posts([
+                'post_type' => 'attachment', 'post_status' => 'inherit',
+                'post_mime_type' => 'video', 'posts_per_page' => 100,
+                'paged' => $page++, 'orderby' => 'ID', 'order' => 'ASC',
+                'fields' => 'ids',
+            ]);
+            foreach ($attachments as $attachmentId) {
+                $attachmentId = (int) $attachmentId;
+                if ($attachmentId <= $after) continue;
+                if ((string) get_post_meta($attachmentId, '_meydan_storage_driver', true) !== 's3') continue;
+                if ((string) get_post_meta($attachmentId, 'meydan_poster_url', true) !== '') continue;
+                $key = (string) get_post_meta($attachmentId, '_meydan_storage_key', true);
+                if ($key === '') continue;
+                if ($limit > 0 && $eligible >= $limit) break 2;
+                $eligible++;
+                if ($dryRun) {
+                    \WP_CLI::log('would create poster for attachment ' . $attachmentId);
+                    continue;
+                }
+
+                try {
+                    $poster = VideoDerivatives::backfill($pipeline, $storage->url($key), $key);
+                    if ($poster === null) throw new \RuntimeException('ffmpeg could not extract a frame');
+                    $derivatives = (array) get_post_meta($attachmentId, '_meydan_storage_derivative_keys', true);
+                    $derivatives['poster'] = $poster['key'];
+                    update_post_meta($attachmentId, '_meydan_storage_derivative_keys', $derivatives);
+                    update_post_meta($attachmentId, 'meydan_poster_url', $poster['url']);
+                    foreach (['duration' => 'meydan_video_duration', 'width' => 'meydan_video_width', 'height' => 'meydan_video_height'] as $field => $metaKey) {
+                        if ($poster[$field] !== null) update_post_meta($attachmentId, $metaKey, $poster[$field]);
+                    }
+                    $created++;
+                    \WP_CLI::log('poster ready for attachment ' . $attachmentId);
+                } catch (\Throwable $error) {
+                    $failed++;
+                    \WP_CLI::warning('attachment ' . $attachmentId . ': ' . $error->getMessage());
+                }
+            }
+        } while ($attachments);
+
+        \WP_CLI::success(sprintf('%d eligible, %d posters created, %d failed%s.', $eligible, $created, $failed, $dryRun ? ' (dry-run)' : ''));
+    }
+
     /** Make existing objects public without downloading or re-uploading them. */
     public function media_make_public(array $args = [], array $assocArgs = []): void
     {
