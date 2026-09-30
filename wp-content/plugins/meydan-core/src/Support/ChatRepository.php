@@ -27,6 +27,15 @@ final class ChatRepository
         ));
     }
 
+    /**
+     * Was one conversation() call per conversation id — ~7-9 queries each, so
+     * up to ~900 queries for a user with 100 conversations. Every one of
+     * those sub-queries (conversation row, other participant, last message,
+     * viewer state, unread count) is batched here into a single `IN (...)` or
+     * UNION-ALL query instead, plus one cache-priming pass for the
+     * participant user/actor data. Total cost is now a small, fixed number of
+     * queries regardless of how many conversations the user has.
+     */
     public function listConversations(int $userId): array
     {
         global $wpdb;
@@ -34,12 +43,150 @@ final class ChatRepository
             "SELECT c.id FROM {$this->table('conversations')} c INNER JOIN {$this->table('participants')} p ON p.conversation_id=c.id WHERE p.user_id=%d AND p.archived_at IS NULL ORDER BY c.updated_at DESC,c.id DESC LIMIT 100",
             $userId
         )) ?: []);
+        if (!$ids) {
+            return [];
+        }
+        $marks = implode(',', array_fill(0, count($ids), '%d'));
+
+        $conversations = [];
+        foreach ($wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$this->table('conversations')} WHERE id IN ({$marks})",
+            ...$ids
+        ), ARRAY_A) ?: [] as $row) {
+            $conversations[(int) $row['id']] = $row;
+        }
+
+        // Other participant per conversation (lowest user_id that isn't the
+        // viewer, matching the single-conversation path's `ORDER BY user_id
+        // ASC LIMIT 1`) and the viewer's own read/mute state, in one pass.
+        $otherParticipant = [];
+        $viewerState = [];
+        foreach ($wpdb->get_results($wpdb->prepare(
+            "SELECT conversation_id, user_id, last_read_message_id, notifications_muted
+             FROM {$this->table('participants')} WHERE conversation_id IN ({$marks}) AND archived_at IS NULL",
+            ...$ids
+        ), ARRAY_A) ?: [] as $row) {
+            $cid = (int) $row['conversation_id'];
+            $uid = (int) $row['user_id'];
+            if ($uid === $userId) {
+                $viewerState[$cid] = $row;
+                continue;
+            }
+            if (!isset($otherParticipant[$cid]) || $uid < $otherParticipant[$cid]) {
+                $otherParticipant[$cid] = $uid;
+            }
+        }
+        foreach ($ids as $cid) {
+            if (!isset($otherParticipant[$cid])) {
+                $otherParticipant[$cid] = $userId; // No other active participant left; show self, as conversation() does.
+            }
+        }
+
+        $lastMessageIds = [];
+        foreach ($conversations as $conversation) {
+            $lm = (int) ($conversation['last_message_id'] ?? 0);
+            if ($lm > 0) {
+                $lastMessageIds[$lm] = $lm;
+            }
+        }
+        $lastMessages = [];
+        if ($lastMessageIds) {
+            $lmMarks = implode(',', array_fill(0, count($lastMessageIds), '%d'));
+            foreach ($wpdb->get_results($wpdb->prepare(
+                "SELECT id,body,attachment_json,deleted_at FROM {$this->table('messages')} WHERE id IN ({$lmMarks})",
+                ...array_values($lastMessageIds)
+            ), ARRAY_A) ?: [] as $row) {
+                $lastMessages[(int) $row['id']] = $row;
+            }
+        }
+
+        // Unread counts need a per-conversation threshold (each viewer's
+        // last_read_message_id differs), so a plain `IN (...)` can't express
+        // it in one shot. A small UNION-ALL derived table of (conversation_id,
+        // threshold) pairs, joined once against messages, does.
+        $unreadByConversation = array_fill_keys($ids, 0);
+        $thresholdSql = [];
+        $thresholdArgs = [];
+        foreach ($ids as $cid) {
+            $lastRead = (int) ($viewerState[$cid]['last_read_message_id'] ?? 0);
+            $thresholdSql[] = 'SELECT %d AS conversation_id, %d AS last_read';
+            $thresholdArgs[] = $cid;
+            $thresholdArgs[] = $lastRead;
+        }
+        $thresholdArgs[] = $userId;
+        $sql = "SELECT m.conversation_id, COUNT(*) AS unread
+                FROM {$this->table('messages')} m
+                INNER JOIN (" . implode(' UNION ALL ', $thresholdSql) . ") vs
+                    ON vs.conversation_id = m.conversation_id
+                WHERE m.id > vs.last_read AND m.sender_user_id <> %d AND m.deleted_at IS NULL
+                GROUP BY m.conversation_id";
+        foreach ($wpdb->get_results($wpdb->prepare($sql, ...$thresholdArgs), ARRAY_A) ?: [] as $row) {
+            $unreadByConversation[(int) $row['conversation_id']] = (int) $row['unread'];
+        }
+
+        $this->primeActorCache(array_values(array_unique(array_values($otherParticipant))));
+
         $items = [];
-        foreach ($ids as $id) {
-            $item = $this->conversation($id, $userId);
-            if (is_array($item)) $items[] = $item;
+        foreach ($ids as $cid) {
+            $conversation = $conversations[$cid] ?? null;
+            if (!$conversation) {
+                continue;
+            }
+            $lastMessageId = (int) ($conversation['last_message_id'] ?? 0);
+            $last = $lastMessageId ? ($lastMessages[$lastMessageId] ?? null) : null;
+            $preview = '';
+            if ($last && !$last['deleted_at']) {
+                $preview = trim((string) $last['body']);
+                if ($preview === '' && $last['attachment_json']) {
+                    $preview = 'فایل پیوست‌شده';
+                }
+            }
+            $vState = $viewerState[$cid] ?? null;
+
+            $items[] = [
+                'id' => (string) $conversation['id'],
+                'type' => (string) $conversation['type'],
+                'participant' => $this->user($otherParticipant[$cid]),
+                'preview' => $preview,
+                'updated_at' => gmdate('c', strtotime((string) $conversation['updated_at'] . ' UTC')),
+                'unread_count' => $unreadByConversation[$cid] ?? 0,
+                'last_message_id' => $lastMessageId ? (string) $lastMessageId : null,
+                'notifications_muted' => (bool) ($vState['notifications_muted'] ?? false),
+            ];
         }
         return $items;
+    }
+
+    /**
+     * Primes WordPress's per-request object cache for a batch of users (and,
+     * for square accounts, their square post) so the per-conversation
+     * Actor::forUser() calls in listConversations() hit cache instead of
+     * issuing their own get_userdata()/get_user_meta() round trip each.
+     *
+     * @param int[] $userIds
+     */
+    private function primeActorCache(array $userIds): void
+    {
+        $userIds = array_values(array_unique(array_filter($userIds, static fn(int $id): bool => $id > 0)));
+        if (!$userIds) {
+            return;
+        }
+
+        cache_users($userIds);
+
+        $squareIds = [];
+        foreach ($userIds as $userId) {
+            $user = get_userdata($userId);
+            if ($user && in_array('meydan_square', (array) $user->roles, true)) {
+                $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
+                if ($squareId > 0) {
+                    $squareIds[] = $squareId;
+                }
+            }
+        }
+        if ($squareIds && function_exists('_prime_post_caches')) {
+            _prime_post_caches(array_values(array_unique($squareIds)), false, true);
+        }
     }
 
     public function conversation(int $conversationId, int $viewerId): array|WP_Error

@@ -24,6 +24,7 @@ use Meydan\Core\Integrations\Eitaa\SquareChannelField;
 use Meydan\Core\Integrations\Bale\ErrorReporter as BaleErrorReporter;
 use Meydan\Core\Integrations\Bale\EventSubscriber as BaleEventSubscriber;
 use Meydan\Core\Integrations\Bale\WebhookController as BaleWebhookController;
+use Meydan\Core\Notifications\AsyncDispatcher;
 use Meydan\Core\Notifications\NativeExpoPush;
 use Meydan\Core\Rest\ChatRoutes;
 use Meydan\Core\Rest\PushRoutes;
@@ -38,6 +39,7 @@ use Meydan\Core\Support\UserEmails;
 use Meydan\Core\Uploads\UploadCache;
 use Meydan\Core\Storage\WordPressMediaHooks;
 use Meydan\Core\Storage\VideoPosterBackfill;
+use Meydan\Core\Timeline\NarrativeFeatureRefreshCron;
 
 final class Plugin
 {
@@ -79,6 +81,7 @@ final class Plugin
         ChatMigrations::maybeRun();
         PushMigrations::maybeRun();
         NativeExpoPush::register();
+        AsyncDispatcher::register();
         EitaaMigrations::maybeRun();
         BaleMigrations::maybeRun();
 
@@ -98,6 +101,7 @@ final class Plugin
         add_action('init', [UploadCache::class, 'ensure'], 5);
         WordPressMediaHooks::register();
         VideoPosterBackfill::register();
+        NarrativeFeatureRefreshCron::register();
 
         CampaignCurrentGuard::register();
         GoodAction::register();

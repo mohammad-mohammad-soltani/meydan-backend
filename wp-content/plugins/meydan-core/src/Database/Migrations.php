@@ -9,7 +9,7 @@ use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.4.3';
+    public const VERSION = '1.4.4';
 
     /**
      * Legacy speaker-post meta holding the linked user id.
@@ -369,6 +369,31 @@ final class Migrations
             PRIMARY KEY (id),
             UNIQUE KEY province_slug (province_id, slug),
             KEY province_active (province_id, active, sort_order)
+        ) {$charset};";
+
+        // Pre-scored, viewer-independent Timeline ranking features. One row per
+        // published narrative, kept warm by Timeline\NarrativeFeatureRefreshCron
+        // and nudged incrementally by Stats::incrementNarrative(), so
+        // Timeline\FeatureHydrator reads a ranking-ready row per candidate
+        // instead of recomputing ~10 queries per candidate on every request.
+        $sql[] = "CREATE TABLE {$p}narrative_features (
+            narrative_id BIGINT UNSIGNED NOT NULL,
+            actor_type VARCHAR(20) NOT NULL DEFAULT '',
+            actor_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            city_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            province_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            has_media TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            initiative_boost TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            media_reflection_boost TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            post_date_gmt DATETIME NOT NULL,
+            views BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            likes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            reposts BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            comments BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            shares BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            computed_at DATETIME NOT NULL,
+            PRIMARY KEY (narrative_id),
+            KEY actor (actor_type, actor_id)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}idempotency (

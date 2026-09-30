@@ -106,7 +106,7 @@ final class SoketiRealtime
         self::publish(['private-user-' . $userId], $event, $payload);
     }
 
-    public static function publishToConversation(int $conversationId, string $event, array $payload): void
+    public static function publishToConversation(int $conversationId, string $event, array $payload, bool $blocking = true): void
     {
         if ($conversationId <= 0) {
             return;
@@ -129,8 +129,24 @@ final class SoketiRealtime
         self::publish(
             array_map(static fn(int $id): string => 'private-user-' . $id, $userIds),
             $event,
-            $payload
+            $payload,
+            $blocking
         );
+    }
+
+    /**
+     * Fire-and-forget variant for very high-frequency, low-stakes events
+     * (typing indicators) where losing one occasionally is harmless but
+     * queuing every keystroke through WP-Cron would hammer the shared `cron`
+     * option under concurrent typists. `wp_remote_post` with `blocking=>false`
+     * returns as soon as the request is handed to the transport, without
+     * waiting on Soketi at all — no queue, no response-time cost either way.
+     *
+     * @param string[] $channels
+     */
+    public static function publishNonBlocking(array $channels, string $event, array $payload): void
+    {
+        self::publish($channels, $event, $payload, false);
     }
 
     /**
@@ -138,7 +154,7 @@ final class SoketiRealtime
      *
      * @param string[] $channels
      */
-    public static function publish(array $channels, string $event, array $payload): void
+    public static function publish(array $channels, string $event, array $payload, bool $blocking = true): void
     {
         $channels = array_values(array_unique(array_filter(array_map('strval', $channels))));
         $event = trim($event);
@@ -193,7 +209,14 @@ final class SoketiRealtime
             'timeout' => 5,
             'redirection' => 0,
             'sslverify' => true,
+            'blocking' => $blocking,
         ]);
+
+        // With blocking=>false, wp_remote_post returns before a response
+        // exists, so there is nothing meaningful to check here.
+        if (!$blocking) {
+            return;
+        }
 
         if (is_wp_error($response)) {
             error_log('[meydan-soketi] publish failed: ' . $response->get_error_message());

@@ -132,7 +132,14 @@ final class ChunkedUploadService
         if (is_wp_error($row)) {
             return $row;
         }
-        if ($index < 0 || $index > 10000) {
+        // Bounded by the session's own declared size, not a flat ceiling: the
+        // fixed 0-10000 range let a session accumulate up to 10000 * 5MB
+        // (~50GB) of .part files before complete() ever compared the total
+        // against the declared size. A part is at most one CHUNK_SIZE, so
+        // capping the index range caps total disk usage per session to
+        // roughly the declared size (rounded up to the nearest chunk).
+        $maxIndex = max(0, (int) ceil(((int) $row->size) / self::CHUNK_SIZE) - 1);
+        if ($index < 0 || $index > $maxIndex) {
             return new WP_Error('validation_failed', 'شماره قطعه معتبر نیست.', ['status' => 422]);
         }
 

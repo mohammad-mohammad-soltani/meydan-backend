@@ -38,6 +38,25 @@ final class OtpService
         }
 
         $phoneHash = Crypto::hash($phone);
+
+        // Enumeration/flood guard: cap distinct phones an IP can target, then
+        // enforce the documented per-phone resend cadence, then a hard daily
+        // ceiling per phone so a patient attacker can't just wait out the
+        // resend window indefinitely. Each bucket is independent so a block on
+        // one doesn't consume budget from the others.
+        $ipLimit = RateLimiter::hit('otp-request-ip', RateLimiter::ip(), 20, HOUR_IN_SECONDS);
+        if (!$ipLimit['allowed']) {
+            return new WP_Error('rate_limited', 'تعداد درخواست‌ها از این آی‌پی بیش از حد مجاز است. کمی بعد دوباره تلاش کنید.', ['status' => 429]);
+        }
+        $resendLimit = RateLimiter::hit('otp-request-phone', $phoneHash, 1, self::RESEND_AFTER);
+        if (!$resendLimit['allowed']) {
+            return new WP_Error('rate_limited', 'کد ورود اخیراً برای این شماره ارسال شده است. کمی صبر کنید.', ['status' => 429]);
+        }
+        $dailyLimit = RateLimiter::hit('otp-request-phone-daily', $phoneHash, 8, DAY_IN_SECONDS);
+        if (!$dailyLimit['allowed']) {
+            return new WP_Error('rate_limited', 'تعداد درخواست‌های ورود برای این شماره امروز به سقف مجاز رسیده است.', ['status' => 429]);
+        }
+
         $dev = defined('MEYDAN_DEV_OTP_CODE') ? trim((string) MEYDAN_DEV_OTP_CODE) : '';
         $code = ($dev !== '' && wp_get_environment_type() === 'local') ? $dev : (string) random_int(100000, 999999);
         if (!preg_match('/^\d{6}$/', $code)) {
@@ -97,6 +116,16 @@ final class OtpService
 
     public function verify(string $challengeId, string $code, bool $persistentDevice = false): array|WP_Error
     {
+        // Per-challenge attempt_count (below) only caps guesses against a single
+        // challenge; without this, an attacker who can mint fresh challenges
+        // (rate-limited separately in request()) still gets 5 fresh guesses per
+        // challenge with no ceiling on how many challenges they burn through
+        // from one IP.
+        $ipLimit = RateLimiter::hit('otp-verify-ip', RateLimiter::ip(), 30, 10 * MINUTE_IN_SECONDS);
+        if (!$ipLimit['allowed']) {
+            return new WP_Error('rate_limited', 'تعداد تلاش‌های تأیید کد بیش از حد مجاز است. کمی بعد دوباره تلاش کنید.', ['status' => 429]);
+        }
+
         $code = self::normalizeDigits(trim($code));
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_auth_challenges';

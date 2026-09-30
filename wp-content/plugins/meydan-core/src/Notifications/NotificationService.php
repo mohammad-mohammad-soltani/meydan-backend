@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Meydan\Core\Notifications;
 
 use Meydan\Core\Support\Actor;
-use Meydan\Core\Support\SoketiRealtime;
 
 final class NotificationService
 {
@@ -127,7 +126,7 @@ final class NotificationService
                     'archived_at' => null,
                 ], ['id' => (int) $existing['id']]);
                 $id = (int) $existing['id'];
-                SoketiRealtime::publishToUser($recipientUserId, 'notification:updated', ['id' => (string) $id]);
+                AsyncDispatcher::queueRealtimeToUser($recipientUserId, 'notification:updated', ['id' => (string) $id]);
                 if ($sendPush) {
                     self::sendPushToUser(
                         $recipientUserId,
@@ -162,7 +161,7 @@ final class NotificationService
         $id = (int) $wpdb->insert_id;
         if ($id > 0) {
             $iconUrl = self::iconUrl($type, $actorType, $actorId);
-            SoketiRealtime::publishToUser($recipientUserId, 'notification:created', [
+            AsyncDispatcher::queueRealtimeToUser($recipientUserId, 'notification:created', [
                 'id' => (string) $id,
                 'type' => sanitize_key($type),
                 'title' => sanitize_text_field($title),
@@ -225,15 +224,13 @@ final class NotificationService
     /** @param array<string,mixed> $data */
     private static function sendPushToUser(int $userId, string $title, string $body, ?string $deepLink, ?string $iconUrl, array $data): void
     {
-        NativeWebPush::sendToUser($userId, $title, $body, $deepLink, $iconUrl, $data);
-        NativeExpoPush::sendToUsers([$userId], $title, $body, $deepLink, $data);
+        AsyncDispatcher::queuePush([$userId], $title, $body, $deepLink, $iconUrl, $data);
     }
 
     /** @param int[] $userIds @param array<string,mixed> $data */
     private static function sendPushToUsers(array $userIds, string $title, string $body, ?string $deepLink, ?string $iconUrl, array $data): void
     {
-        NativeWebPush::sendToUsers($userIds, $title, $body, $deepLink, $iconUrl, $data);
-        NativeExpoPush::sendToUsers($userIds, $title, $body, $deepLink, $data);
+        AsyncDispatcher::queuePush($userIds, $title, $body, $deepLink, $iconUrl, $data);
     }
 
     /** @return int[] */

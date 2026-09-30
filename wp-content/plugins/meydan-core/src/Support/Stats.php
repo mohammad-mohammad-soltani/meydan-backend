@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Support;
 
+use Meydan\Core\Timeline\NarrativeFeatureStore;
+
 final class Stats
 {
     public static function narrative(int $id): array
@@ -63,6 +65,10 @@ final class Stats
             $id,
             $delta
         ));
+        // Keeps Timeline ranking's pre-scored cache from drifting between
+        // NarrativeFeatureRefreshCron passes — a fresh like/comment/share
+        // shows up in ranking immediately instead of within the next ~25min cycle.
+        NarrativeFeatureStore::bumpStat($id, $field, $delta);
     }
 
     public static function incrementContent(int $id, string $field, int $delta = 1): void
@@ -100,6 +106,15 @@ final class Stats
         $sql = "INSERT INTO {$table} (narrative_id, views, updated_at) VALUES " . implode(',', $values) .
             ' ON DUPLICATE KEY UPDATE views = views + 1, updated_at = UTC_TIMESTAMP()';
         $wpdb->query($wpdb->prepare($sql, ...$args));
+
+        // Same reasoning as incrementNarrative()'s bumpStat call, batched: one
+        // UPDATE for the whole served page instead of one per narrative.
+        $featuresTable = $wpdb->prefix . 'meydan_narrative_features';
+        $marks = implode(',', array_fill(0, count($ids), '%d'));
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$featuresTable} SET views = views + 1 WHERE narrative_id IN ({$marks})",
+            ...$ids
+        ));
     }
 
     public static function correct(string $type, int $id, array $values): bool

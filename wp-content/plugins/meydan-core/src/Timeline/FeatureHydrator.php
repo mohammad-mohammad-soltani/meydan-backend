@@ -5,50 +5,88 @@ declare(strict_types=1);
 namespace Meydan\Core\Timeline;
 
 use Meydan\Core\Support\Affinity;
-use Meydan\Core\Support\Stats;
 use Meydan\Core\Support\Viewer;
 
 final class FeatureHydrator
 {
-    /** @param array<int,array{id:int,source:string}> $candidates */
+    /**
+     * Turns raw candidates into ranking feature vectors. Structural,
+     * viewer-independent data (actor, locality, media, engagement counts)
+     * comes from NarrativeFeatureStore's pre-scored cache in a single query;
+     * only the genuinely viewer-specific signals — affinity and
+     * recently-served — are queried here, and both are batched across the
+     * whole candidate set rather than looped per candidate.
+     *
+     * @param array<int,array{id:int,source:string}> $candidates
+     */
     public function hydrate(Viewer $viewer, array $candidates): array
     {
-        global $wpdb;
-        $recent = [];
-        if ($candidates) {
-            $viewerId = $viewer->id;
-            $rows = $wpdb->get_col($wpdb->prepare(
-                "SELECT narrative_id FROM {$wpdb->prefix}meydan_served_history WHERE viewer_type=%s AND viewer_id=%s AND served_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 24 HOUR)",
-                $viewer->type, $viewerId
-            ));
-            $recent = array_fill_keys(array_map('intval',$rows ?: []), true);
+        if (!$candidates) {
+            return [];
         }
-        $out=[];
+
+        $ids = array_values(array_unique(array_map(
+            static fn(array $c): int => (int) $c['id'],
+            $candidates,
+        )));
+
+        $features = NarrativeFeatureStore::ensureFresh($ids);
+
+        global $wpdb;
+        $marks = implode(',', array_fill(0, count($ids), '%d'));
+        $recentRows = $wpdb->get_col($wpdb->prepare(
+            "SELECT narrative_id FROM {$wpdb->prefix}meydan_served_history
+             WHERE viewer_type=%s AND viewer_id=%s AND served_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 24 HOUR)
+               AND narrative_id IN ({$marks})",
+            $viewer->type,
+            $viewer->id,
+            ...$ids
+        ));
+        $recent = array_fill_keys(array_map('intval', $recentRows ?: []), true);
+
+        $affinity = [];
+        if ($viewer->isAuthenticated()) {
+            $actors = [];
+            foreach ($features as $row) {
+                $actors[] = ['type' => (string) $row['actor_type'], 'id' => (int) $row['actor_id']];
+            }
+            $affinity = Affinity::normalizedBatch((int) $viewer->userId, $actors);
+        }
+
+        $out = [];
         foreach ($candidates as $candidate) {
-            $post=get_post($candidate['id']);
-            if (!$post || $post->post_status !== 'publish') continue;
-            $actorType=(string)get_post_meta($post->ID,'meydan_author_actor_type',true);
-            $actorId=(int)get_post_meta($post->ID,'meydan_author_actor_id',true);
-            $stats=Stats::narrative((int)$post->ID);
-            $age=max(0.0,(time()-strtotime($post->post_date_gmt.' UTC'))/3600);
-            $eng=$stats['likes']+2*$stats['reposts']+2.5*$stats['comments']+1.5*$stats['shares'];
-            $exposure=max(25.0,(float)$stats['views']);
-            $city=(int)get_post_meta($post->ID,'meydan_city_id',true);
-            $province=(int)get_post_meta($post->ID,'meydan_province_id',true);
-            $locality=($viewer->cityId && $city===$viewer->cityId)?1.0:(($viewer->provinceId && $province===$viewer->provinceId)?0.5:0.0);
-            $attachments=(array)get_post_meta($post->ID,'meydan_attachments',true);
-            $hasMedia=$attachments!==[];
-            $out[]=[
-                'id'=>(int)$post->ID,'source'=>$candidate['source'],'actor_type'=>$actorType,'actor_id'=>$actorId,
-                'affinity'=>$viewer->isAuthenticated()?Affinity::normalized($viewer->userId,$actorType,$actorId):0.0,
-                'recency'=>exp(-$age/18.0),
-                'engagement_quality'=>min(1.0,$eng/$exposure),
-                'locality'=>$locality,
-                'media_affinity'=>$hasMedia?0.5:0.0,
-                'media_reflection_boost'=>(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}meydan_media_reflections WHERE narrative_id=%d AND status='published'",$post->ID))>0?1.0:0.0,
-                'initiative_boost'=>(int)get_post_meta($post->ID,'meydan_initiative_id',true)>0?1.0:0.0,
-                'exploration_boost'=>$candidate['source']==='exploration'?1.0:0.0,
-                'recently_served'=>isset($recent[(int)$post->ID])?1.0:0.0,
+            $id = (int) $candidate['id'];
+            $row = $features[$id] ?? null;
+            // Unpublished/deleted since the candidate pool was built.
+            if ($row === null) {
+                continue;
+            }
+
+            $actorType = (string) $row['actor_type'];
+            $actorId = (int) $row['actor_id'];
+            $age = max(0.0, (time() - strtotime((string) $row['post_date_gmt'] . ' UTC')) / 3600);
+            $eng = (int) $row['likes'] + 2 * (int) $row['reposts'] + 2.5 * (int) $row['comments'] + 1.5 * (int) $row['shares'];
+            $exposure = max(25.0, (float) $row['views']);
+            $city = (int) $row['city_id'];
+            $province = (int) $row['province_id'];
+            $locality = ($viewer->cityId && $city === $viewer->cityId)
+                ? 1.0
+                : (($viewer->provinceId && $province === $viewer->provinceId) ? 0.5 : 0.0);
+
+            $out[] = [
+                'id' => $id,
+                'source' => $candidate['source'],
+                'actor_type' => $actorType,
+                'actor_id' => $actorId,
+                'affinity' => $affinity[$actorType . ':' . $actorId] ?? 0.0,
+                'recency' => exp(-$age / 18.0),
+                'engagement_quality' => min(1.0, $eng / $exposure),
+                'locality' => $locality,
+                'media_affinity' => ((int) $row['has_media']) ? 0.5 : 0.0,
+                'media_reflection_boost' => ((int) $row['media_reflection_boost']) ? 1.0 : 0.0,
+                'initiative_boost' => ((int) $row['initiative_boost']) ? 1.0 : 0.0,
+                'exploration_boost' => $candidate['source'] === 'exploration' ? 1.0 : 0.0,
+                'recently_served' => isset($recent[$id]) ? 1.0 : 0.0,
             ];
         }
         return $out;

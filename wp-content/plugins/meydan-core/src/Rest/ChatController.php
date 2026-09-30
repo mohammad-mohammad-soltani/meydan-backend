@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Rest;
 
-use Meydan\Core\Notifications\NativeWebPush;
+use Meydan\Core\Notifications\AsyncDispatcher;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\ChatRepository;
 use Meydan\Core\Support\Response;
@@ -31,7 +31,7 @@ final class ChatController extends BaseController
         $input = $this->json($request);
         $result = $this->chat->createDirect(get_current_user_id(), (int) ($input['participant_user_id'] ?? 0));
         if ($result instanceof WP_Error) return $this->error($result);
-        SoketiRealtime::publishToConversation((int) $result['id'], 'conversation:updated', ['conversationId' => (string) $result['id']]);
+        AsyncDispatcher::queueRealtimeToConversation((int) $result['id'], 'conversation:updated', ['conversationId' => (string) $result['id']]);
         return Response::ok($result, [], 201);
     }
 
@@ -80,8 +80,8 @@ final class ChatController extends BaseController
         $senderId = get_current_user_id();
         $result = $this->chat->send($conversationId, $senderId, $this->json($request));
         if ($result instanceof WP_Error) return $this->error($result);
-        SoketiRealtime::publishToConversation($conversationId, 'message:created', $result);
-        SoketiRealtime::publishToConversation($conversationId, 'conversation:updated', [
+        AsyncDispatcher::queueRealtimeToConversation($conversationId, 'message:created', $result);
+        AsyncDispatcher::queueRealtimeToConversation($conversationId, 'conversation:updated', [
             'conversationId' => (string) $conversationId,
             'message' => $result,
         ]);
@@ -94,7 +94,7 @@ final class ChatController extends BaseController
         $input = $this->json($request);
         $result = $this->chat->edit((int) $request['id'], get_current_user_id(), (string) ($input['body'] ?? ''));
         if ($result instanceof WP_Error) return $this->error($result);
-        SoketiRealtime::publishToConversation((int) $result['conversation_id'], 'message:updated', $result);
+        AsyncDispatcher::queueRealtimeToConversation((int) $result['conversation_id'], 'message:updated', $result);
         return Response::ok($result);
     }
 
@@ -106,7 +106,7 @@ final class ChatController extends BaseController
         if ($existing instanceof WP_Error) return $this->error($existing);
         $result = $this->chat->delete($messageId, $userId);
         if ($result instanceof WP_Error) return $this->error($result);
-        SoketiRealtime::publishToConversation((int) $existing['conversation_id'], 'message:deleted', [
+        AsyncDispatcher::queueRealtimeToConversation((int) $existing['conversation_id'], 'message:deleted', [
             'messageId' => (string) $messageId,
             'conversationId' => (string) $existing['conversation_id'],
         ]);
@@ -139,7 +139,7 @@ final class ChatController extends BaseController
         $userId = get_current_user_id();
         $result = $this->chat->markRead($conversationId, $userId, $messageId);
         if ($result instanceof WP_Error) return $this->error($result);
-        SoketiRealtime::publishToConversation($conversationId, 'receipt:read', [
+        AsyncDispatcher::queueRealtimeToConversation($conversationId, 'receipt:read', [
             'conversationId' => (string) $conversationId,
             'messageId' => (string) $messageId,
             'userId' => (string) $userId,
@@ -175,11 +175,15 @@ final class ChatController extends BaseController
             return $this->error(new WP_Error('chat_not_found', 'گفتگو پیدا نشد.', ['status' => 404]));
         }
         $typing = filter_var($input['typing'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        // High-frequency and disposable (losing one is harmless), so this uses
+        // a non-blocking HTTP call instead of AsyncDispatcher's WP-Cron queue —
+        // queuing every keystroke would hammer the shared `cron` option under
+        // concurrent typists for no benefit over just not waiting on the response.
         SoketiRealtime::publishToConversation($conversationId, 'typing:changed', [
             'conversationId' => (string) $conversationId,
             'userId' => (string) $userId,
             'typing' => $typing,
-        ]);
+        ], false);
         return Response::ok(['typing' => $typing]);
     }
 
@@ -207,7 +211,7 @@ final class ChatController extends BaseController
             $body = $fileName !== '' ? 'فایل: ' . $fileName : 'یک پیام جدید برای شما ارسال شد.';
         }
 
-        NativeWebPush::sendToUsers(
+        AsyncDispatcher::queueWebPushOnly(
             $recipients,
             'پیام جدید',
             mb_substr($name . ': ' . $body, 0, 500),
@@ -225,7 +229,7 @@ final class ChatController extends BaseController
 
     private function publishReaction(array $message): void
     {
-        SoketiRealtime::publishToConversation((int) $message['conversation_id'], 'message:reaction', [
+        AsyncDispatcher::queueRealtimeToConversation((int) $message['conversation_id'], 'message:reaction', [
             'messageId' => (string) $message['id'],
             'conversationId' => (string) $message['conversation_id'],
             'reactions' => array_values((array) ($message['reactions'] ?? [])),
