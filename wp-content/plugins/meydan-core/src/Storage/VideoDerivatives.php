@@ -35,7 +35,7 @@ final class VideoDerivatives
      * ffmpeg reads only the ranges needed for the frame; no persistent copy of
      * the source video is written to the WordPress host.
      *
-     * @return array{key:string,url:string,duration:?float,width:?int,height:?int}|null
+     * @return array{key:string,url:string}|null
      */
     public static function backfill(MediaPipeline $pipeline, string $source, string $videoKey): ?array
     {
@@ -45,14 +45,8 @@ final class VideoDerivatives
         $poster = $temporary . '.jpg';
 
         try {
-            if (!VideoProcessor::makePoster($source, $poster)) return null;
-            $stored = self::uploadPoster($pipeline, $poster, $videoKey);
-            $probe = VideoProcessor::probe($source);
-            return $stored + [
-                'duration' => $probe['duration'],
-                'width' => $probe['width'],
-                'height' => $probe['height'],
-            ];
+            if (!VideoProcessor::makePoster($source, $poster, VideoProcessor::POSTER_TIMESTAMP, VideoProcessor::POSTER_MAX_EDGE, 10)) return null;
+            return self::uploadPoster($pipeline, $poster, $videoKey);
         } finally {
             if (is_file($poster)) @unlink($poster);
         }

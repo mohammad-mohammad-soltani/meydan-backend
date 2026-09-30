@@ -38,7 +38,6 @@ try {
     $backfill = VideoDerivatives::backfill($pipeline, $video, 'production/eitaa/channel/old.mp4');
     if ($backfill === null || $backfill['key'] !== VideoDerivatives::posterKey('production/eitaa/channel/old.mp4')) throw new RuntimeException('old video poster backfill failed');
     if (!is_file($root . '/objects/' . $backfill['key'])) throw new RuntimeException('backfill did not persist the still');
-    if (!$backfill['duration'] || !$backfill['width'] || !$backfill['height']) throw new RuntimeException('backfill did not probe video metadata');
 
     echo "S3 video poster derivative ok\n";
 } finally {

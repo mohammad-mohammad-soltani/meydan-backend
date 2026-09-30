@@ -37,6 +37,7 @@ use Meydan\Core\Support\SquareActivity;
 use Meydan\Core\Support\UserEmails;
 use Meydan\Core\Uploads\UploadCache;
 use Meydan\Core\Storage\WordPressMediaHooks;
+use Meydan\Core\Storage\VideoPosterBackfill;
 
 final class Plugin
 {
@@ -96,6 +97,7 @@ final class Plugin
         // Uploads are immutable by filename; keep their long-lived cache rule in place.
         add_action('init', [UploadCache::class, 'ensure'], 5);
         WordPressMediaHooks::register();
+        VideoPosterBackfill::register();
 
         CampaignCurrentGuard::register();
         GoodAction::register();

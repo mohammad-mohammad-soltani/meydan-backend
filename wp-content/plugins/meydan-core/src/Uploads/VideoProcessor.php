@@ -241,7 +241,7 @@ final class VideoProcessor
      * Extract a JPEG still around second 1, scaled to at most $maxEdge long edge.
      * Falls back to the first frame when the clip is shorter than the timestamp.
      */
-    public static function makePoster(string $file, string $poster, float $timestamp = self::POSTER_TIMESTAMP, int $maxEdge = self::POSTER_MAX_EDGE): bool
+    public static function makePoster(string $file, string $poster, float $timestamp = self::POSTER_TIMESTAMP, int $maxEdge = self::POSTER_MAX_EDGE, int $timeout = 120): bool
     {
         $ffmpeg = self::binaries()['ffmpeg'];
         if ($ffmpeg === null) {
@@ -256,12 +256,13 @@ final class VideoProcessor
             [$code] = self::run([
                 $ffmpeg, '-y', '-hide_banner', '-loglevel', 'error',
                 '-ss', (string) $seek,
+                '-threads', '1',
                 '-i', $file,
                 '-frames:v', '1',
                 '-vf', $filter,
                 '-q:v', (string) self::POSTER_QUALITY,
                 $poster,
-            ], 120);
+            ], $timeout);
 
             if ($code === 0 && is_file($poster) && (int) filesize($poster) > 0) {
                 return true;

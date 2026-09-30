@@ -8,7 +8,7 @@ use Meydan\Core\Storage\AttachmentStorage;
 use Meydan\Core\Storage\StorageFactory;
 use Meydan\Core\Storage\WordPressMediaHooks;
 use Meydan\Core\Storage\S3Storage;
-use Meydan\Core\Storage\VideoDerivatives;
+use Meydan\Core\Storage\VideoPosterBackfill;
 
 use Meydan\Core\Database\Migrations;
 use Meydan\Core\Domain\Registrations;
@@ -46,7 +46,6 @@ final class CliCommand
         $after = max(0, (int) ($assocArgs['after'] ?? 0));
         $limit = max(0, (int) ($assocArgs['limit'] ?? 0));
         $pipeline = WordPressMediaHooks::pipeline();
-        $storage = $pipeline->storage();
         $page = 1;
         $eligible = $created = $failed = 0;
 
@@ -72,15 +71,7 @@ final class CliCommand
                 }
 
                 try {
-                    $poster = VideoDerivatives::backfill($pipeline, $storage->url($key), $key);
-                    if ($poster === null) throw new \RuntimeException('ffmpeg could not extract a frame');
-                    $derivatives = (array) get_post_meta($attachmentId, '_meydan_storage_derivative_keys', true);
-                    $derivatives['poster'] = $poster['key'];
-                    update_post_meta($attachmentId, '_meydan_storage_derivative_keys', $derivatives);
-                    update_post_meta($attachmentId, 'meydan_poster_url', $poster['url']);
-                    foreach (['duration' => 'meydan_video_duration', 'width' => 'meydan_video_width', 'height' => 'meydan_video_height'] as $field => $metaKey) {
-                        if ($poster[$field] !== null) update_post_meta($attachmentId, $metaKey, $poster[$field]);
-                    }
+                    VideoPosterBackfill::processAttachment($attachmentId, $key, $pipeline);
                     $created++;
                     \WP_CLI::log('poster ready for attachment ' . $attachmentId);
                 } catch (\Throwable $error) {

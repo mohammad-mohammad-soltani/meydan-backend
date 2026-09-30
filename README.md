@@ -138,7 +138,16 @@ Remuxed files get a new `ETag`/`Last-Modified`, so clients refetch them once.
 
 The local-upload pass above cannot read S3 originals. On an S3 installation,
 new uploads now get a JPEG poster before their local staging file is removed.
-After deploying this version, generate posters for older S3 videos with:
+On the first run after deployment, WordPress schedules an automatic pass over
+the videos already present at that time. One video is processed per cron run,
+at least 60 seconds apart. It skips existing posters, reuses poster objects
+already on S3, and retries a failure at most three times. The original video
+is read through its public URL and is never downloaded to disk or rewritten;
+only a temporary JPEG is created and removed after upload. The job stops when
+its initial snapshot is complete. WordPress cron needs site traffic or an
+external cron trigger to keep progressing.
+
+To inspect or run the same backfill manually:
 
 ```bash
 docker compose run --rm --entrypoint wp wpcli meydan media-video-posters --dry-run
