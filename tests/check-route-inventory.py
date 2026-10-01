@@ -36,6 +36,7 @@ DELETE /narratives/(?P<id>\\d+)/like
 PUT /narratives/(?P<id>\\d+)/repost
 DELETE /narratives/(?P<id>\\d+)/repost
 POST /narratives/(?P<id>\\d+)/share
+GET /narratives/(?P<id>\\d+)/quotes
 GET /narratives/(?P<id>\\d+)/comments
 POST /narratives/(?P<id>\\d+)/comments
 GET /comments/(?P<id>\\d+)/replies

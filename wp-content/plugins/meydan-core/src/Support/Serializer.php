@@ -57,12 +57,48 @@ final class Serializer
                 'province_id' => (int) get_post_meta($id, 'meydan_province_id', true) ?: null,
                 'city_id' => (int) get_post_meta($id, 'meydan_city_id', true) ?: null,
             ],
+            'quoted_narrative_id' => Quotes::quotedId($id) ?: null,
+            'quoted_narrative' => self::quotedNarrative($id),
             'stats' => Stats::narrative($id),
             'viewer_state' => $viewer->isAuthenticated() ? [
                 'liked' => self::interactionExists($viewer->userId, 'narrative', $id, 'like'),
                 'reposted' => self::interactionExists($viewer->userId, 'narrative', $id, 'repost'),
                 'can_delete' => (int) $post->post_author === $viewer->userId || current_user_can('moderate_meydan_narratives') || current_user_can('manage_options'),
             ] : null,
+        ];
+    }
+
+    /**
+     * The narrative a quote embeds, in a compact one-level shape. A quoted
+     * narrative that was deleted or is hidden from viewers comes back as an
+     * `unavailable` stub so the client can render a placeholder in its place.
+     */
+    private static function quotedNarrative(int $quoteId): ?array
+    {
+        $quotedId = Quotes::quotedId($quoteId);
+        if ($quotedId <= 0) {
+            return null;
+        }
+        $post = get_post($quotedId);
+        if (
+            !$post
+            || $post->post_type !== 'meydan_narrative'
+            || $post->post_status !== 'publish'
+            || !UserAccess::visibleNarrative($quotedId)
+        ) {
+            return ['id' => $quotedId, 'unavailable' => true];
+        }
+        $attachments = get_post_meta($quotedId, 'meydan_attachments', true);
+        $attachments = is_array($attachments) ? array_values(array_filter($attachments, 'is_array')) : [];
+        usort($attachments, static fn(array $a, array $b): int => ((int) ($a['order'] ?? 0)) <=> ((int) ($b['order'] ?? 0)));
+
+        return [
+            'id' => $quotedId,
+            'unavailable' => false,
+            'author' => Actor::fromNarrative($quotedId),
+            'body' => $post->post_content,
+            'published_at' => self::date($post->post_date_gmt),
+            'attachments' => array_values(array_map([self::class, 'attachment'], $attachments)),
         ];
     }
 

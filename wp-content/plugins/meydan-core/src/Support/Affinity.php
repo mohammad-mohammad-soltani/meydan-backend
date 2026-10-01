@@ -10,6 +10,7 @@ final class Affinity
         'follow' => 8.0,
         'comment' => 5.0,
         'repost' => 4.0,
+        'quote' => 4.5,
         'share' => 3.0,
         'like' => 2.0,
         'detail_open' => 1.0,

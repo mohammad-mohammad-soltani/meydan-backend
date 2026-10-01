@@ -34,6 +34,7 @@ final class Stats
             'likes' => $likes,
             'comments' => $comments,
             'reposts' => $reposts,
+            'quotes' => (int) ($row['quotes'] ?? 0),
             'shares' => (int) ($row['shares'] ?? 0),
         ];
     }
@@ -53,7 +54,7 @@ final class Stats
 
     public static function incrementNarrative(int $id, string $field, int $delta = 1): void
     {
-        if (!in_array($field, ['views', 'likes', 'comments', 'reposts', 'shares'], true) || $id <= 0) {
+        if (!in_array($field, ['views', 'likes', 'comments', 'reposts', 'quotes', 'shares'], true) || $id <= 0) {
             return;
         }
         global $wpdb;
@@ -68,7 +69,8 @@ final class Stats
         // Keeps Timeline ranking's pre-scored cache from drifting between
         // NarrativeFeatureRefreshCron passes — a fresh like/comment/share
         // shows up in ranking immediately instead of within the next ~25min cycle.
-        NarrativeFeatureStore::bumpStat($id, $field, $delta);
+        // A quote is ranked like a repost; the feature cache has no separate column.
+        NarrativeFeatureStore::bumpStat($id, $field === 'quotes' ? 'reposts' : $field, $delta);
     }
 
     public static function incrementContent(int $id, string $field, int $delta = 1): void
@@ -121,7 +123,7 @@ final class Stats
     {
         global $wpdb;
         if ($type === 'narrative') {
-            $allowed = ['views', 'likes', 'comments', 'reposts', 'shares'];
+            $allowed = ['views', 'likes', 'comments', 'reposts', 'quotes', 'shares'];
             $table = $wpdb->prefix . 'meydan_narrative_stats';
             $pk = 'narrative_id';
         } elseif ($type === 'content') {

@@ -21,6 +21,7 @@ final class SettingsPage
     private const NOTIFICATION_LABELS = [
         'like' => 'پسند روایت',
         'repost' => 'بازنشر روایت',
+        'quote' => 'نقل‌قول روایت',
         'follow' => 'دنبال‌کردن',
         'comment' => 'نظر جدید',
         'comment_reply' => 'پاسخ به نظر',

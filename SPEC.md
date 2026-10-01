@@ -905,6 +905,22 @@ PUT    /narratives/{id}/repost
 DELETE /narratives/{id}/repost
 ```
 
+## Quote
+
+A quote is a regular narrative with its own text/attachments that embeds another narrative.
+
+```http
+POST /narratives
+{ "body": "...", "quoted_narrative_id": 123 }
+
+GET /narratives/{id}/quotes      # public, cursor paginated
+```
+
+Responses carry `quoted_narrative_id`, a compact one-level `quoted_narrative`
+(`{id, unavailable, author, body, published_at, attachments}`; `unavailable: true`
+when the original was deleted or hidden) and `stats.quotes`. The counter follows the
+quote's publish state. The quoted author receives a `quote` notification.
+
 ---
 
 # 27. Follow API

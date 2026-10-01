@@ -9,7 +9,7 @@ use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.4.4';
+    public const VERSION = '1.4.5';
 
     /**
      * Legacy speaker-post meta holding the linked user id.
@@ -116,6 +116,7 @@ final class Migrations
             likes BIGINT UNSIGNED NOT NULL DEFAULT 0,
             comments BIGINT UNSIGNED NOT NULL DEFAULT 0,
             reposts BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            quotes BIGINT UNSIGNED NOT NULL DEFAULT 0,
             shares BIGINT UNSIGNED NOT NULL DEFAULT 0,
             updated_at DATETIME NOT NULL,
             PRIMARY KEY (narrative_id)

@@ -16,6 +16,7 @@ final class NotificationService
     public const TEMPLATES = [
         'like' => ['title' => 'پسند جدید', 'body' => '{actor} روایت شما را پسندید.'],
         'repost' => ['title' => 'بازنشر جدید', 'body' => '{actor} روایت شما را بازنشر کرد.'],
+        'quote' => ['title' => 'نقل‌قول جدید', 'body' => '{actor} روایت شما را نقل‌قول کرد.'],
         'follow' => ['title' => 'دنبال‌کننده جدید', 'body' => '{actor} شما را دنبال کرد.'],
         'comment' => ['title' => 'نظر جدید', 'body' => '{actor} روی روایت شما نظر گذاشت.'],
         'comment_reply' => ['title' => 'پاسخ جدید', 'body' => '{actor} به نظر شما پاسخ داد.'],
