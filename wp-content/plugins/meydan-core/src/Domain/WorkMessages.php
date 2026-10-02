@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Domain;
 
-use Meydan\Core\Notifications\AsyncDispatcher;
 use Meydan\Core\Notifications\NotificationService;
 use Meydan\Core\Support\Actor;
 use WP_Error;
@@ -513,10 +512,12 @@ final class WorkMessages
         } else {
             $userIds = self::memberIds($conversationId);
         }
-        AsyncDispatcher::queueRealtimeToUsers($userIds, $event, [
+        // Fire-and-forget: queueing a WP-Cron job per message rewrites the shared `cron`
+        // option and spawns a loopback request on every send.
+        \Meydan\Core\Support\SoketiRealtime::publishToUsers($userIds, $event, [
             'workId' => (string) $conversationId,
             'messageId' => (string) $messageId,
-        ]);
+        ], false);
     }
 
     /**

@@ -645,7 +645,7 @@ final class WorkActions
         $label = trim(mb_substr(sanitize_text_field($label), 0, 40));
         global $wpdb;
         $wpdb->update(WorkGroups::table('participants'), ['label' => $label === '' ? null : $label], ['conversation_id' => $convId, 'user_id' => $targetId]);
-        \Meydan\Core\Notifications\AsyncDispatcher::queueRealtimeToUsers(WorkMessages::memberIds($convId), 'work:updated', ['workId' => (string) $convId]);
+        \Meydan\Core\Support\SoketiRealtime::publishToUsers(WorkMessages::memberIds($convId), 'work:updated', ['workId' => (string) $convId], false);
         return ['label' => $label === '' ? null : $label];
     }
 
@@ -658,7 +658,7 @@ final class WorkActions
         $convId = (int) $conv['id'];
         $members = WorkMessages::memberIds($convId);
         WorkGroups::delete($convId, (int) ($conv['initiative_id'] ?? 0));
-        \Meydan\Core\Notifications\AsyncDispatcher::queueRealtimeToUsers($members, 'work:updated', ['workId' => (string) $convId, 'deleted' => true]);
+        \Meydan\Core\Support\SoketiRealtime::publishToUsers($members, 'work:updated', ['workId' => (string) $convId, 'deleted' => true], false);
         return true;
     }
 
@@ -685,7 +685,7 @@ final class WorkActions
         $wpdb->update(WorkGroups::table('participants'), ['role' => $role], ['conversation_id' => $convId, 'user_id' => $targetId]);
         WorkMessages::system($convId, $actorId, $role === WorkGroups::ROLE_ADMIN ? 'role_admin' : 'role_member', 0, $targetId);
         WorkMessages::notify($conv, $actorId, 'work_role_changed', [$targetId], 0, '', ['role' => $role], 'work:role:' . $convId . ':' . $targetId . ':' . time());
-        \Meydan\Core\Notifications\AsyncDispatcher::queueRealtimeToUsers([$targetId], 'work:updated', ['workId' => (string) $convId]);
+        \Meydan\Core\Support\SoketiRealtime::publishToUsers([$targetId], 'work:updated', ['workId' => (string) $convId], false);
         return true;
     }
 }

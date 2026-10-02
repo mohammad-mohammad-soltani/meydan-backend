@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Domain;
 
-use Meydan\Core\Notifications\AsyncDispatcher;
 use Meydan\Core\Support\Cursor;
 use WP_Error;
 
@@ -431,7 +430,7 @@ final class WorkQueries
         if ($update) {
             global $wpdb;
             $wpdb->update(self::t('conversations'), $update, ['id' => $conversationId]);
-            AsyncDispatcher::queueRealtimeToUsers(WorkMessages::memberIds($conversationId), 'work:updated', ['workId' => (string) $conversationId]);
+            \Meydan\Core\Support\SoketiRealtime::publishToUsers(WorkMessages::memberIds($conversationId), 'work:updated', ['workId' => (string) $conversationId], false);
         }
         return self::detail($conversationId, $userId);
     }
