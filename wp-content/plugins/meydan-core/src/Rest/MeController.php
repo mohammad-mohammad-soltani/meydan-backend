@@ -452,21 +452,17 @@ final class MeController extends BaseController
 
     private function actorNarratives(string $type, int $id, WP_REST_Request $r)
     {
+        if ($type === 'square') {
+            // Posts are indexed by author; the old nested OR over postmeta
+            // joined it four times and took seconds on a busy account.
+            $ownerId = Actor::squareOwnerUserId($id);
+            if ($ownerId > 0) return ProfileNarrativePage::listByAuthor($ownerId, $r, $type . ':' . $id);
+        }
         $meta = [
             'relation' => 'AND',
             ['key' => 'meydan_author_actor_type', 'value' => $type],
             ['key' => 'meydan_author_actor_id', 'value' => $id],
         ];
-        if ($type === 'square') {
-            $ownerId = Actor::squareOwnerUserId($id);
-            if ($ownerId > 0) {
-                $meta = [
-                    'relation' => 'OR',
-                    ['relation' => 'AND', ['key' => 'meydan_author_actor_type', 'value' => 'square'], ['key' => 'meydan_author_actor_id', 'value' => $id]],
-                    ['relation' => 'AND', ['key' => 'meydan_author_actor_type', 'value' => 'user'], ['key' => 'meydan_author_actor_id', 'value' => $ownerId]],
-                ];
-            }
-        }
         return ProfileNarrativePage::list($meta, $r, $type . ':' . $id);
 
     }

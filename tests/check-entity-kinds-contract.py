@@ -66,3 +66,16 @@ me = (root / 'Rest/MeController.php').read_text(encoding='utf-8')
 assert "self::r('/me/profile-page','GET',[$me,'profilePage'])" in routes
 assert 'public function profilePage(WP_REST_Request $r)' in me
 assert 'public static function mediaReflectionTotal' in sq
+
+# Own-profile speed: author-indexed queries instead of postmeta OR joins; one approval path.
+adm = (root / 'Admin/Admin.php').read_text(encoding='utf-8')
+asc = (root / 'Rest/AdminSquareController.php').read_text(encoding='utf-8')
+assert "ProfileNarrativePage::listByAuthor($ownerId, $r, $type . ':' . $id)" in me
+assert "'relation' => 'OR'" not in me.split('function actorNarratives')[1].split('ProfileNarrativePage::list($meta')[0]
+mrt = sq.split('function mediaReflectionTotal')[1].split('set_transient')[0]
+assert 'postmeta' not in mrt and 'p.post_author=%d' in mrt
+cnt = ser.split('function squareNarrativeCount')[1].split('set_transient')[0]
+assert 'WP_Query' not in cnt and 'post_author = %d' in cnt
+assert 'EntityKinds::syncOutletStatus($id,$status)' in adm and 'syncOutletStatus' not in asc
+assert "'kind' => \\Meydan\\Core\\Domain\\EntityKinds::kindOf($id)" in ser
+print('own profile perf contract ok')

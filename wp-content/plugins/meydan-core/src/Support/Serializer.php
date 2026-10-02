@@ -291,6 +291,7 @@ final class Serializer
             'description' => (string) get_user_meta(Actor::squareOwnerUserId($id), 'meydan_about', true) ?: $post->post_content,
             'avatar_url' => Actor::squareAvatarUrl($id),
             'cover_url' => Actor::squareCoverUrl($id),
+            'kind' => \Meydan\Core\Domain\EntityKinds::kindOf($id),
             'verified' => true,
             'approval_status' => (string) get_post_meta($id, 'meydan_approval_status', true) ?: 'pending_verification',
             'eitaa_channel' => Channels::value(Actor::squareOwnerUserId($id), 'eitaa'),
@@ -317,17 +318,12 @@ final class Serializer
             return (int) $cached;
         }
 
-        $query = new \WP_Query([
-            'post_type' => 'meydan_narrative',
-            'post_status' => 'publish',
-            'meta_query' => [
-                ['key' => 'meydan_author_actor_type', 'value' => 'square'],
-                ['key' => 'meydan_author_actor_id', 'value' => $squareId],
-            ],
-            'fields' => 'ids',
-            'posts_per_page' => 1,
-        ]);
-        $count = (int) $query->found_posts;
+        global $wpdb;
+        $ownerId = Actor::squareOwnerUserId($squareId);
+        $count = $ownerId > 0 ? (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_author = %d AND post_type = 'meydan_narrative' AND post_status = 'publish'",
+            $ownerId
+        )) : 0;
         set_transient($key, $count, MINUTE_IN_SECONDS);
         return $count;
     }

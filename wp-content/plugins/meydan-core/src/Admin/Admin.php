@@ -620,6 +620,7 @@ JS
   elseif($status==='rejected'){update_post_meta($id,'meydan_verified',0);wp_update_post(['ID'=>$id,'post_status'=>'pending']);}
   elseif($status==='suspended'){update_post_meta($id,'meydan_verified',0);wp_update_post(['ID'=>$id,'post_status'=>'draft']);}
   AuditLogger::log('square_'.$status,'square',$id,$before,Serializer::square($id));
+  \Meydan\Core\Domain\EntityKinds::syncOutletStatus($id,$status);
   $owner=(int)get_post_meta($id,'meydan_owner_user_id',true);
   if($owner&&(in_array($status,['approved','rejected'],true)))(new NotificationService())->fromTemplate($owner,$status==='approved'?'square_verified':'square_rejected',null,null,'square',$id,'/square/'.$id);
  }

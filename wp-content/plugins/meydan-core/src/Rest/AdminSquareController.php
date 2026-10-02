@@ -127,7 +127,6 @@ final class AdminSquareController extends BaseController
         $status = sanitize_key((string) ($p['status'] ?? ''));
         if (!in_array($status, SquareAdminService::STATUSES, true)) return Response::error('validation_failed', 'وضعیت انتخاب‌شده معتبر نیست.', 422, ['status' => 'invalid']);
         Admin::applySquareStatus($id, $status, sanitize_textarea_field((string) ($p['admin_note'] ?? '')));
-        EntityKinds::syncOutletStatus($id, $status);
         return Response::ok($this->adminSquare(get_post($id)));
     }
 
