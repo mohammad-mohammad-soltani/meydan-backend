@@ -46,7 +46,8 @@ final class AsyncDispatcher
         if ($userId <= 0) {
             return;
         }
-        wp_schedule_single_event(time(), self::REALTIME_USER_HOOK, [$userId, $event, $payload]);
+        // Direct fire-and-forget: a cron job per event rewrites the shared `cron` option.
+        SoketiRealtime::publishToUsers([$userId], $event, $payload, false);
     }
 
     /**
@@ -59,8 +60,8 @@ final class AsyncDispatcher
     public static function queueRealtimeToUsers(array $userIds, string $event, array $payload): void
     {
         $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds), static fn(int $id): bool => $id > 0)));
-        foreach (array_chunk($userIds, 1000) as $chunk) {
-            wp_schedule_single_event(time(), self::REALTIME_USERS_HOOK, [$chunk, $event, $payload]);
+        if ($userIds) {
+            SoketiRealtime::publishToUsers($userIds, $event, $payload, false);
         }
     }
 
@@ -70,7 +71,7 @@ final class AsyncDispatcher
         if ($conversationId <= 0) {
             return;
         }
-        wp_schedule_single_event(time(), self::REALTIME_CONVERSATION_HOOK, [$conversationId, $event, $payload]);
+        SoketiRealtime::publishToConversation($conversationId, $event, $payload, false);
     }
 
     /**

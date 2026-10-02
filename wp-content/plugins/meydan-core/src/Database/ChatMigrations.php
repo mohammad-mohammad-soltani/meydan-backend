@@ -6,7 +6,7 @@ namespace Meydan\Core\Database;
 
 final class ChatMigrations
 {
-    private const VERSION = '1.2.2';
+    private const VERSION = '1.2.3';
 
     public static function maybeRun(): void
     {
@@ -192,7 +192,11 @@ final class ChatMigrations
 
         $participants = "{$p}participants";
         $addColumns($participants, ['role' => "VARCHAR(16) NOT NULL DEFAULT 'member'", 'label' => 'VARCHAR(40) NULL']);
-        $addKeys($participants, ['conversation_role' => 'KEY conversation_role (conversation_id, role)']);
+        $addKeys($participants, [
+            'conversation_role' => 'KEY conversation_role (conversation_id, role)',
+            // «my works» filters/joins: viewer's live memberships without touching the table rows.
+            'user_live' => 'KEY user_live (user_id, archived_at, conversation_id)',
+        ]);
 
         $messages = "{$p}messages";
         $addColumns($messages, [
@@ -210,6 +214,10 @@ final class ChatMigrations
             'reply_to' => 'KEY reply_to (reply_to_id)',
             'thread_root' => 'KEY thread_root (thread_root_id)',
             'task_status_due' => 'KEY task_status_due (kind, task_status, due_at)',
+            // progress/stats per work: kind + status served from the index alone.
+            'conversation_task' => 'KEY conversation_task (conversation_id, kind, task_status, due_at)',
+            // unread counts: sender filter + id range inside a conversation.
+            'conversation_sender' => 'KEY conversation_sender (conversation_id, id, sender_user_id)',
         ]);
     }
 }

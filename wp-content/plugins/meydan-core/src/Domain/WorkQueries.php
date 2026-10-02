@@ -14,6 +14,7 @@ use WP_Error;
 final class WorkQueries
 {
     public const PAGE = 20;
+    private const UNREAD_CAP = 99;
 
     private static function t(string $name): string
     {
@@ -156,24 +157,26 @@ final class WorkQueries
         $unread = [];
         $mentionUnread = [];
         if ($joinedIds) {
-            $jm = WorkMessages::marks($joinedIds);
+            // Capped per work (99+): a never-read, busy room must not make the list scan its whole history.
             $audience = self::t('message_audience');
-            foreach ($wpdb->get_results($wpdb->prepare(
-                "SELECT m.conversation_id, COUNT(*) AS n FROM {$m} m INNER JOIN {$p} pp ON pp.conversation_id=m.conversation_id AND pp.user_id=%d
-                 WHERE m.conversation_id IN ({$jm}) AND m.id>COALESCE(pp.last_read_message_id,0) AND m.sender_user_id<>%d AND m.kind<>'system' AND m.deleted_at IS NULL
-                 AND (m.is_private=0 OR pp.role IN ('owner','admin') OR EXISTS (SELECT 1 FROM {$audience} au WHERE au.message_id=COALESCE(m.thread_root_id,m.id) AND au.user_id=%d))
-                 GROUP BY m.conversation_id",
-                ...array_merge([$uid], $joinedIds, [$uid, $uid])
-            ), ARRAY_A) ?: [] as $r) {
-                $unread[(int) $r['conversation_id']] = (int) $r['n'];
+            $cap = self::UNREAD_CAP;
+            $unreadParts = [];
+            $mentionParts = [];
+            foreach ($joinedIds as $cid) {
+                $cid = (int) $cid;
+                $lastRead = (int) ($viewer[$cid]['last_read'] ?? 0);
+                $role = (string) ($viewer[$cid]['role'] ?? 'member');
+                $privacy = in_array($role, ['owner', 'admin'], true)
+                    ? ''
+                    : " AND (m.is_private=0 OR EXISTS (SELECT 1 FROM {$audience} au WHERE au.message_id=COALESCE(m.thread_root_id,m.id) AND au.user_id={$uid}))";
+                $unreadParts[] = "SELECT {$cid} AS cid, COUNT(*) AS n FROM (SELECT 1 FROM {$m} m WHERE m.conversation_id={$cid} AND m.id>{$lastRead} AND m.sender_user_id<>{$uid} AND m.kind<>'system' AND m.deleted_at IS NULL{$privacy} LIMIT {$cap}) u{$cid}";
+                $mentionParts[] = "SELECT {$cid} AS cid, COUNT(*) AS n FROM (SELECT 1 FROM {$mn} x INNER JOIN {$m} m ON m.id=x.message_id WHERE x.user_id={$uid} AND m.conversation_id={$cid} AND m.id>{$lastRead} AND m.deleted_at IS NULL LIMIT {$cap}) k{$cid}";
             }
-            foreach ($wpdb->get_results($wpdb->prepare(
-                "SELECT m.conversation_id, COUNT(*) AS n FROM {$mn} x INNER JOIN {$m} m ON m.id=x.message_id INNER JOIN {$p} pp ON pp.conversation_id=m.conversation_id AND pp.user_id=x.user_id
-                 WHERE x.user_id=%d AND m.conversation_id IN ({$jm}) AND m.id>COALESCE(pp.last_read_message_id,0) AND m.deleted_at IS NULL GROUP BY m.conversation_id",
-                $uid,
-                ...$joinedIds
-            ), ARRAY_A) ?: [] as $r) {
-                $mentionUnread[(int) $r['conversation_id']] = (int) $r['n'];
+            foreach ($wpdb->get_results(implode(' UNION ALL ', $unreadParts), ARRAY_A) ?: [] as $r) {
+                $unread[(int) $r['cid']] = (int) $r['n'];
+            }
+            foreach ($wpdb->get_results(implode(' UNION ALL ', $mentionParts), ARRAY_A) ?: [] as $r) {
+                $mentionUnread[(int) $r['cid']] = (int) $r['n'];
             }
         }
 
