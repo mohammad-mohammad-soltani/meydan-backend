@@ -48,3 +48,7 @@ assert "'meydan_approval_status', true) !== 'approved'" in sync  # only approved
 assert "source VARCHAR(16)" in mig and "source_narrative_id" in mig
 assert "'own_post'" in sync
 print('media reflection sync contract ok')
+
+# Quote opt-out and no self-reflection.
+assert "meydan_skip_media_reflection" in narr and "meydan_skip_media_reflection" in sync
+assert "self::isOwn($quotedId, $sid)" in sync

@@ -52,7 +52,8 @@ final class MediaReflectionSync
         if ($outletId <= 0) return;
         $sid = (int) get_user_meta($userId, 'meydan_square_id', true);
         if ($live) {
-            if (self::isOwn($quotedId, $sid)) return;
+            // A quote of the media's own post is never a reflection, nor one the author opted out of.
+            if (self::isOwn($quotedId, $sid) || get_post_meta($quoteId, 'meydan_skip_media_reflection', true) === '1') return;
             $text = trim(wp_strip_all_tags((string) get_post_field('post_content', $quoteId)));
             $title = $text !== '' ? mb_substr($text, 0, 120) : 'نقل‌قول در ' . get_the_title($outletId);
             self::record($quotedId, $outletId, 'quote', $quoteId, '/posts/' . $quoteId, $title, '', $userId);
