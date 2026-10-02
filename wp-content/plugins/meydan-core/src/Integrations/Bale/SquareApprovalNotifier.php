@@ -155,7 +155,7 @@ final class SquareApprovalNotifier
             }
         }
 
-        $square = Serializer::square($squareId);
+        $square = Serializer::entity($squareId);
         $location = (array) ($square['location'] ?? []);
         $address = trim((string) ($location['address'] ?? ''));
         if ($address !== '') {
