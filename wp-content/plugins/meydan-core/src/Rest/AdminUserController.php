@@ -46,7 +46,7 @@ final class AdminUserController extends BaseController
         $perPage = min(100, max(1, (int) ($r->get_param('per_page') ?: 20)));
         $role = sanitize_key((string) $r->get_param('role'));
         $status = sanitize_key((string) $r->get_param('status'));
-        if ($role !== '' && !in_array($role, self::ROLES, true)) return Response::error('validation_failed', 'نقش معتبر نیست.', 422);
+        if ($role !== '' && !in_array($role, self::ROLES, true) && !isset(\Meydan\Core\Domain\EntityKinds::ROLE_LABELS[$role])) return Response::error('validation_failed', 'نقش معتبر نیست.', 422);
         if ($status !== '' && !in_array($status, ['active', 'disabled'], true)) return Response::error('validation_failed', 'وضعیت معتبر نیست.', 422);
         $q = trim((string) $r->get_param('q'));
         $digits = strtr($q, ['۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9']);
@@ -198,6 +198,7 @@ final class AdminUserController extends BaseController
             }
         }
         if (array_key_exists('is_student_or_seminarian', $p) && !is_bool($p['is_student_or_seminarian'])) $fields['is_student_or_seminarian'] = 'invalid';
+        if (array_key_exists('student_kind', $p) && $p['student_kind'] !== null && $p['student_kind'] !== '' && !in_array($p['student_kind'], ['student', 'seminarian'], true)) $fields['student_kind'] = 'invalid';
         if (array_key_exists('email', $p)) {
             $email = sanitize_email((string) $p['email']);
             if ($email !== '' && (!is_email($email) || (($owner = email_exists($email)) && (int) $owner !== $id))) $fields['email'] = 'invalid_or_taken';
@@ -238,6 +239,7 @@ final class AdminUserController extends BaseController
         if (array_key_exists('about', $p)) update_user_meta($id, 'meydan_about', wp_kses_post((string) $p['about']));
         foreach (['province_id', 'city_id', 'avatar_media_id', 'cover_media_id'] as $key) if (array_key_exists($key, $p)) update_user_meta($id, 'meydan_' . $key, max(0, (int) $p[$key]));
         if (array_key_exists('is_student_or_seminarian', $p)) update_user_meta($id, 'meydan_is_student_or_seminarian', $p['is_student_or_seminarian'] ? '1' : '0');
+        if (array_key_exists('student_kind', $p)) update_user_meta($id, 'meydan_student_kind', in_array($p['student_kind'], ['student', 'seminarian'], true) ? $p['student_kind'] : '');
         foreach (['eitaa' => 'eitaa_channel', 'bale' => 'bale_channel'] as $kind => $key) {
             if (array_key_exists($key, $p)) Channels::store($id, $kind, (string) $p[$key]);
         }
@@ -259,12 +261,12 @@ final class AdminUserController extends BaseController
             $square = $this->createSquare($id, $p);
             if (is_wp_error($square)) return $square;
         }
-        if ($oldRole === 'meydan_square' && $role !== 'meydan_square') {
+        if (($oldRole === 'meydan_square' || isset(\Meydan\Core\Domain\EntityKinds::ROLE_LABELS[$oldRole])) && $role !== 'meydan_square') {
             $squareId = Actor::squareId($id);
             if ($squareId) update_post_meta($squareId, 'meydan_disabled_by_owner', '1');
         }
         if ($role === 'meydan_speaker') {
-            if ($oldRole === 'meydan_square' || $oldRole === 'administrator') $user->set_role('meydan_user');
+            if ($oldRole === 'meydan_square' || isset(\Meydan\Core\Domain\EntityKinds::ROLE_LABELS[$oldRole]) || $oldRole === 'administrator') $user->set_role('meydan_user');
             $promoted = SpeakerService::promote($id);
             if (is_wp_error($promoted)) {
                 $user->set_role($oldRole);
@@ -342,6 +344,7 @@ final class AdminUserController extends BaseController
             'cover_media_id' => $cover ?: null, 'cover_url' => $cover ? wp_get_attachment_url($cover) : null,
             'eitaa_channel' => Channels::value($id, 'eitaa'), 'bale_channel' => Channels::value($id, 'bale'),
             'square_id' => Actor::squareId($id) ?: null, 'registered_at' => $user->user_registered,
-            'is_student_or_seminarian' => get_user_meta($id, 'meydan_is_student_or_seminarian', true) === '1'];
+            'is_student_or_seminarian' => get_user_meta($id, 'meydan_is_student_or_seminarian', true) === '1',
+            'student_kind' => ((string) get_user_meta($id, 'meydan_student_kind', true)) ?: null];
     }
 }

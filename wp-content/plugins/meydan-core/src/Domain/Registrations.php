@@ -12,6 +12,9 @@ final class Registrations
 
         add_role('meydan_user', 'Meydan User', ['read' => true, 'read_meydan' => true, 'publish_meydan_narratives' => true, 'edit_own_meydan_narratives' => true]);
         add_role('meydan_square', 'Meydan Square', ['read' => true, 'read_meydan' => true, 'publish_meydan_narratives' => true, 'edit_own_meydan_narratives' => true]);
+        foreach (EntityKinds::ROLE_LABELS as $role => $label) {
+            add_role($role, 'Meydan ' . ucfirst(substr($role, 7)), ['read' => true, 'read_meydan' => true, 'publish_meydan_narratives' => true, 'edit_own_meydan_narratives' => true]);
+        }
         // A speaker is an account type, not an entity: the role carries the
         // same abilities as a regular user and nothing more.
         add_role('meydan_speaker', 'Meydan Speaker', ['read' => true, 'read_meydan' => true, 'publish_meydan_narratives' => true, 'edit_own_meydan_narratives' => true]);

@@ -6,6 +6,7 @@ namespace Meydan\Core\Rest;
 
 use Meydan\Core\Admin\Admin;
 use Meydan\Core\Audit\AuditLogger;
+use Meydan\Core\Domain\EntityKinds;
 use Meydan\Core\Domain\SquareAdminService;
 use Meydan\Core\Support\Handles;
 use Meydan\Core\Domain\SquareDeletionService;
@@ -26,6 +27,13 @@ final class AdminSquareController extends BaseController
         if ($q = trim((string) $r->get_param('q'))) $args['s'] = $q;
         $meta = [];
         if ($status = sanitize_key((string) $r->get_param('status'))) $meta[] = ['key' => 'meydan_approval_status', 'value' => $status];
+        if ($kind = sanitize_key((string) $r->get_param('kind'))) {
+            if (!EntityKinds::valid($kind)) return Response::error('validation_failed', 'نوع معتبر نیست.', 422, ['kind' => 'invalid']);
+            // Legacy squares have no kind meta and count as `square`.
+            $meta[] = $kind === EntityKinds::SQUARE
+                ? ['relation' => 'OR', ['key' => 'meydan_entity_kind', 'compare' => 'NOT EXISTS'], ['key' => 'meydan_entity_kind', 'value' => 'square']]
+                : ['key' => 'meydan_entity_kind', 'value' => $kind];
+        }
         if ($r->has_param('verified')) $meta[] = ['key' => 'meydan_verified', 'value' => $this->bool($r->get_param('verified')) ? '1' : '0'];
         global $wpdb;
         $province = (int) $r->get_param('province_id');
@@ -119,6 +127,26 @@ final class AdminSquareController extends BaseController
         $status = sanitize_key((string) ($p['status'] ?? ''));
         if (!in_array($status, SquareAdminService::STATUSES, true)) return Response::error('validation_failed', 'وضعیت انتخاب‌شده معتبر نیست.', 422, ['status' => 'invalid']);
         Admin::applySquareStatus($id, $status, sanitize_textarea_field((string) ($p['admin_note'] ?? '')));
+        EntityKinds::syncOutletStatus($id, $status);
+        return Response::ok($this->adminSquare(get_post($id)));
+    }
+
+    /** Links a media entity to a republishing outlet, or detaches it (`outlet_id` null/0). */
+    public function mediaLink(WP_REST_Request $r)
+    {
+        if (!$this->allowed()) return $this->forbidden();
+        $id = (int) $r['id'];
+        if (get_post_type($id) !== 'meydan_square') return Response::error('not_found', 'مورد پیدا نشد.', 404);
+        $p = $this->json($r);
+        $outletId = (int) ($p['outlet_id'] ?? 0);
+        $before = EntityKinds::linkedOutlet($id) ?: null;
+        if ($outletId > 0) {
+            if (get_post_type($outletId) !== 'meydan_media_outlet') return Response::error('validation_failed', 'رسانه معتبر نیست.', 422, ['outlet_id' => 'invalid']);
+            EntityKinds::link($id, $outletId);
+        } else {
+            EntityKinds::unlink($id);
+        }
+        EntityKinds::audit($outletId > 0 ? 'media_entity_linked' : 'media_entity_unlinked', $id, ['outlet_id' => $before], ['outlet_id' => $outletId ?: null]);
         return Response::ok($this->adminSquare(get_post($id)));
     }
 
@@ -201,6 +229,8 @@ final class AdminSquareController extends BaseController
                 'avatar_url' => Actor::squareAvatarUrl($id) ?: null,
                 'post_status' => (string) $post->post_status,
                 'approval_status' => (string) get_post_meta($id, 'meydan_approval_status', true) ?: 'pending_verification',
+                'kind' => EntityKinds::kindOf($id),
+                'linked_outlet_id' => EntityKinds::linkedOutlet($id) ?: null,
                 'verified' => (bool) get_post_meta($id, 'meydan_verified', true),
                 'owner_user_id' => $ownerId > 0 ? $ownerId : null,
                 'owner' => $owner ? ['id' => $ownerId, 'name' => (string) $owner->display_name] : null,
@@ -230,6 +260,8 @@ final class AdminSquareController extends BaseController
         $data['admin_note'] = (string) get_post_meta($id, 'meydan_admin_note', true);
         $data['handle'] = ($ownerId > 0 ? Handles::ofUser($ownerId) : '') ?: (string) get_post_meta($id, 'meydan_handle', true);
         $data['verified'] = (bool) get_post_meta($id, 'meydan_verified', true);
+        $data['kind'] = EntityKinds::kindOf($id);
+        $data['linked_outlet_id'] = EntityKinds::linkedOutlet($id) ?: null;
         return $data;
     }
 
