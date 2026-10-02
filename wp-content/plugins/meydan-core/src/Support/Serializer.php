@@ -423,13 +423,35 @@ final class Serializer
         ];
     }
 
+    /** @var array<int,array<int,array<string,mixed>>> request-local rows, filled in bulk by primeMediaReflections(). */
+    private static array $reflectionRows = [];
+
+    /** One query for a whole page of narratives instead of one per narrative. */
+    public static function primeMediaReflections(array $narrativeIds): void
+    {
+        global $wpdb;
+        $ids = array_values(array_unique(array_filter(array_map('intval', $narrativeIds), static fn(int $id): bool => $id > 0 && !isset(self::$reflectionRows[$id]))));
+        if (!$ids) return;
+        foreach ($ids as $id) self::$reflectionRows[$id] = [];
+        $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}meydan_media_reflections WHERE narrative_id IN ($placeholders) AND status = 'published' ORDER BY position ASC, published_at DESC, id DESC",
+            ...$ids
+        ), ARRAY_A);
+        foreach ($rows ?: [] as $row) self::$reflectionRows[(int) $row['narrative_id']][] = $row;
+    }
+
     public static function mediaReflections(int $narrativeId): array
     {
         global $wpdb;
-        $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}meydan_media_reflections WHERE narrative_id = %d AND status = 'published' ORDER BY position ASC, published_at DESC, id DESC",
-            $narrativeId
-        ), ARRAY_A);
+        if (isset(self::$reflectionRows[$narrativeId])) {
+            $rows = self::$reflectionRows[$narrativeId];
+        } else {
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}meydan_media_reflections WHERE narrative_id = %d AND status = 'published' ORDER BY position ASC, published_at DESC, id DESC",
+                $narrativeId
+            ), ARRAY_A);
+        }
         return array_map(static function (array $r): array {
             $outletId = (int) ($r['outlet_id'] ?? 0);
             return [

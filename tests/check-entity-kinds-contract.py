@@ -52,3 +52,11 @@ print('media reflection sync contract ok')
 # Quote opt-out and no self-reflection.
 assert "meydan_skip_media_reflection" in narr and "meydan_skip_media_reflection" in sync
 assert "self::isOwn($quotedId, $sid)" in sync
+
+# Profile performance: batched reflections, cached count, single-runner migration.
+page = (root / 'Rest/ProfileNarrativePage.php').read_text(encoding='utf-8')
+ser = (root / 'Support/Serializer.php').read_text(encoding='utf-8')
+sq = (root / 'Rest/SquareController.php').read_text(encoding='utf-8')
+assert 'Serializer::primeMediaReflections' in page and 'function primeMediaReflections' in ser
+assert "meydan_square_reflections_" in sq
+assert "add_option($lock" in mig

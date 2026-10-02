@@ -31,8 +31,18 @@ final class Migrations
 
     public static function maybeRun(): void
     {
-        if ((string) get_option('meydan_db_version', '') !== self::VERSION) {
+        if ((string) get_option('meydan_db_version', '') === self::VERSION) return;
+        // Only one request runs the migration. Without this every concurrent
+        // request re-ran the full dbDelta pass right after a deploy.
+        $lock = 'meydan_db_migrating';
+        if (!add_option($lock, (string) time(), '', 'no')) {
+            if (time() - (int) get_option($lock, 0) < 120) return;
+            update_option($lock, (string) time(), false);
+        }
+        try {
             self::run();
+        } finally {
+            delete_option($lock);
         }
     }
 

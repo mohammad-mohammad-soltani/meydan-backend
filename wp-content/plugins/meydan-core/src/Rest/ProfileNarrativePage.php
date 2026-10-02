@@ -42,6 +42,7 @@ final class ProfileNarrativePage
         ]);
         $hasMore = count($query->posts) > $limit;
         $posts = array_slice($query->posts, 0, $limit);
+        Serializer::primeMediaReflections(array_map(static fn($post): int => (int) $post->ID, $posts));
         $data = array_values(array_filter(array_map([Serializer::class, 'narrative'], $posts)));
         return Response::ok($data, [
             'next_cursor' => $hasMore ? Cursor::encode(['actor' => $actorKey, 'offset' => $offset + $limit]) : null,
