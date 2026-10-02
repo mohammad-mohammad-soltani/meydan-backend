@@ -62,8 +62,10 @@ final class Quotes
         if ($newStatus === 'publish') {
             Stats::incrementNarrative($quotedId, 'quotes', 1);
             self::notify((int) $post->ID, $quotedId, (int) $post->post_author);
+            \Meydan\Core\Domain\MediaReflectionSync::quote((int) $post->ID, $quotedId, true);
         } elseif ($oldStatus === 'publish') {
             Stats::incrementNarrative($quotedId, 'quotes', -1);
+            \Meydan\Core\Domain\MediaReflectionSync::quote((int) $post->ID, $quotedId, false);
         }
     }
 

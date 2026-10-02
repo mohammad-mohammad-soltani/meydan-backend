@@ -28,6 +28,8 @@ final class MeController extends BaseController
                 Response::ok([
                     'account_type' => 'square',
                     ...$this->rolePayload($uid),
+                    // Set only for an approved media account: the outlet it files reflections under.
+                    'media_outlet_id' => \Meydan\Core\Domain\MediaReflectionSync::outletForUser($uid) ?: null,
                     'square' => $this->squareProfile($sid),
                 ]),
                 'private, no-store'

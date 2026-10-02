@@ -9,7 +9,7 @@ use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.4.5';
+    public const VERSION = '1.4.6';
 
     /**
      * Legacy speaker-post meta holding the linked user id.
@@ -326,11 +326,14 @@ final class Migrations
             published_at DATETIME NULL,
             status VARCHAR(32) NOT NULL DEFAULT 'published',
             position INT UNSIGNED NOT NULL DEFAULT 0,
+            source VARCHAR(16) NOT NULL DEFAULT 'manual',
+            source_narrative_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            created_by BIGINT UNSIGNED NULL,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
             PRIMARY KEY (id),
             KEY narrative_position (narrative_id, position),
-            KEY outlet_id (outlet_id),
+            KEY outlet_source (outlet_id, narrative_id, source, source_narrative_id),
             KEY status (status)
         ) {$charset};";
 

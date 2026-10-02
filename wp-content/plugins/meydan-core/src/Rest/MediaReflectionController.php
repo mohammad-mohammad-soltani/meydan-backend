@@ -7,6 +7,10 @@ final class MediaReflectionController extends BaseController
  public function create(WP_REST_Request $r){if(!current_user_can('manage_meydan_media_reflections'))return Response::error('forbidden','دسترسی کافی ندارید.',403);return $this->save($r,0,(int)$r['id']);}
  public function update(WP_REST_Request $r){if(!current_user_can('manage_meydan_media_reflections'))return Response::error('forbidden','دسترسی کافی ندارید.',403);return $this->save($r,(int)$r['id'],0);}
  public function delete(WP_REST_Request $r){if(!current_user_can('manage_meydan_media_reflections'))return Response::error('forbidden','دسترسی کافی ندارید.',403);global $wpdb;$id=(int)$r['id'];$row=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}meydan_media_reflections WHERE id=%d",$id),ARRAY_A);if(!$row)return Response::error('not_found','بازنشر رسانه‌ای پیدا نشد.',404);$wpdb->delete($wpdb->prefix.'meydan_media_reflections',['id'=>$id]);AuditLogger::log('media_reflection_deleted','media_reflection',$id,$row,null);return Response::ok(['deleted'=>true]);}
+
+ /** A media account registers a reflection for a post from the post page. */
+ public function createMine(WP_REST_Request $r){$p=$this->json($r);$id=\Meydan\Core\Domain\MediaReflectionSync::createManual(get_current_user_id(),(int)$r['id'],(string)($p['url']??''),(int)($p['own_narrative_id']??0),sanitize_text_field((string)($p['title']??'')),(string)($p['summary']??''));if(is_wp_error($id))return $this->error($id);return Response::ok(['id'=>$id],[],201);}
+ public function deleteMine(WP_REST_Request $r){$v=\Meydan\Core\Domain\MediaReflectionSync::deleteMine(get_current_user_id(),(int)$r['id']);if(is_wp_error($v))return $this->error($v);return Response::ok(['deleted'=>true]);}
  private function save(WP_REST_Request $r,int $id,int $nid)
  {
   global $wpdb;

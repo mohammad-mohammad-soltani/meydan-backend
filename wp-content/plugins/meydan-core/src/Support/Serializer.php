@@ -445,6 +445,8 @@ final class Serializer
                 'published_at' => !empty($r['published_at']) ? self::isoMeta((string) $r['published_at']) : null,
                 'status' => (string) $r['status'],
                 'position' => (int) $r['position'],
+                'source' => (string) ($r['source'] ?? 'manual'),
+                'source_narrative_id' => (int) ($r['source_narrative_id'] ?? 0) ?: null,
             ];
         }, $rows ?: []);
     }

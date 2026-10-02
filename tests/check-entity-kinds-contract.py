@@ -35,3 +35,16 @@ assert 'NOT EXISTS' in squares  # legacy squares without kind meta read as squar
 # Student / seminarian detail is additive.
 assert 'meydan_student_kind' in auth and 'meydan_student_kind' in users
 print('entity kinds contract ok')
+
+# Media reflections filed by approved media accounts.
+sync = (root / 'Domain/MediaReflectionSync.php').read_text(encoding='utf-8')
+quotes = (root / 'Support/Quotes.php').read_text(encoding='utf-8')
+narr = (root / 'Rest/NarrativeController.php').read_text(encoding='utf-8')
+mig = (root / 'Database/Migrations.php').read_text(encoding='utf-8')
+assert "MediaReflectionSync::quote(" in quotes
+assert "MediaReflectionSync::repost(" in narr
+assert "self::r('/narratives/(?P<id>\\d+)/media-reflections','POST',[$mr,'createMine'])" in routes
+assert "'meydan_approval_status', true) !== 'approved'" in sync  # only approved media
+assert "source VARCHAR(16)" in mig and "source_narrative_id" in mig
+assert "'own_post'" in sync
+print('media reflection sync contract ok')
