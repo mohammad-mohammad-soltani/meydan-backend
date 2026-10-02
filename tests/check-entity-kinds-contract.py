@@ -137,3 +137,11 @@ for route in ["/bookmark','GET',[$n,'bookmarkState']", "/bookmark','PUT',[$n,'bo
     assert route in (root / 'Rest/Routes.php').read_text(encoding='utf-8'), route
 assert 'INSERT IGNORE INTO' in (root / 'Domain/ProfileExtras.php').read_text(encoding='utf-8')
 print('saved narratives contract ok')
+
+# «اعلان‌های نمایه»: subscribe to an account's new posts; fan-out runs in the background.
+subs = (root / 'Notifications/ProfileSubscriptions.php').read_text(encoding='utf-8')
+assert "/notify','PUT',[$actor,'notifyOn']" in (root / 'Rest/Routes.php').read_text(encoding='utf-8')
+assert "'notify'=>\\Meydan\\Core\\Notifications\\ProfileSubscriptions::isSubscribed" in (root / 'Rest/ActorController.php').read_text(encoding='utf-8')
+assert 'wp_schedule_single_event' in subs and 'LIMIT %d' in subs  # batched, never inside the publish request
+assert "'profile_post' =>" in (root / 'Notifications/NotificationService.php').read_text(encoding='utf-8')
+print('profile subscriptions contract ok')

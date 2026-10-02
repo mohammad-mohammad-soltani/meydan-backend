@@ -95,6 +95,7 @@ final class Plugin
         add_action('init', [Migrations::class, 'runDeferred'], 25);
         NarrativeCleanup::register();
         \Meydan\Core\Support\Quotes::register();
+        \Meydan\Core\Notifications\ProfileSubscriptions::register();
 
         add_filter('determine_current_user', [SessionService::class, 'authenticateBearer'], 30);
         add_filter('determine_current_user', [UserAccess::class, 'currentUser'], 99);

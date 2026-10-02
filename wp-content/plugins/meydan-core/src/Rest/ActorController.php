@@ -44,8 +44,13 @@ final class ActorController extends BaseController
   if(!Actor::parse($type,$id))return Response::error('not_found','Actor پیدا نشد.',404);
   global $wpdb;
   $following=(bool)$wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->prefix}meydan_interactions WHERE user_id=%d AND object_type=%s AND object_id=%d AND action='follow' LIMIT 1",get_current_user_id(),$type,$id));
-  return Response::ok(['following'=>$following]);
+  // The profile bell's state rides on the follow-state request it already makes.
+  return Response::ok(['following'=>$following,'notify'=>\Meydan\Core\Notifications\ProfileSubscriptions::isSubscribed(get_current_user_id(),$type,$id)]);
  }
+ /** «اعلان‌های نمایه»: be notified when this account publishes. */
+ public function notifyOn(WP_REST_Request $r){return $this->notifyState($r,true);}
+ public function notifyOff(WP_REST_Request $r){return $this->notifyState($r,false);}
+ private function notifyState(WP_REST_Request $r,bool $on){if(!is_user_logged_in())return Response::error('unauthenticated','برای فعال‌کردن اعلان باید وارد شوید.',401);$v=\Meydan\Core\Notifications\ProfileSubscriptions::set(get_current_user_id(),sanitize_key((string)$r['type']),(int)$r['id'],$on);if(is_wp_error($v))return $this->error($v);return Response::ok(['notify'=>$on]);}
  public function follow(WP_REST_Request $r){return $this->toggle((string)$r['type'],(int)$r['id'],true);}
  public function unfollow(WP_REST_Request $r){return $this->toggle((string)$r['type'],(int)$r['id'],false);}
  public function followers(WP_REST_Request $r){$type=sanitize_key((string)$r['type']);$id=(int)$r['id'];$limit=$this->limit($r);global $wpdb;if(!Actor::parse($type,$id))return Response::error('not_found','Actor پیدا نشد.',404);$uids=$wpdb->get_col($wpdb->prepare("SELECT user_id FROM {$wpdb->prefix}meydan_interactions WHERE object_type=%s AND object_id=%d AND action='follow' ORDER BY created_at DESC LIMIT %d",$type,$id,$limit));return Response::ok(array_values(array_filter(array_map(static fn($uid)=>Actor::parse('user',(int)$uid),$uids?:[]))));}

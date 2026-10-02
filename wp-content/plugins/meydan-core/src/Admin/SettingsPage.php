@@ -26,6 +26,7 @@ final class SettingsPage
         'comment' => 'نظر جدید',
         'comment_reply' => 'پاسخ به نظر',
         'mention' => 'اشاره به کاربر',
+        'profile_post' => 'روایت جدید از نمایه‌ای که اعلانش روشن است',
         'initiative_join' => 'پیوستن به کار',
         'work_message_updated' => 'به‌روزرسانی پیام کار',
         'work_task_created' => 'وظیفه جدید در کار',

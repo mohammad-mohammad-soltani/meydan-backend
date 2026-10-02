@@ -21,6 +21,7 @@ final class NotificationService
         'comment' => ['title' => 'نظر جدید', 'body' => '{actor} روی روایت شما نظر گذاشت.'],
         'comment_reply' => ['title' => 'پاسخ جدید', 'body' => '{actor} به نظر شما پاسخ داد.'],
         'mention' => ['title' => 'اشاره جدید', 'body' => '{actor} شما را در یک روایت نام برد.'],
+        'profile_post' => ['title' => 'روایت جدید', 'body' => '{actor} روایت تازه‌ای منتشر کرد.'],
         'initiative_join' => ['title' => 'عضو جدید در کار', 'body' => '{actor} به کار شما ملحق شد.'],
         'initiative_update' => ['title' => 'به‌روزرسانی کار', 'body' => 'کاری که در آن عضو هستید به‌روزرسانی شد.'],
         'initiative_join_confirmed' => ['title' => 'عضویت در کار', 'body' => 'عضویت شما در کار ثبت شد.'],
