@@ -11,8 +11,8 @@ use Meydan\Core\Support\Crypto;
  * Speaker invitations ("منبر" requests) between two real users.
  *
  * The linked user account — not the curated creator post — owns the invitation:
- * it receives notifications, decides accept/reject, and owns the phone number
- * that is revealed only after acceptance.
+ * it receives notifications and decides accept/reject. Its phone number is
+ * never shared with the inviter.
  */
 final class SpeakerInvitationService
 {
@@ -35,8 +35,7 @@ final class SpeakerInvitationService
     /**
      * Serialises an invitation row.
      *
-     * `speaker.phone` is included only when the viewer is the inviter AND the
-     * invitation was accepted — the single place contact details are released.
+     * Phone numbers are never included; accepted invitations continue in chat.
      */
     public static function serialize(array $row, int $viewerId): array
     {
@@ -52,11 +51,6 @@ final class SpeakerInvitationService
         $speaker = $speakerId > 0 ? self::actor($speakerId) : null;
         $inviter = $inviterId > 0 ? self::actor($inviterId) : null;
 
-        $revealPhone = $status === self::STATUS_ACCEPTED && $viewerId > 0 && $viewerId === $inviterId;
-        if ($speaker !== null && $revealPhone) {
-            $speaker['phone'] = self::phone($speakerId);
-        }
-
         return [
             'id' => (int) $row['id'],
             'status' => $status,
@@ -71,8 +65,9 @@ final class SpeakerInvitationService
             'requested_at' => self::iso((string) ($row['requested_at'] ?? '')),
             'accepted_at' => self::iso((string) ($row['accepted_at'] ?? '')),
             'decided_at' => self::iso((string) ($row['decided_at'] ?? '')),
-            // Tells the client whether to render the phone block at all.
-            'phone_visible' => $revealPhone,
+            // The speaker's number is never released; after acceptance the
+            // inviter continues in the in-app direct chat.
+            'phone_visible' => false,
             'created_at' => self::iso((string) ($row['created_at'] ?? '')),
         ];
     }
