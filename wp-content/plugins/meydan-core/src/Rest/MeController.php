@@ -456,14 +456,14 @@ final class MeController extends BaseController
             // Posts are indexed by author; the old nested OR over postmeta
             // joined it four times and took seconds on a busy account.
             $ownerId = Actor::squareOwnerUserId($id);
-            if ($ownerId > 0) return ProfileNarrativePage::listByAuthor($ownerId, $r, $type . ':' . $id);
+            if ($ownerId > 0) return ProfileNarrativePage::listByAuthor($ownerId, $r, $type . ':' . $id, true);
         }
         $meta = [
             'relation' => 'AND',
             ['key' => 'meydan_author_actor_type', 'value' => $type],
             ['key' => 'meydan_author_actor_id', 'value' => $id],
         ];
-        return ProfileNarrativePage::list($meta, $r, $type . ':' . $id);
+        return ProfileNarrativePage::list($meta, $r, $type . ':' . $id, $type === 'user' ? $id : 0, $type === 'user' ? $id : 0);
 
     }
 

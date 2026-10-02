@@ -79,3 +79,8 @@ assert 'WP_Query' not in cnt and 'post_author = %d' in cnt
 assert 'EntityKinds::syncOutletStatus($id,$status)' in adm and 'syncOutletStatus' not in asc
 assert "'kind' => \\Meydan\\Core\\Domain\\EntityKinds::kindOf($id)" in ser
 print('own profile perf contract ok')
+
+# Profile lists include the account's reposts (UNION by time, flagged reposted_at).
+assert "UNION ALL" in page and "'reposted_at'" in page and "i.action = 'repost'" in page
+assert "listByAuthor($ownerId,$r,'square:'.$sid,true)" in sq
+print('profile reposts contract ok')
