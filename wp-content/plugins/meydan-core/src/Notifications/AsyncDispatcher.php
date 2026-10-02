@@ -27,6 +27,7 @@ final class AsyncDispatcher
 {
     private const REALTIME_USER_HOOK = 'meydan_async_realtime_user';
     private const REALTIME_CONVERSATION_HOOK = 'meydan_async_realtime_conversation';
+    private const REALTIME_USERS_HOOK = 'meydan_async_realtime_users';
     private const PUSH_HOOK = 'meydan_async_push_dispatch';
     private const WEB_PUSH_ONLY_HOOK = 'meydan_async_web_push_only';
 
@@ -34,6 +35,7 @@ final class AsyncDispatcher
     {
         add_action(self::REALTIME_USER_HOOK, [self::class, 'runRealtimeUser'], 10, 3);
         add_action(self::REALTIME_CONVERSATION_HOOK, [self::class, 'runRealtimeConversation'], 10, 3);
+        add_action(self::REALTIME_USERS_HOOK, [self::class, 'runRealtimeUsers'], 10, 3);
         add_action(self::PUSH_HOOK, [self::class, 'runPush'], 10, 1);
         add_action(self::WEB_PUSH_ONLY_HOOK, [self::class, 'runWebPushOnly'], 10, 1);
     }
@@ -45,6 +47,21 @@ final class AsyncDispatcher
             return;
         }
         wp_schedule_single_event(time(), self::REALTIME_USER_HOOK, [$userId, $event, $payload]);
+    }
+
+    /**
+     * One queued job per 1000 users (instead of one per user); the job itself
+     * publishes in batches of 100 channels per Pusher call.
+     *
+     * @param int[] $userIds
+     * @param array<string,mixed> $payload
+     */
+    public static function queueRealtimeToUsers(array $userIds, string $event, array $payload): void
+    {
+        $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds), static fn(int $id): bool => $id > 0)));
+        foreach (array_chunk($userIds, 1000) as $chunk) {
+            wp_schedule_single_event(time(), self::REALTIME_USERS_HOOK, [$chunk, $event, $payload]);
+        }
     }
 
     /** @param array<string,mixed> $payload */
@@ -121,6 +138,15 @@ final class AsyncDispatcher
     public static function runRealtimeUser(int $userId, string $event, array $payload): void
     {
         SoketiRealtime::publishToUser($userId, $event, $payload);
+    }
+
+    /**
+     * @param int[] $userIds
+     * @param array<string,mixed> $payload
+     */
+    public static function runRealtimeUsers(array $userIds, string $event, array $payload): void
+    {
+        SoketiRealtime::publishToUsers($userIds, $event, $payload);
     }
 
     /** @param array<string,mixed> $payload */

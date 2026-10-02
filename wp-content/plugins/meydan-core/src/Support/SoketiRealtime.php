@@ -106,6 +106,23 @@ final class SoketiRealtime
         self::publish(['private-user-' . $userId], $event, $payload);
     }
 
+    /**
+     * Pusher accepts at most 100 channels per event, so a group fan-out costs
+     * ceil(n/100) HTTP calls instead of n.
+     *
+     * @param int[] $userIds
+     */
+    public static function publishToUsers(array $userIds, string $event, array $payload, bool $blocking = true): void
+    {
+        $channels = array_map(
+            static fn(int $id): string => 'private-user-' . $id,
+            array_values(array_unique(array_filter(array_map('intval', $userIds), static fn(int $id): bool => $id > 0)))
+        );
+        foreach (array_chunk($channels, 100) as $chunk) {
+            self::publish($chunk, $event, $payload, $blocking);
+        }
+    }
+
     public static function publishToConversation(int $conversationId, string $event, array $payload, bool $blocking = true): void
     {
         if ($conversationId <= 0) {

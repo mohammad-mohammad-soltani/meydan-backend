@@ -21,7 +21,7 @@ final class ChatRepository
     {
         global $wpdb;
         return (bool) $wpdb->get_var($wpdb->prepare(
-            "SELECT 1 FROM {$this->table('participants')} WHERE conversation_id=%d AND user_id=%d AND archived_at IS NULL LIMIT 1",
+            "SELECT 1 FROM {$this->table('participants')} p INNER JOIN {$this->table('conversations')} c ON c.id=p.conversation_id WHERE p.conversation_id=%d AND p.user_id=%d AND p.archived_at IS NULL AND c.type<>'work' LIMIT 1",
             $conversationId,
             $userId
         ));
@@ -40,7 +40,7 @@ final class ChatRepository
     {
         global $wpdb;
         $ids = array_map('intval', $wpdb->get_col($wpdb->prepare(
-            "SELECT c.id FROM {$this->table('conversations')} c INNER JOIN {$this->table('participants')} p ON p.conversation_id=c.id WHERE p.user_id=%d AND p.archived_at IS NULL ORDER BY c.updated_at DESC,c.id DESC LIMIT 100",
+            "SELECT c.id FROM {$this->table('conversations')} c INNER JOIN {$this->table('participants')} p ON p.conversation_id=c.id WHERE p.user_id=%d AND p.archived_at IS NULL AND c.type<>'work' ORDER BY c.updated_at DESC,c.id DESC LIMIT 100",
             $userId
         )) ?: []);
         if (!$ids) {
@@ -165,7 +165,7 @@ final class ChatRepository
      *
      * @param int[] $userIds
      */
-    private function primeActorCache(array $userIds): void
+    public static function primeActorCache(array $userIds): void
     {
         $userIds = array_values(array_unique(array_filter($userIds, static fn(int $id): bool => $id > 0)));
         if (!$userIds) {

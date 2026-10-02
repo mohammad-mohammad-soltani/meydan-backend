@@ -21,9 +21,9 @@ final class NotificationService
         'comment' => ['title' => 'نظر جدید', 'body' => '{actor} روی روایت شما نظر گذاشت.'],
         'comment_reply' => ['title' => 'پاسخ جدید', 'body' => '{actor} به نظر شما پاسخ داد.'],
         'mention' => ['title' => 'اشاره جدید', 'body' => '{actor} شما را در یک روایت نام برد.'],
-        'initiative_join' => ['title' => 'عضو جدید در کار خوب', 'body' => '{actor} به کار خوب شما ملحق شد.'],
-        'initiative_update' => ['title' => 'به‌روزرسانی کار خوب', 'body' => 'کاری که در آن عضو هستید به‌روزرسانی شد.'],
-        'initiative_join_confirmed' => ['title' => 'عضویت در کار خوب', 'body' => 'عضویت شما در کار خوب ثبت شد.'],
+        'initiative_join' => ['title' => 'عضو جدید در کار', 'body' => '{actor} به کار شما ملحق شد.'],
+        'initiative_update' => ['title' => 'به‌روزرسانی کار', 'body' => 'کاری که در آن عضو هستید به‌روزرسانی شد.'],
+        'initiative_join_confirmed' => ['title' => 'عضویت در کار', 'body' => 'عضویت شما در کار ثبت شد.'],
         'media_reflection_added' => ['title' => 'بازنشر رسانه‌ای', 'body' => 'یک بازنشر رسانه‌ای برای روایت شما ثبت شد.'],
         'square_verified' => ['title' => 'تأیید میدان', 'body' => 'میدان شما تأیید شد.'],
         'square_rejected' => ['title' => 'وضعیت میدان', 'body' => 'درخواست میدان شما رد شد.'],
@@ -35,6 +35,18 @@ final class NotificationService
         'admin_notice' => ['title' => 'پیام میدان', 'body' => 'پیام جدیدی از مدیریت میدان دارید.'],
         'system' => ['title' => 'اعلان سیستم', 'body' => 'یک اعلان سیستمی جدید دارید.'],
         'content_published' => ['title' => 'محتوای جدید', 'body' => 'محتوای جدیدی منتشر شد.'],
+        'work_task_created' => ['title' => 'وظیفه جدید', 'body' => '{actor} یک وظیفه جدید در کار گذاشت.'],
+        'work_task_assigned' => ['title' => 'مسئولیت وظیفه', 'body' => '{actor} شما را مسئول یک وظیفه کرد.'],
+        'work_task_status' => ['title' => 'وضعیت وظیفه', 'body' => '{actor} وضعیت یک وظیفه را تغییر داد.'],
+        'work_task_reminder' => ['title' => 'یادآوری وظیفه', 'body' => '{actor} انجام وظیفه شما را یادآوری کرد.'],
+        'work_meeting_created' => ['title' => 'جلسه جدید', 'body' => '{actor} یک جلسه جدید ثبت کرد.'],
+        'work_announcement' => ['title' => 'اعلان کار', 'body' => '{actor} یک اعلان جدید فرستاد.'],
+        'work_announcement_seen' => ['title' => 'دیدن اعلان', 'body' => '{actor} اعلان شما را دید.'],
+        'work_announcement_reminder' => ['title' => 'یادآوری اعلان', 'body' => '{actor} یادآوری کرد اعلان را ببینید.'],
+        'work_poll_created' => ['title' => 'نظرسنجی جدید', 'body' => '{actor} یک نظرسنجی جدید گذاشت.'],
+        'work_mention' => ['title' => 'اشاره در کار', 'body' => '{actor} شما را در یک کار نام برد.'],
+        'work_member_joined' => ['title' => 'عضو جدید در کار', 'body' => '{actor} به کار پیوست.'],
+        'work_role_changed' => ['title' => 'نقش شما در کار', 'body' => 'نقش شما در یک کار تغییر کرد.'],
     ];
 
     /** @return array{title: string, body: string, icon_media_id: int} */
@@ -184,6 +196,100 @@ final class NotificationService
             }
         }
         return $id;
+    }
+
+    /**
+     * Bulk fan-out for group events: one multi-row INSERT per 500 recipients,
+     * one queued realtime job and one queued push job — never a query or a
+     * scheduled event per recipient. Dedupe is by group_key (one notification
+     * per message), so no per-recipient lookup is needed.
+     *
+     * @param int[] $recipientUserIds
+     * @param array<string,mixed> $payload
+     * @return int number of notifications stored
+     */
+    public function createMany(
+        array $recipientUserIds,
+        string $type,
+        ?string $actorType,
+        ?int $actorId,
+        ?string $entityType,
+        ?int $entityId,
+        string $title,
+        string $body,
+        ?string $deepLink = null,
+        ?string $groupKey = null,
+        array $payload = [],
+        bool $sendPush = true,
+    ): int {
+        $ownerId = ($actorType && $actorId) ? Actor::ownerUserId($actorType, $actorId) : 0;
+        $recipients = array_values(array_unique(array_filter(
+            array_map('intval', $recipientUserIds),
+            static fn(int $id): bool => $id > 0 && $id !== $ownerId
+        )));
+        if (!$recipients) {
+            return 0;
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_notifications';
+        $type = sanitize_key($type);
+        $title = sanitize_text_field($title);
+        $body = sanitize_textarea_field($body);
+        $deepLink = $deepLink ? esc_url_raw($deepLink) : null;
+        $payload['aggregate_count'] = (int) ($payload['aggregate_count'] ?? 1);
+        $payloadJson = (string) wp_json_encode($payload);
+        $now = current_time('mysql', true);
+        $stored = 0;
+
+        // wpdb::prepare() turns a null %s into '' — build NULLs explicitly.
+        $str = static fn(?string $v): string => $v === null ? 'NULL' : $wpdb->prepare('%s', $v);
+        $int = static fn(?int $v): string => $v === null ? 'NULL' : (string) (int) $v;
+        $shared = implode(',', [
+            $str($type),
+            $str($actorType ? sanitize_key($actorType) : null),
+            $int($actorId),
+            $str($entityType ? sanitize_key($entityType) : null),
+            $int($entityId),
+            $str($title),
+            $str($body),
+            $str($deepLink),
+            $str($groupKey),
+            $str($payloadJson),
+            $str($now),
+        ]);
+
+        foreach (array_chunk($recipients, 500) as $chunk) {
+            $rows = [];
+            foreach ($chunk as $uid) {
+                $rows[] = '(' . (int) $uid . ',' . $shared . ')';
+            }
+            $sql = "INSERT INTO {$table} (recipient_user_id,type,actor_type,actor_id,entity_type,entity_id,title,body,deep_link,group_key,payload_json,created_at) VALUES " . implode(',', $rows);
+            if ($wpdb->query($sql) !== false) {
+                $stored += count($chunk);
+            }
+        }
+
+        if ($stored > 0) {
+            AsyncDispatcher::queueRealtimeToUsers($recipients, 'notification:created', [
+                'type' => $type,
+                'title' => $title,
+                'body' => $body,
+                'deep_link' => $deepLink,
+                'created_at' => gmdate('c'),
+            ]);
+            if ($sendPush) {
+                self::sendPushToUsers(
+                    $recipients,
+                    $title,
+                    $body,
+                    $deepLink,
+                    self::iconUrl($type, $actorType, $actorId),
+                    ['type' => $type, 'tag' => 'notification-' . $type . ($groupKey ? '-' . substr(md5($groupKey), 0, 8) : '')],
+                );
+            }
+        }
+        return $stored;
     }
 
     public function fromTemplate(int $recipientUserId, string $type, ?string $actorType = null, ?int $actorId = null, ?string $entityType = null, ?int $entityId = null, ?string $deepLink = null, ?string $groupKey = null, bool $aggregate = false, array $payload = []): int

@@ -27,6 +27,8 @@ use Meydan\Core\Integrations\Bale\WebhookController as BaleWebhookController;
 use Meydan\Core\Notifications\AsyncDispatcher;
 use Meydan\Core\Notifications\NativeExpoPush;
 use Meydan\Core\Rest\ChatRoutes;
+use Meydan\Core\Rest\WorkRoutes;
+use Meydan\Core\Domain\WorkGroups;
 use Meydan\Core\Rest\PushRoutes;
 use Meydan\Core\Rest\Routes;
 use Meydan\Core\Support\ApiMiddleware;
@@ -106,9 +108,11 @@ final class Plugin
 
         CampaignCurrentGuard::register();
         GoodAction::register();
+        WorkGroups::register();
         RootResponse::register();
         add_action('rest_api_init', [Routes::class, 'register']);
         add_action('rest_api_init', [ChatRoutes::class, 'register']);
+        add_action('rest_api_init', [WorkRoutes::class, 'register']);
         add_action('rest_api_init', [PushRoutes::class, 'register']);
         add_action('rest_api_init', static fn() => \Meydan\Core\Integrations\Eitaa\Controller::register());
         add_action('rest_api_init', [BaleSyncController::class, 'register']);

@@ -355,6 +355,7 @@ final class Serializer
             'status' => (string) get_post_meta($post->ID, 'meydan_status', true) ?: 'active',
             'allow_guest_join' => (bool) get_post_meta($post->ID, 'meydan_allow_guest_join', true),
             'participant_count' => $count,
+            'work_id' => ($workId = (int) get_post_meta($post->ID, 'meydan_work_id', true)) > 0 ? (string) $workId : null,
             'viewer_state' => $viewer->isAuthenticated() ? ['joined' => $joined] : null,
         ];
     }

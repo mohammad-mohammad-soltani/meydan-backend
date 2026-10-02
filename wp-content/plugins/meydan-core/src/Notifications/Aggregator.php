@@ -20,6 +20,7 @@ final class Aggregator
             'like' => sprintf('%s و %d نفر دیگر روایت شما را پسندیدند.', $name, $others),
             'repost' => sprintf('%s و %d نفر دیگر روایت شما را بازنشر کردند.', $name, $others),
             'follow' => sprintf('%s و %d نفر دیگر شما را دنبال کردند.', $name, $others),
+            'work_announcement_seen' => sprintf('%s و %d نفر دیگر اعلان شما را دیدند.', $name, $others),
             default => $fallback,
         };
     }
