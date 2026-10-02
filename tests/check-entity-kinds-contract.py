@@ -60,3 +60,7 @@ sq = (root / 'Rest/SquareController.php').read_text(encoding='utf-8')
 assert 'Serializer::primeMediaReflections' in page and 'function primeMediaReflections' in ser
 assert "meydan_square_reflections_" in sq
 assert "add_option($lock" in mig
+
+# Public square lists stay squares-only unless a kind is asked for.
+assert "EntityKinds::metaClause($kind)" in sq
+assert "EntityKinds::metaClause('square')" in (root / 'Rest/ExploreController.php').read_text(encoding='utf-8')
