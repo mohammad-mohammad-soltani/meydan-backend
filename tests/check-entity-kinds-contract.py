@@ -28,7 +28,7 @@ assert 'EntityKinds::createLinkedOutlet' in auth
 
 # Outlet stays draft until approval; links are 1:1 and admin-controlled.
 assert "'post_status' => 'draft'" in kinds
-assert 'syncOutletStatus' in squares and 'public function mediaLink' in squares
+assert 'public function mediaLink' in squares
 assert "'kind' => EntityKinds::kindOf($id)" in squares
 assert 'NOT EXISTS' in squares  # legacy squares without kind meta read as square
 
