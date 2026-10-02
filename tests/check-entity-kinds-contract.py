@@ -130,3 +130,10 @@ assert "(int) $post->post_author !== $ownerUserId" in extras  # only own narrati
 assert "'pinned' =>" in me and 'ProfileExtras::withPinned(' in actor
 assert "'social'=>ProfileExtras::social('user',$id,$id)" in actor
 print('profile extras contract ok')
+
+# Share sheet «ذخیره روایت»: narrative bookmarks.
+narr2 = (root / 'Rest/NarrativeController.php').read_text(encoding='utf-8')
+for route in ["/bookmark','GET',[$n,'bookmarkState']", "/bookmark','PUT',[$n,'bookmark']", "/bookmark','DELETE',[$n,'unbookmark']", "self::r('/me/saved-narratives','GET',[$me,'savedNarratives'])"]:
+    assert route in (root / 'Rest/Routes.php').read_text(encoding='utf-8'), route
+assert 'INSERT IGNORE INTO' in (root / 'Domain/ProfileExtras.php').read_text(encoding='utf-8')
+print('saved narratives contract ok')

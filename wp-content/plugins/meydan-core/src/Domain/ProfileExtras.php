@@ -85,15 +85,28 @@ final class ProfileExtras
     /** Narratives the account liked, newest like first, with an offset cursor. */
     public static function liked(int $ownerUserId, WP_REST_Request $request, string $actorKey): WP_REST_Response
     {
+        return self::interacted($ownerUserId, 'like', $request, $actorKey);
+    }
+
+    /** Narratives the viewer saved («ذخیره روایت»), newest first. */
+    public static function saved(int $userId, WP_REST_Request $request): WP_REST_Response
+    {
+        return self::interacted($userId, 'bookmark', $request, 'saved:' . $userId);
+    }
+
+    /** One user's narrative interactions of one kind, newest first, via the `user_action` index. */
+    private static function interacted(int $ownerUserId, string $action, WP_REST_Request $request, string $actorKey): WP_REST_Response
+    {
         global $wpdb;
         [$limit, $offset] = self::paging($request, $actorKey);
         if ($limit === 0) return Response::error('invalid_cursor', 'صفحه معتبر نیست.', 400);
         $ids = $wpdb->get_col($wpdb->prepare(
             "SELECT i.object_id FROM {$wpdb->prefix}meydan_interactions i
              INNER JOIN {$wpdb->posts} p ON p.ID = i.object_id AND p.post_type = 'meydan_narrative' AND p.post_status = 'publish'
-             WHERE i.user_id = %d AND i.object_type = 'narrative' AND i.action = 'like'
+             WHERE i.user_id = %d AND i.object_type = 'narrative' AND i.action = %s
              ORDER BY i.id DESC LIMIT %d OFFSET %d",
             $ownerUserId,
+            $action,
             $limit + 1,
             $offset
         )) ?: [];
@@ -160,5 +173,28 @@ final class ProfileExtras
         return Response::ok($data, [
             'next_cursor' => $hasMore && $actorKey !== '' ? Cursor::encode(['actor' => $actorKey, 'offset' => $offset + $limit]) : null,
         ]);
+    }
+
+    /** Saves or unsaves a narrative for the viewer; idempotent. */
+    public static function setSaved(int $userId, int $narrativeId, bool $on): true|WP_Error
+    {
+        global $wpdb;
+        if (get_post_type($narrativeId) !== 'meydan_narrative' || get_post_status($narrativeId) !== 'publish' || !UserAccess::visibleNarrative($narrativeId)) {
+            return new WP_Error('not_found', 'روایت پیدا نشد.', ['status' => 404]);
+        }
+        $table = $wpdb->prefix . 'meydan_interactions';
+        if ($on) {
+            // uniq_interaction makes a repeated save a no-op.
+            $wpdb->query($wpdb->prepare("INSERT IGNORE INTO {$table} (user_id, object_type, object_id, action, created_at) VALUES (%d, 'narrative', %d, 'bookmark', %s)", $userId, $narrativeId, current_time('mysql', true)));
+        } else {
+            $wpdb->delete($table, ['user_id' => $userId, 'object_type' => 'narrative', 'object_id' => $narrativeId, 'action' => 'bookmark']);
+        }
+        return true;
+    }
+
+    public static function isSaved(int $userId, int $narrativeId): bool
+    {
+        global $wpdb;
+        return $userId > 0 && (bool) $wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->prefix}meydan_interactions WHERE user_id=%d AND object_type='narrative' AND object_id=%d AND action='bookmark' LIMIT 1", $userId, $narrativeId));
     }
 }

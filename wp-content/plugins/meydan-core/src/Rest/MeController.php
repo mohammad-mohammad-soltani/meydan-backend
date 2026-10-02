@@ -272,6 +272,13 @@ final class MeController extends BaseController
         return Response::ok(array_values(array_filter(array_map([Serializer::class, 'content'], array_map('intval', $ids ?: [])))));
     }
 
+    /** Narratives the viewer saved from the share sheet. */
+    public function savedNarratives(WP_REST_Request $r)
+    {
+        if ($e = $this->guard()) return $e;
+        return ProfileExtras::saved(get_current_user_id(), $r);
+    }
+
     public function speakerRequests()
     {
         if ($e = $this->guard()) return $e;

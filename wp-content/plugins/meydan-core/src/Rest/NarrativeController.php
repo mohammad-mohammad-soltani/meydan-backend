@@ -81,6 +81,11 @@ final class NarrativeController extends BaseController
     public function quotes(WP_REST_Request $r){$id=(int)$r['id'];if(get_post_type($id)!=='meydan_narrative')return Response::error('not_found','روایت پیدا نشد.',404);return ProfileNarrativePage::list([['key'=>Quotes::META,'value'=>$id,'type'=>'NUMERIC']],$r,'quotes:'.$id);}
     public function like(WP_REST_Request $r){return $this->interaction((int)$r['id'],'like',true);}
     public function unlike(WP_REST_Request $r){return $this->interaction((int)$r['id'],'like',false);}
+    /** «ذخیره روایت» from the share sheet; the state is read only when the sheet opens. */
+    public function bookmarkState(WP_REST_Request $r){if(!is_user_logged_in())return Response::cache(Response::ok(['bookmarked'=>false]),'private, no-store');return Response::cache(Response::ok(['bookmarked'=>\Meydan\Core\Domain\ProfileExtras::isSaved(get_current_user_id(),(int)$r['id'])]),'private, no-store');}
+    public function bookmark(WP_REST_Request $r){return $this->saveState($r,true);}
+    public function unbookmark(WP_REST_Request $r){return $this->saveState($r,false);}
+    private function saveState(WP_REST_Request $r,bool $on){if(!is_user_logged_in())return Response::error('unauthenticated','برای ذخیره روایت باید وارد شوید.',401);$v=\Meydan\Core\Domain\ProfileExtras::setSaved(get_current_user_id(),(int)$r['id'],$on);if(is_wp_error($v))return $this->error($v);return Response::ok(['bookmarked'=>$on]);}
     public function repost(WP_REST_Request $r){return $this->interaction((int)$r['id'],'repost',true);}
     public function unrepost(WP_REST_Request $r){return $this->interaction((int)$r['id'],'repost',false);}
     public function share(WP_REST_Request $r){$id=(int)$r['id'];if(get_post_type($id)!=='meydan_narrative')return Response::error('not_found','روایت پیدا نشد.',404);Stats::incrementNarrative($id,'shares',1);EventLogger::log('share','narrative',$id);return Response::ok(['shared'=>true,'shares'=>Stats::narrative($id)['shares']]);}
