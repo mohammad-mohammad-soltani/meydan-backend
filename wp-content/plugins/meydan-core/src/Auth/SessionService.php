@@ -113,13 +113,17 @@ final class SessionService
         $table = $wpdb->prefix . 'meydan_sessions';
         $hash = Crypto::hash($token);
         $row = $wpdb->get_row($wpdb->prepare(
-            "SELECT id, user_id FROM {$table} WHERE access_token_hash = %s AND revoked_at IS NULL AND access_expires_at >= UTC_TIMESTAMP() LIMIT 1",
+            "SELECT id, user_id, last_used_at FROM {$table} WHERE access_token_hash = %s AND revoked_at IS NULL AND access_expires_at >= UTC_TIMESTAMP() LIMIT 1",
             $hash
         ));
         if (!$row || UserAccess::disabled((int) $row->user_id)) {
             return $userId;
         }
-        $wpdb->update($table, ['last_used_at' => current_time('mysql', true)], ['id' => (int) $row->id]);
+        // Touching the row on every request turns each API call into a write; once per 5 minutes is enough for "last seen".
+        $lastUsed = $row->last_used_at ? strtotime((string) $row->last_used_at . ' UTC') : 0;
+        if (!$lastUsed || time() - $lastUsed >= 300) {
+            $wpdb->update($table, ['last_used_at' => current_time('mysql', true)], ['id' => (int) $row->id]);
+        }
         return (int) $row->user_id;
     }
 
