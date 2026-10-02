@@ -70,7 +70,7 @@ assert 'public static function mediaReflectionTotal' in sq
 # Own-profile speed: author-indexed queries instead of postmeta OR joins; one approval path.
 adm = (root / 'Admin/Admin.php').read_text(encoding='utf-8')
 asc = (root / 'Rest/AdminSquareController.php').read_text(encoding='utf-8')
-assert "ProfileNarrativePage::listByAuthor($ownerId, $r, $type . ':' . $id)" in me
+assert "ProfileNarrativePage::listByAuthor($ownerId, $r, $type . ':' . $id, true)" in me
 assert "'relation' => 'OR'" not in me.split('function actorNarratives')[1].split('ProfileNarrativePage::list($meta')[0]
 mrt = sq.split('function mediaReflectionTotal')[1].split('set_transient')[0]
 assert 'postmeta' not in mrt and 'p.post_author=%d' in mrt
