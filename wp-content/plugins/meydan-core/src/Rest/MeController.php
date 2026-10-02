@@ -5,6 +5,7 @@ namespace Meydan\Core\Rest;
 
 use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Domain\SpeakerService;
+use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Handles;
 use Meydan\Core\Support\Cursor;
@@ -157,6 +158,42 @@ final class MeController extends BaseController
 
         AuditLogger::log('profile_updated', 'user', $uid, $before, $this->profile($uid));
         return Response::ok($this->profile($uid));
+    }
+
+    /**
+     * Everything the own-profile page needs in one request: the `/me` payload,
+     * the first page of narratives, replies and the square stats. The page used
+     * to make five or six separate requests, each booting WordPress again.
+     * Every part reuses the same code as its standalone endpoint, so the data is
+     * identical; the standalone endpoints stay as they are.
+     */
+    public function profilePage(WP_REST_Request $r)
+    {
+        if ($e = $this->guard()) return $e;
+        $uid = get_current_user_id();
+        $me = $this->me()->get_data()['data'] ?? null;
+        $narratives = $this->narratives($r);
+        $narrativeBody = $narratives->get_data();
+        if ($narratives->get_status() >= 400) return $narratives;
+
+        $isSquare = ($me['account_type'] ?? '') === 'square';
+        $sid = $isSquare ? (int) get_user_meta($uid, 'meydan_square_id', true) : 0;
+        $ownerId = $isSquare ? Actor::squareOwnerUserId($sid) : $uid;
+        $comments = $ownerId > 0 && !UserAccess::disabled($ownerId)
+            ? get_comments(['user_id' => $ownerId, 'type' => 'meydan_comment', 'status' => 'approve', 'number' => 50, 'orderby' => 'comment_date_gmt', 'order' => 'DESC'])
+            : [];
+
+        return Response::cache(Response::ok([
+            'me' => $me,
+            'narratives' => $narrativeBody['data'] ?? [],
+            'replies' => array_values(array_filter(array_map([Serializer::class, 'comment'], $comments))),
+            'square_meta' => $isSquare ? [
+                'start_date' => SquareActivity::startDate($sid),
+                'media_reflections' => SquareController::mediaReflectionTotal($sid, $ownerId),
+            ] : null,
+        ], [
+            'next_cursor' => $narrativeBody['meta']['next_cursor'] ?? null,
+        ]), 'private, no-store');
     }
 
     public function narratives(WP_REST_Request $r)

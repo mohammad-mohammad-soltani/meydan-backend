@@ -60,3 +60,9 @@ sq = (root / 'Rest/SquareController.php').read_text(encoding='utf-8')
 assert 'Serializer::primeMediaReflections' in page and 'function primeMediaReflections' in ser
 assert "meydan_square_reflections_" in sq
 assert "add_option($lock" in mig
+
+# Own profile in one request.
+me = (root / 'Rest/MeController.php').read_text(encoding='utf-8')
+assert "self::r('/me/profile-page','GET',[$me,'profilePage'])" in routes
+assert 'public function profilePage(WP_REST_Request $r)' in me
+assert 'public static function mediaReflectionTotal' in sq
