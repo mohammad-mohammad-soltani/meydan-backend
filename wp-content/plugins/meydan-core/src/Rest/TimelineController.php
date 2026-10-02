@@ -305,6 +305,8 @@ final class TimelineController extends BaseController
             'echo' => (bool) get_post_meta($id, 'meydan_is_echo', true),
             'reflected' => Serializer::mediaReflections($id) !== [],
             'initiatives' => (int) get_post_meta($id, 'meydan_initiative_id', true) > 0,
+            // «روایت» chip: plain narratives, i.e. not attached to a کار.
+            'narratives' => (int) get_post_meta($id, 'meydan_initiative_id', true) <= 0,
             'visual' => $hasVisual,
             'audio' => $hasAudio,
             'media' => $hasVisual || $hasAudio,

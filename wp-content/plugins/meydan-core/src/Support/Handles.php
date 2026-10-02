@@ -31,7 +31,7 @@ final class Handles
         'home', 'explore', 'chat', 'compose', 'content', 'initiatives', 'map', 'podcasts', 'posts', 'post',
         'profile', 'speakers', 'auth', 'direct', 'login', 'logout', 'register', 'signup', 'settings',
         'notifications', 'search', 'images', 'maps', 'fonts', 'static', 'assets', 'offline', 'favicon',
-        'icon', 'manifest', 'robots', 'sitemap', 'sw', 'terms', 'privacy', 'about', 'contact',
+        'icon', 'manifest', 'robots', 'sitemap', 'sw', 'terms', 'privacy', 'about', 'contact', 'bookmarks',
     ];
 
     public static function normalize(string $handle): string
