@@ -343,7 +343,8 @@ final class Serializer
         $viewer = Viewer::current();
         $joined = false;
         if ($viewer->isAuthenticated()) {
-            $joined = (bool) $wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->prefix}meydan_initiative_members WHERE initiative_id=%d AND user_id=%d AND status='active' LIMIT 1", $post->ID, $viewer->userId));
+            $joined = (int) $post->post_author === $viewer->userId
+                || (bool) $wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->prefix}meydan_initiative_members WHERE initiative_id=%d AND user_id=%d AND status='active' LIMIT 1", $post->ID, $viewer->userId));
         }
         return [
             'id' => (int) $post->ID,

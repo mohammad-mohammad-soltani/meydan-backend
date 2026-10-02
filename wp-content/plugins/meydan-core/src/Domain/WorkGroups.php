@@ -95,6 +95,14 @@ final class WorkGroups
             self::ROLE_OWNER
         ));
         update_post_meta($initiativeId, 'meydan_work_id', $conversationId);
+        // The creator is a member of their own initiative from the start (no join button for them).
+        $wpdb->query($wpdb->prepare(
+            "INSERT INTO {$wpdb->prefix}meydan_initiative_members (initiative_id,member_type,user_id,guest_id,joined_at,status)
+             VALUES (%d,'user',%d,NULL,%s,'active') ON DUPLICATE KEY UPDATE status='active'",
+            $initiativeId,
+            $ownerId,
+            $now
+        ));
 
         return $conversationId;
     }
@@ -225,6 +233,24 @@ final class WorkGroups
         return true;
     }
 
+    /** One-time: every existing work's creator becomes an active initiative member too. */
+    private static function backfillOwners(): void
+    {
+        if ((bool) get_option('meydan_work_owner_members_v1', false)) {
+            return;
+        }
+        global $wpdb;
+        $members = $wpdb->prefix . 'meydan_initiative_members';
+        $conversations = self::table('conversations');
+        $wpdb->query(
+            "INSERT INTO {$members} (initiative_id,member_type,user_id,guest_id,joined_at,status)
+             SELECT c.initiative_id,'user',c.created_by,NULL,UTC_TIMESTAMP(),'active'
+             FROM {$conversations} c WHERE c.type='work' AND c.initiative_id IS NOT NULL
+             ON DUPLICATE KEY UPDATE status='active'"
+        );
+        update_option('meydan_work_owner_members_v1', 1, false);
+    }
+
     /**
      * One-time backfill: a group per existing initiative with its active user
      * members. Set-based SQL in initiative-id ranges, so cost is a handful of
@@ -232,6 +258,7 @@ final class WorkGroups
      */
     public static function backfill(): void
     {
+        self::backfillOwners();
         if ((bool) get_option(self::BACKFILL_OPTION, false)) {
             return;
         }
