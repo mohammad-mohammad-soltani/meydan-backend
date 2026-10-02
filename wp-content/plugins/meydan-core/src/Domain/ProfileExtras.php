@@ -168,6 +168,7 @@ final class ProfileExtras
         if ($ids) {
             _prime_post_caches($ids, false, true);
             Serializer::primeMediaReflections($ids);
+            Serializer::primeNarrativeStates($ids);
         }
         $data = array_values(array_filter(array_map([Serializer::class, 'narrative'], $ids)));
         return Response::ok($data, [
@@ -189,6 +190,7 @@ final class ProfileExtras
         } else {
             $wpdb->delete($table, ['user_id' => $userId, 'object_type' => 'narrative', 'object_id' => $narrativeId, 'action' => 'bookmark']);
         }
+        Serializer::forgetNarrativeState($userId, $narrativeId);
         return true;
     }
 

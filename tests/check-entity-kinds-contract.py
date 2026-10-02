@@ -145,3 +145,11 @@ assert "'notify'=>\\Meydan\\Core\\Notifications\\ProfileSubscriptions::isSubscri
 assert 'wp_schedule_single_event' in subs and 'LIMIT %d' in subs  # batched, never inside the publish request
 assert "'profile_post' =>" in (root / 'Notifications/NotificationService.php').read_text(encoding='utf-8')
 print('profile subscriptions contract ok')
+
+# One query per page for like / repost / bookmark state (was two lookups per narrative).
+ser2 = (root / 'Support/Serializer.php').read_text(encoding='utf-8')
+assert 'function primeNarrativeStates' in ser2 and "IN ('like','repost','bookmark')" in ser2
+assert "'bookmarked' => $" not in ser2 or 'narrativeViewerState' in ser2
+for f in ['Rest/TimelineController.php', 'Rest/ProfileNarrativePage.php', 'Domain/ProfileExtras.php']:
+    assert 'primeNarrativeStates' in (root / f).read_text(encoding='utf-8'), f
+print('narrative viewer state contract ok')

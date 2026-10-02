@@ -119,7 +119,9 @@ final class ProfileNarrativePage
     /** @param array<int,string> $repostedAt */
     private static function respond(array $posts, array $repostedAt, bool $hasMore, string $actorKey, int $offset, int $limit)
     {
-        Serializer::primeMediaReflections(array_map(static fn($post): int => (int) $post->ID, $posts));
+        $ids = array_map(static fn($post): int => (int) $post->ID, $posts);
+        Serializer::primeMediaReflections($ids);
+        Serializer::primeNarrativeStates($ids);
         $data = [];
         foreach ($posts as $post) {
             $item = Serializer::narrative($post);

@@ -254,6 +254,8 @@ final class TimelineController extends BaseController
         $source = $filter === 'all' ? $mode : $mode . ':' . $filter;
         $this->record($viewer, $ids, $source);
 
+        Serializer::primeMediaReflections($ids);
+        Serializer::primeNarrativeStates($ids);
         $data = array_values(array_filter(array_map([Serializer::class, 'narrative'], $ids)));
 
         $meta = [

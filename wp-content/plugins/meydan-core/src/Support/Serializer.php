@@ -61,9 +61,7 @@ final class Serializer
             'quoted_narrative_id' => Quotes::quotedId($id) ?: null,
             'quoted_narrative' => self::quotedNarrative($id),
             'stats' => Stats::narrative($id),
-            'viewer_state' => $viewer->isAuthenticated() ? [
-                'liked' => self::interactionExists($viewer->userId, 'narrative', $id, 'like'),
-                'reposted' => self::interactionExists($viewer->userId, 'narrative', $id, 'repost'),
+            'viewer_state' => $viewer->isAuthenticated() ? self::narrativeViewerState((int) $viewer->userId, $id) + [
                 'can_delete' => (int) $post->post_author === $viewer->userId || current_user_can('moderate_meydan_narratives') || current_user_can('manage_options'),
             ] : null,
         ];
@@ -548,6 +546,47 @@ final class Serializer
     {
         $id=(int)get_post_meta($narrativeId,'meydan_content_id',true);
         return $id>0&&get_post_type($id)==='meydan_content'&&get_post_status($id)==='publish'?$id:null;
+    }
+
+    /** @var array<int,array<int,array{liked:bool,reposted:bool,bookmarked:bool}>> request-local, [userId][narrativeId]. */
+    private static array $narrativeStates = [];
+
+    /**
+     * Like / repost / bookmark of a whole page of narratives in ONE query.
+     * Without it every narrative paid its own lookups for each of the three.
+     *
+     * @param int[] $narrativeIds
+     */
+    public static function primeNarrativeStates(array $narrativeIds): void
+    {
+        $userId = (int) (Viewer::current()->userId ?? 0);
+        if ($userId <= 0) return;
+        global $wpdb;
+        $ids = array_values(array_unique(array_filter(array_map('intval', $narrativeIds), static fn(int $id): bool => $id > 0 && !isset(self::$narrativeStates[$userId][$id]))));
+        if (!$ids) return;
+        foreach ($ids as $id) self::$narrativeStates[$userId][$id] = ['liked' => false, 'reposted' => false, 'bookmarked' => false];
+        $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT object_id, action FROM {$wpdb->prefix}meydan_interactions
+             WHERE user_id = %d AND object_type = 'narrative' AND action IN ('like','repost','bookmark') AND object_id IN ($placeholders)",
+            $userId,
+            ...$ids
+        ), ARRAY_A) ?: [];
+        $key = ['like' => 'liked', 'repost' => 'reposted', 'bookmark' => 'bookmarked'];
+        foreach ($rows as $row) self::$narrativeStates[$userId][(int) $row['object_id']][$key[$row['action']]] = true;
+    }
+
+    /** @return array{liked:bool,reposted:bool,bookmarked:bool} */
+    private static function narrativeViewerState(int $userId, int $narrativeId): array
+    {
+        if (!isset(self::$narrativeStates[$userId][$narrativeId])) self::primeNarrativeStates([$narrativeId]);
+        return self::$narrativeStates[$userId][$narrativeId] ?? ['liked' => false, 'reposted' => false, 'bookmarked' => false];
+    }
+
+    /** A like/repost/bookmark was just written: drop the cached state so the next read is fresh. */
+    public static function forgetNarrativeState(int $userId, int $narrativeId): void
+    {
+        unset(self::$narrativeStates[$userId][$narrativeId]);
     }
 
     private static function interactionExists(?int $userId, string $objectType, int $objectId, string $action): bool
