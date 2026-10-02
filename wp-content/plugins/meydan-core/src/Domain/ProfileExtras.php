@@ -28,13 +28,17 @@ final class ProfileExtras
      * Follower and following counts of an actor; both use the interactions
      * table's indexes (object_lookup and user_action).
      *
-     * @return array{followers:int,following:int}
+     * Also carries `joined_at` (account registration) for «عضویت از …».
+     *
+     * @return array{followers:int,following:int,joined_at:?string}
      */
     public static function social(string $objectType, int $objectId, int $ownerUserId): array
     {
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_interactions';
+        $owner = $ownerUserId > 0 ? get_userdata($ownerUserId) : false;
         return [
+            'joined_at' => $owner && $owner->user_registered ? gmdate(DATE_ATOM, strtotime($owner->user_registered . ' UTC')) : null,
             'followers' => $objectId > 0 ? (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE object_type=%s AND object_id=%d AND action='follow'", $objectType, $objectId)) : 0,
             'following' => $ownerUserId > 0 ? (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE user_id=%d AND action='follow'", $ownerUserId)) : 0,
         ];
