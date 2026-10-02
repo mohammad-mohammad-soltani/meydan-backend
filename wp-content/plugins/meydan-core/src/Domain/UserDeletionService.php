@@ -136,12 +136,12 @@ final class UserDeletionService
         $ids = [];
 
         $linked = (int) get_user_meta($userId, 'meydan_square_id', true);
-        if ($linked > 0 && get_post_type($linked) === 'meydan_square') {
+        if ($linked > 0 && EntityKinds::isEntity($linked)) {
             $ids[] = $linked;
         }
 
         $byAuthor = get_posts([
-            'post_type' => 'meydan_square',
+            'post_type' => EntityKinds::postTypes(),
             'post_status' => 'any',
             'author' => $userId,
             'posts_per_page' => -1,
@@ -150,7 +150,7 @@ final class UserDeletionService
         $ids = array_merge($ids, array_map('intval', $byAuthor ?: []));
 
         $byOwnerMeta = get_posts([
-            'post_type' => 'meydan_square',
+            'post_type' => EntityKinds::postTypes(),
             'post_status' => 'any',
             'posts_per_page' => -1,
             'fields' => 'ids',
@@ -201,7 +201,7 @@ final class UserDeletionService
             'posts_per_page' => -1,
             'fields' => 'ids',
             'meta_query' => [
-                ['key' => 'meydan_author_actor_type', 'value' => 'square'],
+                ['key' => 'meydan_author_actor_type', 'value' => EntityKinds::KINDS, 'compare' => 'IN'],
                 [
                     'key' => 'meydan_author_actor_id',
                     'value' => $squareIds,
@@ -226,7 +226,7 @@ final class UserDeletionService
         if ($squareIds) {
             $meta[] = [
                 'relation' => 'AND',
-                ['key' => 'meydan_producer_actor_type', 'value' => 'square'],
+                ['key' => 'meydan_producer_actor_type', 'value' => EntityKinds::KINDS, 'compare' => 'IN'],
                 [
                     'key' => 'meydan_producer_actor_id',
                     'value' => $squareIds,

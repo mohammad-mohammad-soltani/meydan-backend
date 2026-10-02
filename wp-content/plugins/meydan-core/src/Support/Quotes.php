@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Support;
 
+use Meydan\Core\Domain\EntityKinds;
+
 use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Notifications\NotificationService;
 use WP_Error;
@@ -85,7 +87,7 @@ final class Quotes
         (new NotificationService())->fromTemplate(
             $recipient,
             'quote',
-            $actorType === 'square' ? 'square' : 'user',
+            EntityKinds::isEntityActorType((string) $actorType) ? (string) $actorType : 'user',
             $actorId,
             'narrative',
             $quoteId,

@@ -25,8 +25,7 @@ final class MediaReflectionSync
     public static function outletForUser(int $userId): int
     {
         $sid = (int) get_user_meta($userId, 'meydan_square_id', true);
-        if ($sid <= 0 || get_post_type($sid) !== 'meydan_square') return 0;
-        if (EntityKinds::kindOf($sid) !== 'media') return 0;
+        if ($sid <= 0 || EntityKinds::kindOf($sid) !== 'media' || get_post_type($sid) !== EntityKinds::postType('media')) return 0;
         if ((string) get_post_meta($sid, 'meydan_approval_status', true) !== 'approved') return 0;
         return EntityKinds::linkedOutlet($sid);
     }
@@ -38,7 +37,7 @@ final class MediaReflectionSync
         $sid = (int) get_user_meta($userId, 'meydan_square_id', true);
         if ($on) {
             if (self::isOwn($narrativeId, $sid)) return;
-            self::record($narrativeId, $outletId, 'repost', 0, '/square/' . $sid, 'بازنشر در ' . get_the_title($outletId), '', $userId);
+            self::record($narrativeId, $outletId, 'repost', 0, \Meydan\Core\Support\Links::forEntity($sid), 'بازنشر در ' . get_the_title($outletId), '', $userId);
         } else {
             self::remove($narrativeId, $outletId, 'repost', 0);
         }
@@ -123,7 +122,7 @@ final class MediaReflectionSync
     private static function isOwn(int $narrativeId, int $squareId): bool
     {
         return $squareId > 0
-            && (string) get_post_meta($narrativeId, 'meydan_author_actor_type', true) === 'square'
+            && EntityKinds::isEntityActorType((string) get_post_meta($narrativeId, 'meydan_author_actor_type', true))
             && (int) get_post_meta($narrativeId, 'meydan_author_actor_id', true) === $squareId;
     }
 
@@ -160,7 +159,7 @@ final class MediaReflectionSync
         $id = (int) $wpdb->insert_id;
         AuditLogger::log('media_reflection_created', 'media_reflection', $id, null, $data);
         $author = Actor::fromNarrative($narrativeId);
-        $recipient = Actor::ownerUserId($author['type'], $author['type'] === 'square' ? (int) str_replace('sq_', '', $author['id']) : (int) str_replace('usr_', '', $author['id']));
+        $recipient = Actor::ownerUserId($author['type'], (int) substr((string) $author['id'], (int) strrpos((string) $author['id'], '_') + 1));
         if ($recipient && $recipient !== $userId) {
             (new NotificationService())->fromTemplate($recipient, 'media_reflection_added', 'user', $userId, 'narrative', $narrativeId, '/posts/' . $narrativeId, null, false, ['reflection_id' => $id]);
         }

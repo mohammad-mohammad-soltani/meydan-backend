@@ -24,7 +24,7 @@ assert "meydan_notification_templates_json" not in settings, "notification templ
 assert "NotificationTemplateSettings" not in plugin, "notification templates must be registered only through SettingsPage"
 assert not duplicate_settings.exists(), "legacy NotificationTemplateSettings admin-footer editor must be removed"
 
-assert "$actorKind === 'square' ? '/square/' . $profileId : '/' . $profileId" in events, "follow notifications must use canonical public profile URLs"
-assert "'square',$id,'/square/'.$id)" in admin, "square approval notifications must target /square/{id}"
+assert "Links::profile($actor)" in events, "follow notifications must use canonical public profile URLs"
+assert "'square',$id,\\Meydan\\Core\\Support\\Links::forEntity($id))" in admin, "approval notifications must target the entity's /{handle} link"
 
 print("notification event coverage ok")

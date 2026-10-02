@@ -10,6 +10,7 @@ use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Domain\UserDeletionService;
 use Meydan\Core\Integrations\Channels\Channels;
+use Meydan\Core\Domain\EntityKinds;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Crypto;
 use Meydan\Core\Support\Handles;
@@ -23,7 +24,7 @@ use WP_User;
 final class AdminUserController extends BaseController
 {
     private const ROLES = [
-        'meydan_user', 'meydan_speaker', 'meydan_official', 'meydan_square', 'meydan_content_editor',
+        'meydan_user', 'meydan_speaker', 'meydan_official', 'meydan_square', 'meydan_media', 'meydan_collective', 'meydan_organization', 'meydan_content_editor',
         'meydan_moderator', 'meydan_manager', 'meydan_support', 'administrator',
     ];
     private const ROLE_LABELS = [
@@ -257,16 +258,23 @@ final class AdminUserController extends BaseController
         if ($id === get_current_user_id() && $oldRole === 'administrator') {
             return new WP_Error('validation_failed', 'نقش مدیر فعلی را نمی‌توان تغییر داد.', ['status' => 422]);
         }
-        if ($role === 'meydan_square' && Actor::squareId($id) <= 0) {
-            $square = $this->createSquare($id, $p);
-            if (is_wp_error($square)) return $square;
+        $newKind = $this->roleKind($role);
+        $oldKind = $this->roleKind($oldRole);
+        $currentEntity = Actor::entityId($id);
+        if ($newKind !== null) {
+            if ($currentEntity > 0 && EntityKinds::kindOf($currentEntity) !== $newKind) {
+                return new WP_Error('validation_failed', 'نوع موجودیت این حساب را نمی‌توان تغییر داد.', ['status' => 422, 'fields' => ['role' => 'entity_kind_locked']]);
+            }
+            if ($currentEntity <= 0) {
+                $created = $newKind === EntityKinds::SQUARE ? $this->createSquare($id, $p) : $this->createEntity($id, $newKind, $p);
+                if (is_wp_error($created)) return $created;
+            }
         }
-        if (($oldRole === 'meydan_square' || isset(\Meydan\Core\Domain\EntityKinds::ROLE_LABELS[$oldRole])) && $role !== 'meydan_square') {
-            $squareId = Actor::squareId($id);
-            if ($squareId) update_post_meta($squareId, 'meydan_disabled_by_owner', '1');
+        if ($oldKind !== null && $newKind === null) {
+            if ($currentEntity) update_post_meta($currentEntity, 'meydan_disabled_by_owner', '1');
         }
         if ($role === 'meydan_speaker') {
-            if ($oldRole === 'meydan_square' || isset(\Meydan\Core\Domain\EntityKinds::ROLE_LABELS[$oldRole]) || $oldRole === 'administrator') $user->set_role('meydan_user');
+            if ($oldKind !== null || $oldRole === 'administrator') $user->set_role('meydan_user');
             $promoted = SpeakerService::promote($id);
             if (is_wp_error($promoted)) {
                 $user->set_role($oldRole);
@@ -274,12 +282,43 @@ final class AdminUserController extends BaseController
             }
         } else {
             $user->set_role($role);
-            update_user_meta($id, 'meydan_account_type', $role === 'meydan_square' ? 'square' : ($role === 'meydan_official' ? 'official' : 'user'));
+            update_user_meta($id, 'meydan_account_type', $newKind ?? ($role === 'meydan_official' ? 'official' : 'user'));
         }
-        if ($role === 'meydan_square' && ($squareId = Actor::squareId($id))) delete_post_meta($squareId, 'meydan_disabled_by_owner');
+        if ($newKind !== null && ($entityId = Actor::entityId($id))) delete_post_meta($entityId, 'meydan_disabled_by_owner');
         (new \Meydan\Core\Auth\SessionService())->revokeAll($id);
         AuditLogger::log('user_role_changed', 'user', $id, ['role' => $oldRole], ['role' => $role]);
         return true;
+    }
+
+    /** `meydan_square` → square, a kind role → its kind, anything else → null. */
+    private function roleKind(string $role): ?string
+    {
+        if ($role === 'meydan_square') return EntityKinds::SQUARE;
+        $kind = array_search($role, EntityKinds::ROLES, true);
+        return $kind === false ? null : (string) $kind;
+    }
+
+    /** Entity of a non-square kind: a name is all it needs (no location). */
+    private function createEntity(int $id, string $kind, array $p): int|WP_Error
+    {
+        $entity = is_array($p['entity'] ?? null) ? $p['entity'] : (is_array($p['square'] ?? null) ? $p['square'] : []);
+        $name = sanitize_text_field((string) ($entity['name'] ?? ''));
+        if ($name === '') return new WP_Error('validation_failed', 'نام الزامی است.', ['status' => 422, 'fields' => ['entity.name' => 'required']]);
+        $post = wp_insert_post(['post_type' => EntityKinds::postType($kind), 'post_status' => 'pending', 'post_title' => $name, 'post_author' => $id], true);
+        if (is_wp_error($post)) return $post;
+        update_user_meta($id, 'meydan_square_id', (int) $post);
+        update_post_meta($post, 'meydan_owner_user_id', $id);
+        update_post_meta($post, 'meydan_approval_status', 'pending_verification');
+        update_post_meta($post, 'meydan_verified', 0);
+        if ($kind === 'media') {
+            $outlet = EntityKinds::createLinkedOutlet((int) $post, $name);
+            if (is_wp_error($outlet)) {
+                delete_user_meta($id, 'meydan_square_id');
+                wp_delete_post((int) $post, true);
+                return $outlet;
+            }
+        }
+        return (int) $post;
     }
 
     private function createSquare(int $id, array $p): int|WP_Error
@@ -343,7 +382,7 @@ final class AdminUserController extends BaseController
             'avatar_media_id' => $avatar ?: null, 'avatar_url' => $avatar ? wp_get_attachment_url($avatar) : null,
             'cover_media_id' => $cover ?: null, 'cover_url' => $cover ? wp_get_attachment_url($cover) : null,
             'eitaa_channel' => Channels::value($id, 'eitaa'), 'bale_channel' => Channels::value($id, 'bale'),
-            'square_id' => Actor::squareId($id) ?: null, 'registered_at' => $user->user_registered,
+            'square_id' => Actor::squareId($id) ?: null, 'entity_id' => Actor::entityId($id) ?: null, 'registered_at' => $user->user_registered,
             'is_student_or_seminarian' => get_user_meta($id, 'meydan_is_student_or_seminarian', true) === '1',
             'student_kind' => ((string) get_user_meta($id, 'meydan_student_kind', true)) ?: null];
     }

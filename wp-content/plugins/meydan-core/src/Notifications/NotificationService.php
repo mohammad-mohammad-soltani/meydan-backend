@@ -352,9 +352,9 @@ final class NotificationService
         if ($type === 'users') {
             $args['meta_key'] = 'meydan_account_type';
             $args['meta_value'] = 'user';
-        } elseif ($type === 'squares') {
+        } elseif (in_array($type, ['squares', 'media', 'collectives', 'organizations'], true)) {
             $args['meta_key'] = 'meydan_account_type';
-            $args['meta_value'] = 'square';
+            $args['meta_value'] = ['squares' => 'square', 'media' => 'media', 'collectives' => 'collective', 'organizations' => 'organization'][$type];
         } elseif (in_array($type, ['province', 'city'], true)) {
             $args['meta_key'] = $type === 'province' ? 'meydan_province_id' : 'meydan_city_id';
             $args['meta_value'] = (int) ($audience['id'] ?? 0);

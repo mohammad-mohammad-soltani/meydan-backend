@@ -20,8 +20,9 @@ final class SquareDeletionService
     public static function deletePermanently(int $squareId, bool $deleteOwner = true): array|WP_Error
     {
         $post = get_post($squareId);
-        if (!$post || $post->post_type !== 'meydan_square') {
-            return new WP_Error('not_found', 'میدان پیدا نشد.', ['status' => 404]);
+        $kind = $post ? EntityKinds::kindForPostType((string) $post->post_type) : null;
+        if (!$post || $kind === null) {
+            return new WP_Error('not_found', 'مورد پیدا نشد.', ['status' => 404]);
         }
 
         $ownerId = (int) get_post_meta($squareId, 'meydan_owner_user_id', true);
@@ -37,7 +38,7 @@ final class SquareDeletionService
             delete_user_meta($ownerId, 'meydan_square_id');
         }
 
-        self::deleteSquareRelations($squareId);
+        self::deleteSquareRelations($squareId, $kind);
 
         // This fires NarrativeCleanup::deleteSquareNarratives(), so every
         // narrative whose actor is this square is permanently deleted first.
@@ -52,7 +53,8 @@ final class SquareDeletionService
                 !in_array('administrator', $roles, true)
                 && (
                     in_array('meydan_square', $roles, true)
-                    || (string) get_user_meta($ownerId, 'meydan_account_type', true) === 'square'
+                    || array_intersect(EntityKinds::ROLES, $roles) !== []
+                    || EntityKinds::isEntityActorType((string) get_user_meta($ownerId, 'meydan_account_type', true))
                 );
 
             if ($dedicatedSquareAccount) {
@@ -75,7 +77,7 @@ final class SquareDeletionService
         ];
     }
 
-    private static function deleteSquareRelations(int $squareId): void
+    private static function deleteSquareRelations(int $squareId, string $kind): void
     {
         global $wpdb;
 
@@ -91,26 +93,32 @@ final class SquareDeletionService
 
         $wpdb->query($wpdb->prepare(
             "DELETE FROM {$wpdb->prefix}meydan_interactions
-             WHERE object_type='square' AND object_id=%d",
+             WHERE object_type=%s AND object_id=%d",
+            $kind,
             $squareId
         ));
         $wpdb->query($wpdb->prepare(
             "DELETE FROM {$wpdb->prefix}meydan_actor_affinity
-             WHERE target_actor_type='square' AND target_actor_id=%d",
+             WHERE target_actor_type=%s AND target_actor_id=%d",
+            $kind,
             $squareId
         ));
         $wpdb->query($wpdb->prepare(
             "DELETE FROM {$wpdb->prefix}meydan_notifications
-             WHERE (actor_type='square' AND actor_id=%d)
-                OR (entity_type='square' AND entity_id=%d)
-                OR (parent_entity_type='square' AND parent_entity_id=%d)",
+             WHERE (actor_type=%s AND actor_id=%d)
+                OR (entity_type=%s AND entity_id=%d)
+                OR (parent_entity_type=%s AND parent_entity_id=%d)",
+            $kind,
             $squareId,
+            $kind,
             $squareId,
+            $kind,
             $squareId
         ));
         $wpdb->query($wpdb->prepare(
             "DELETE FROM {$wpdb->prefix}meydan_events
-             WHERE entity_type='square' AND entity_id=%d",
+             WHERE entity_type=%s AND entity_id=%d",
+            $kind,
             $squareId
         ));
     }

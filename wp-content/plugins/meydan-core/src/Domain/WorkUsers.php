@@ -60,8 +60,8 @@ final class WorkUsers
         $squareIds = [];
         foreach ($userIds as $userId) {
             $mediaIds[] = (int) get_user_meta($userId, 'meydan_avatar_media_id', true);
-            $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
-            if ($squareId > 0 && Actor::accountType($userId) === 'square') {
+            $squareId = Actor::entityId($userId);
+            if ($squareId > 0 && Actor::isEntityAccount($userId)) {
                 $squareIds[] = $squareId;
             }
         }
@@ -108,7 +108,7 @@ final class WorkUsers
         $actor = Actor::forUser($userId);
         $profileType = (string) ($actor['type'] ?? 'user');
         $profileId = $userId;
-        if ($profileType === 'square') $profileId = (int) get_user_meta($userId, 'meydan_square_id', true);
+        if ($profileType !== 'user') $profileId = Actor::entityId($userId);
         $handle = Handles::display($userId);
 
         return [
@@ -118,7 +118,7 @@ final class WorkUsers
             'avatar_url' => !empty($actor['avatar_url']) ? (string) $actor['avatar_url'] : null,
             'verified' => (bool) ($actor['verified'] ?? false),
             'verified_official' => (bool) ($actor['verified_official'] ?? false),
-            'profile_type' => $profileType === 'square' ? 'square' : 'user',
+            'profile_type' => \Meydan\Core\Domain\EntityKinds::isEntityActorType($profileType) ? $profileType : 'user',
             'profile_id' => (string) $profileId,
         ];
     }

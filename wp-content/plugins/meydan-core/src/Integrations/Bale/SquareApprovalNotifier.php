@@ -31,7 +31,7 @@ final class SquareApprovalNotifier
         if (!Settings::isReady() || !Settings::getBool('pending_squares')) {
             return false;
         }
-        if ($squareId <= 0 || get_post_type($squareId) !== 'meydan_square') {
+        if ($squareId <= 0 || !\Meydan\Core\Domain\EntityKinds::isEntity($squareId)) {
             return false;
         }
         $status = (string) get_post_meta($squareId, 'meydan_approval_status', true) ?: 'pending_verification';
@@ -103,7 +103,7 @@ final class SquareApprovalNotifier
     /** Applies the decision through the shared admin code path. */
     public static function apply(string $action, int $squareId, string $actorLabel): array
     {
-        if (get_post_type($squareId) !== 'meydan_square') {
+        if (!\Meydan\Core\Domain\EntityKinds::isEntity($squareId)) {
             return ['ok' => false, 'message' => 'میدان موردنظر پیدا نشد.'];
         }
 

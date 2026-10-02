@@ -47,6 +47,7 @@ function check(bool $condition, string $message): void
 }
 
 $wpdb = new CandidateQueryDb();
+require __DIR__ . '/../wp-content/plugins/meydan-core/src/Domain/EntityKinds.php';
 require __DIR__ . '/../wp-content/plugins/meydan-core/src/Feed/CandidateGenerator.php';
 require __DIR__ . '/../wp-content/plugins/meydan-core/src/Timeline/CandidateGenerator.php';
 
@@ -59,7 +60,7 @@ check(str_contains(end($wpdb->queries), 'meydan_speaker'), 'Speaker role missing
 $timeline = new Meydan\Core\Timeline\CandidateGenerator();
 $verified = (new ReflectionMethod($timeline, 'verifiedSquares'))->invoke($timeline, 2);
 check(count($verified) === 2, 'Verified square results must be limited');
-check(str_contains(end($wpdb->queries), "sq.post_type='meydan_square'"), 'Square must be verified in SQL');
+check(str_contains(end($wpdb->queries), "sq.post_type IN ('meydan_square','meydan_media_acct'"), 'Entity must be verified in SQL');
 
 $explore = (new ReflectionMethod($timeline, 'exploration'))->invoke($timeline, 3);
 $ids = array_column($explore, 'id');

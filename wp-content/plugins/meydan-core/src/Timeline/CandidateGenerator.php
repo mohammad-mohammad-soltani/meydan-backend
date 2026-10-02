@@ -51,13 +51,13 @@ final class CandidateGenerator
                     AND f.object_type=at.meta_value
                     AND ai.meta_value=CAST(f.object_id AS CHAR)
                 WHERE at.post_id=p.ID AND at.meta_key='meydan_author_actor_type'
-                  AND at.meta_value IN ('user','square')
+                  AND at.meta_value IN ('".implode("','",\Meydan\Core\Domain\EntityKinds::actorTypes())."')
               )
             ORDER BY p.post_date DESC,p.ID DESC LIMIT %d";
         $ids=$wpdb->get_col($wpdb->prepare($sql,$uid,$limit));
         return $this->tag($ids?:[],'following');
     }
-    private function interactionGraph(int $uid,int $limit):array{global $wpdb;$rows=$wpdb->get_results($wpdb->prepare("SELECT target_actor_type,target_actor_id FROM {$wpdb->prefix}meydan_actor_affinity WHERE viewer_user_id=%d ORDER BY score DESC LIMIT 80",$uid),ARRAY_A);if(!$rows)return [];$pairs=[];$args=[];foreach($rows as $r){$type=sanitize_key((string)($r['target_actor_type']??''));$id=(int)($r['target_actor_id']??0);if(!in_array($type,['user','square'],true)||$id<=0)continue;$pairs[]='(mt.meta_value=%s AND mi.meta_value=%d)';$args[]=$type;$args[]=$id;}if(!$pairs)return [];$sql="SELECT DISTINCT p.ID FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} mt ON mt.post_id=p.ID AND mt.meta_key='meydan_author_actor_type' INNER JOIN {$wpdb->postmeta} mi ON mi.post_id=p.ID AND mi.meta_key='meydan_author_actor_id' WHERE p.post_type='meydan_narrative' AND p.post_status='publish' AND (".implode(' OR ',$pairs).") ORDER BY p.post_date DESC LIMIT %d";$args[]=$limit;$ids=$wpdb->get_col($wpdb->prepare($sql,...$args));return $this->tag($ids?:[],'interaction');}
+    private function interactionGraph(int $uid,int $limit):array{global $wpdb;$rows=$wpdb->get_results($wpdb->prepare("SELECT target_actor_type,target_actor_id FROM {$wpdb->prefix}meydan_actor_affinity WHERE viewer_user_id=%d ORDER BY score DESC LIMIT 80",$uid),ARRAY_A);if(!$rows)return [];$pairs=[];$args=[];foreach($rows as $r){$type=sanitize_key((string)($r['target_actor_type']??''));$id=(int)($r['target_actor_id']??0);if(!in_array($type,\Meydan\Core\Domain\EntityKinds::actorTypes(),true)||$id<=0)continue;$pairs[]='(mt.meta_value=%s AND mi.meta_value=%d)';$args[]=$type;$args[]=$id;}if(!$pairs)return [];$sql="SELECT DISTINCT p.ID FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} mt ON mt.post_id=p.ID AND mt.meta_key='meydan_author_actor_type' INNER JOIN {$wpdb->postmeta} mi ON mi.post_id=p.ID AND mi.meta_key='meydan_author_actor_id' WHERE p.post_type='meydan_narrative' AND p.post_status='publish' AND (".implode(' OR ',$pairs).") ORDER BY p.post_date DESC LIMIT %d";$args[]=$limit;$ids=$wpdb->get_col($wpdb->prepare($sql,...$args));return $this->tag($ids?:[],'interaction');}
     private function local(Viewer $v,int $limit,string $source):array{$meta=['relation'=>'OR'];if($v->cityId)$meta[]=['key'=>'meydan_city_id','value'=>$v->cityId,'type'=>'NUMERIC'];if($v->provinceId)$meta[]=['key'=>'meydan_province_id','value'=>$v->provinceId,'type'=>'NUMERIC'];if(count($meta)===1)return [];$q=new WP_Query(['post_type'=>'meydan_narrative','post_status'=>'publish','posts_per_page'=>$limit,'fields'=>'ids','orderby'=>'date','order'=>'DESC','meta_query'=>$meta,'no_found_rows'=>true]);return $this->tag($q->posts,$source);}
     private function trending(int $limit,string $source):array{global $wpdb;$ids=$wpdb->get_col($wpdb->prepare("SELECT p.ID FROM {$wpdb->posts} p LEFT JOIN {$wpdb->prefix}meydan_narrative_stats s ON s.narrative_id=p.ID WHERE p.post_type='meydan_narrative' AND p.post_status='publish' AND p.post_date_gmt>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY) ORDER BY (COALESCE(s.likes,0)+2*COALESCE(s.reposts,0)+2.5*COALESCE(s.comments,0)+1.5*COALESCE(s.shares,0)) DESC,p.post_date_gmt DESC LIMIT %d",$limit));return $this->tag($ids?:[],$source);}
     private function verifiedSquares(int $limit): array
@@ -68,12 +68,12 @@ final class CandidateGenerator
         // avoids fetching every verified square and expanding a huge meta IN.
         $sql = "SELECT p.ID FROM {$wpdb->posts} p
             INNER JOIN {$wpdb->postmeta} at
-                ON at.post_id=p.ID AND at.meta_key='meydan_author_actor_type' AND at.meta_value='square'
+                ON at.post_id=p.ID AND at.meta_key='meydan_author_actor_type' AND at.meta_value IN ('".implode("','",\Meydan\Core\Domain\EntityKinds::KINDS)."')
             INNER JOIN {$wpdb->postmeta} ai
                 ON ai.post_id=p.ID AND ai.meta_key='meydan_author_actor_id'
             INNER JOIN {$wpdb->posts} sq
                 ON sq.ID=CAST(ai.meta_value AS UNSIGNED)
-                AND sq.post_type='meydan_square' AND sq.post_status='publish'
+                AND sq.post_type IN ('".implode("','",\Meydan\Core\Domain\EntityKinds::postTypes())."') AND sq.post_status='publish'
             WHERE p.post_type='meydan_narrative' AND p.post_status='publish'
                 AND EXISTS (
                     SELECT 1 FROM {$wpdb->postmeta} v

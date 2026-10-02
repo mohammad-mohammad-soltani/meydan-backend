@@ -60,6 +60,10 @@ final class Migrations
         self::migrateSpeakerUsers();
         \Meydan\Core\Domain\WorkGroups::backfill();
         \Meydan\Core\Support\Handles::backfill();
+        // Move media/collective/organization accounts out of the square post type, once.
+        if (get_option(\Meydan\Core\Domain\EntityMigration::OPTION, null) === null) {
+            \Meydan\Core\Domain\EntityMigration::run();
+        }
     }
 
     public static function run(): void
@@ -573,7 +577,7 @@ final class Migrations
         $roles = $user ? (array) $user->roles : [];
         // An administrator or square is never rewritten: the profile copy is
         // still useful, but the account type must follow the role it keeps.
-        $eligible = $user && !in_array('administrator', $roles, true) && !in_array('meydan_square', $roles, true);
+        $eligible = $user && !in_array('administrator', $roles, true) && !in_array('meydan_square', $roles, true) && array_intersect(\Meydan\Core\Domain\EntityKinds::ROLES, $roles) === [];
         if ($eligible && !in_array(SpeakerService::ROLE, $roles, true)) {
             $user->set_role(SpeakerService::ROLE);
         }

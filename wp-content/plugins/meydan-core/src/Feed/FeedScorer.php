@@ -73,7 +73,7 @@ final class FeedScorer
     /** @param list<string> $roles @param array<string,mixed> $settings */
     private function roleMultiplier(string $actorType, array $roles, array $settings): float
     {
-        $result = $actorType === 'square' ? (float) $settings['square_role_multiplier'] : 1.0;
+        $result = \Meydan\Core\Domain\EntityKinds::isEntityActorType((string) $actorType) ? (float) $settings['square_role_multiplier'] : 1.0;
         if (in_array('meydan_speaker', $roles, true)) $result = max($result, (float) $settings['speaker_role_multiplier']);
         if (in_array('meydan_official', $roles, true)) $result = max($result, (float) $settings['official_role_multiplier']);
         return $result;

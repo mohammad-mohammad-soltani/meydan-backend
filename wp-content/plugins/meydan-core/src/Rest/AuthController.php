@@ -94,20 +94,19 @@ final class AuthController extends BaseController
         $uid=wp_insert_user(['user_login'=>$login,'user_pass'=>wp_generate_password(64,true,true),'display_name'=>$display,'user_email'=>UserEmails::placeholderEmailForPhone($phone),'role'=>$type==='user'?'meydan_user':EntityKinds::roleFor($kind)]);
         if($type==='square'&&!is_wp_error($uid))EntityKinds::applyRoles(new \WP_User($uid),$kind);
         if(is_wp_error($uid))return $this->error(new WP_Error('registration_failed','ساخت حساب ناموفق بود.',['status'=>500]));
-        update_user_meta($uid,'meydan_account_type',$type);update_user_meta($uid,'meydan_phone_hash',Crypto::hash($phone));update_user_meta($uid,'meydan_phone_ciphertext',Crypto::encrypt($phone));
+        update_user_meta($uid,'meydan_account_type',$type==='square'?$kind:$type);update_user_meta($uid,'meydan_phone_hash',Crypto::hash($phone));update_user_meta($uid,'meydan_phone_ciphertext',Crypto::encrypt($phone));
         update_user_meta($uid,'meydan_province_id',(int)$p['province_id']);update_user_meta($uid,'meydan_city_id',(int)$p['city_id']);
         if($type==='user'){
             update_user_meta($uid,'meydan_full_name',$display);update_user_meta($uid,'meydan_avatar_media_id',(int)($p['avatar_media_id']??0));update_user_meta($uid,'meydan_is_student_or_seminarian',($p['is_student_or_seminarian']??false)===true?'1':'0');
             $sk=(string)($p['student_kind']??'');update_user_meta($uid,'meydan_student_kind',($p['is_student_or_seminarian']??false)===true&&in_array($sk,['student','seminarian'],true)?$sk:'');
         }else{
-            $sid=wp_insert_post(['post_type'=>'meydan_square','post_status'=>'pending','post_title'=>$display,'post_content'=>wp_kses_post((string)($p['description']??'')),'post_author'=>$uid],true);
+            $sid=wp_insert_post(['post_type'=>EntityKinds::postType($kind),'post_status'=>'pending','post_title'=>$display,'post_content'=>wp_kses_post((string)($p['description']??'')),'post_author'=>$uid],true);
             if(is_wp_error($sid)){wp_delete_user($uid);return $this->error(new WP_Error('registration_failed','ساخت میدان ناموفق بود.',['status'=>500]));}
             update_user_meta($uid,'meydan_square_id',$sid);update_post_meta($sid,'meydan_owner_user_id',$uid);update_post_meta($sid,'meydan_approval_status','pending_verification');update_post_meta($sid,'meydan_verified',0);update_post_meta($sid,'meydan_avatar_media_id',(int)($p['avatar_media_id']??0));
-            if($kind!=='square')update_post_meta($sid,'meydan_entity_kind',$kind);
             if($kind==='media'){$oid=EntityKinds::createLinkedOutlet((int)$sid,$display,(int)($p['avatar_media_id']??0));if(is_wp_error($oid)){wp_delete_post((int)$sid,true);wp_delete_user($uid);return $this->error(new WP_Error('registration_failed','ساخت رسانه ناموفق بود.',['status'=>500]));}}
-            if(array_key_exists('start_date',$p)){$startSaved=SquareActivity::setStartDate((int)$sid,$p['start_date']);if(is_wp_error($startSaved)){wp_delete_post((int)$sid,true);wp_delete_user($uid);return $this->error($startSaved);}}
+            if($kind==='square'&&array_key_exists('start_date',$p)){$startSaved=SquareActivity::setStartDate((int)$sid,$p['start_date']);if(is_wp_error($startSaved)){wp_delete_post((int)$sid,true);wp_delete_user($uid);return $this->error($startSaved);}}
             update_post_meta($sid,'meydan_contact_name',sanitize_text_field((string)($p['contact_name']??'')));update_post_meta($sid,'meydan_contact_phone',sanitize_text_field((string)($p['contact_phone']??'')));
-            if($kind==='square'||isset($p['address'],$p['latitude'],$p['longitude'])){global $wpdb;$wpdb->replace($wpdb->prefix.'meydan_square_geo',['square_id'=>$sid,'province_id'=>(int)$p['province_id'],'city_id'=>(int)$p['city_id'],'address'=>sanitize_textarea_field((string)$p['address']),'latitude'=>(float)$p['latitude'],'longitude'=>(float)$p['longitude'],'updated_at'=>current_time('mysql',true)]);}
+            if($kind==='square'){global $wpdb;$wpdb->replace($wpdb->prefix.'meydan_square_geo',['square_id'=>$sid,'province_id'=>(int)$p['province_id'],'city_id'=>(int)$p['city_id'],'address'=>sanitize_textarea_field((string)$p['address']),'latitude'=>(float)$p['latitude'],'longitude'=>(float)$p['longitude'],'updated_at'=>current_time('mysql',true)]);}
             AuditLogger::log('square_registration','square',$sid,null,['status'=>'pending_verification','kind'=>$kind],$uid);
         }
         Handles::store((int)$uid,$handle);

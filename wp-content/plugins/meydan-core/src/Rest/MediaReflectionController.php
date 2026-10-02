@@ -37,7 +37,7 @@ final class MediaReflectionController extends BaseController
   // The author hears about a reflection only once it is visible on the post.
   if(!$before&&$data['status']==='published'){
    $author=Actor::fromNarrative($nid);
-   $recipient=Actor::ownerUserId($author['type'],$author['type']==='square'?(int)str_replace('sq_','',$author['id']):(int)str_replace('usr_','',$author['id']));
+   $recipient=Actor::ownerUserId($author['type'],(int)substr((string)$author['id'],(int)strrpos((string)$author['id'],'_')+1));
    if($recipient)(new NotificationService())->fromTemplate($recipient,'media_reflection_added','user',get_current_user_id(),'narrative',$nid,'/posts/'.$nid,null,false,['reflection_id'=>$id]);
   }
   return Response::ok(['id'=>$id]+$data,[],$before?200:201);

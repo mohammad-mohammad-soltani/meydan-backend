@@ -40,12 +40,21 @@ final class UserAccess
         return self::visibleUser($owner) && (self::$adminContext || get_post_meta($squareId, 'meydan_disabled_by_owner', true) !== '1');
     }
 
+    /** Visibility of an entity of any kind (square, media, collective, organization). */
+    public static function visibleEntity(int $entityId): bool
+    {
+        if (!EntityKinds::isEntity($entityId)) return false;
+        $owner = (int) get_post_meta($entityId, 'meydan_owner_user_id', true)
+            ?: (int) get_post_field('post_author', $entityId);
+        return self::visibleUser($owner) && (self::$adminContext || get_post_meta($entityId, 'meydan_disabled_by_owner', true) !== '1');
+    }
+
     public static function visibleNarrative(int $id): bool
     {
         if (self::$adminContext) return true;
         $type = (string) get_post_meta($id, 'meydan_author_actor_type', true);
         $actor = (int) get_post_meta($id, 'meydan_author_actor_id', true);
-        if ($type === 'square') return self::visibleSquare($actor);
+        if (EntityKinds::isEntityActorType($type)) return self::visibleEntity($actor);
         return self::visibleUser($actor ?: (int) get_post_field('post_author', $id));
     }
 

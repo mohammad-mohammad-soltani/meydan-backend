@@ -177,8 +177,8 @@ final class ChatRepository
         $squareIds = [];
         foreach ($userIds as $userId) {
             $user = get_userdata($userId);
-            if ($user && in_array('meydan_square', (array) $user->roles, true)) {
-                $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
+            if ($user && Actor::isEntityAccount($userId)) {
+                $squareId = Actor::entityId($userId);
                 if ($squareId > 0) {
                     $squareIds[] = $squareId;
                 }
@@ -535,7 +535,7 @@ final class ChatRepository
         $actor = Actor::forUser($userId);
         $profileType = (string) ($actor['type'] ?? 'user');
         $profileId = $userId;
-        if ($profileType === 'square') $profileId = (int) get_user_meta($userId, 'meydan_square_id', true);
+        if ($profileType !== 'user') $profileId = Actor::entityId($userId);
         $handle = Handles::display($userId);
 
         return [
@@ -545,7 +545,7 @@ final class ChatRepository
             'avatar_url' => !empty($actor['avatar_url']) ? (string) $actor['avatar_url'] : null,
             'verified' => (bool) ($actor['verified'] ?? false),
             'verified_official' => (bool) ($actor['verified_official'] ?? false),
-            'profile_type' => $profileType === 'square' ? 'square' : 'user',
+            'profile_type' => \Meydan\Core\Domain\EntityKinds::isEntityActorType($profileType) ? $profileType : 'user',
             'profile_id' => (string) $profileId,
         ];
     }

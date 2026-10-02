@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Rest;
 
+use Meydan\Core\Domain\EntityKinds;
 use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\EventLogger;
+use Meydan\Core\Support\Handles;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\Serializer;
 use WP_Query;
@@ -39,13 +41,16 @@ final class ExploreController extends BaseController
             'sanitize_key',
             explode(
                 ',',
-                (string) ($request->get_param('types') ?: 'narrative,content,square,creator,user,topic')
+                (string) ($request->get_param('types') ?: 'narrative,content,square,media,collective,organization,creator,user,topic')
             )
         )));
 
         $sections = [
             'narratives' => [],
             'squares' => [],
+            'media' => [],
+            'collectives' => [],
+            'organizations' => [],
             'users' => [],
             'content' => [],
             'creators' => [],
@@ -68,8 +73,11 @@ final class ExploreController extends BaseController
             );
         }
 
-        if (in_array('square', $types, true)) {
-            $sections['squares'] = $this->searchSquares($query);
+        // One section per entity kind; each searches only its own post type.
+        foreach (['square' => 'squares', 'media' => 'media', 'collective' => 'collectives', 'organization' => 'organizations'] as $kind => $section) {
+            if (in_array($kind, $types, true)) {
+                $sections[$section] = $this->searchEntities($kind, $query);
+            }
         }
 
         if (in_array('creator', $types, true)) {
@@ -259,16 +267,24 @@ final class ExploreController extends BaseController
             );
         }
 
-        $result['recommended_actors'] = array_slice(array_map(
-            static fn($square) => [
-                'id' => 'sq_' . $square['id'],
-                'type' => 'square',
-                'display_name' => $square['name'],
-                'avatar_url' => $square['avatar_url'],
-                'verified' => $square['verified'],
-            ],
-            $result['nearby_squares']
-        ), 0, 8);
+        $actors = array_map(
+            static fn($square) => Actor::forEntity((int) $square['id']),
+            array_slice($result['nearby_squares'], 0, 5)
+        );
+        foreach (['media', 'collective', 'organization'] as $kind) {
+            $latest = new WP_Query([
+                'post_type' => EntityKinds::postType($kind),
+                'post_status' => 'publish',
+                'posts_per_page' => 2,
+                'orderby' => 'date',
+                'order' => 'DESC',
+                'no_found_rows' => true,
+            ]);
+            foreach ($latest->posts as $post) {
+                if (UserAccess::visibleEntity((int) $post->ID)) $actors[] = Actor::forEntity((int) $post->ID);
+            }
+        }
+        $result['recommended_actors'] = array_slice($actors, 0, 8);
 
         return Response::ok($result);
     }
@@ -288,58 +304,40 @@ final class ExploreController extends BaseController
         )));
     }
 
-    private function searchSquares(string $query): array
+    /** Entities of one kind by name or @handle. Only published entities are ever returned. */
+    private function searchEntities(string $kind, string $query): array
     {
-        $results = $this->posts(
-            'meydan_square',
-            $query,
-            [Serializer::class, 'square']
-        );
-
+        $results = $this->posts(EntityKinds::postType($kind), $query, [Serializer::class, 'entity']);
         $seen = [];
-        foreach ($results as $square) {
-            $seen[(int) $square['id']] = true;
+        foreach ($results as $entity) {
+            $seen[(int) $entity['id']] = true;
         }
-
-        $users = array_merge(
-            get_users([
-                'search' => '*' . $query . '*',
-                'search_columns' => ['display_name'],
-                'number' => 20,
-            ]),
-            get_users([
-                'meta_key' => 'meydan_full_name',
-                'meta_value' => $query,
-                'meta_compare' => 'LIKE',
-                'number' => 20,
-            ])
-        );
-
-        foreach ($users as $user) {
-            if (count($results) >= 10) {
-                break;
-            }
-
-            $userId = (int) $user->ID;
-            if (get_user_meta($userId, 'meydan_account_type', true) !== 'square') {
+        foreach ($this->userIdsByHandle($query) as $userId) {
+            if (count($results) >= 10) break;
+            $entityId = Actor::entityId($userId);
+            if ($entityId <= 0 || isset($seen[$entityId]) || EntityKinds::kindOf($entityId) !== $kind || get_post_status($entityId) !== 'publish') {
                 continue;
             }
-
-            $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
-            if ($squareId <= 0 || isset($seen[$squareId])) {
-                continue;
-            }
-
-            $square = Serializer::square($squareId);
-            if (!$square) {
-                continue;
-            }
-
-            $results[] = $square;
-            $seen[$squareId] = true;
+            $entity = Serializer::entity($entityId);
+            if (!$entity) continue;
+            $results[] = $entity;
+            $seen[$entityId] = true;
         }
-
         return array_slice($results, 0, 10);
+    }
+
+    /** @return int[] users whose @handle contains the query */
+    private function userIdsByHandle(string $query): array
+    {
+        $handle = Handles::normalize($query);
+        if (strlen($handle) < 2 || !preg_match('/^[a-z0-9_]+$/', $handle)) return [];
+        return array_map('intval', get_users([
+            'meta_key' => Handles::META,
+            'meta_value' => $handle,
+            'meta_compare' => 'LIKE',
+            'fields' => 'ID',
+            'number' => 20,
+        ]));
     }
 
     private function searchUsers(string $query): array
@@ -358,6 +356,10 @@ final class ExploreController extends BaseController
             ])
         );
 
+        foreach ($this->userIdsByHandle($query) as $handleUserId) {
+            $users[] = get_userdata($handleUserId);
+        }
+
         $results = [];
         $seen = [];
 
@@ -366,13 +368,16 @@ final class ExploreController extends BaseController
                 break;
             }
 
+            if (!$user) {
+                continue;
+            }
             $userId = (int) $user->ID;
             if (isset($seen[$userId])) {
                 continue;
             }
             $seen[$userId] = true;
 
-            if (UserAccess::disabled($userId) || get_user_meta($userId, 'meydan_account_type', true) === 'square') {
+            if (UserAccess::disabled($userId) || Actor::isEntityAccount($userId)) {
                 continue;
             }
 

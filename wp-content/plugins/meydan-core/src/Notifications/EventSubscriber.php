@@ -31,11 +31,11 @@ final class EventSubscriber
         $recipient = Actor::ownerUserId($targetType, $targetId);
         if ($recipient <= 0 || $recipient === $actorUserId) return;
         $actor = Actor::forUser($actorUserId);
-        $actorKind = (string) ($actor['type'] ?? 'user') === 'square' ? 'square' : 'user';
+        $actorKind = \Meydan\Core\Domain\EntityKinds::isEntityActorType((string) ($actor['type'] ?? 'user')) ? (string) $actor['type'] : 'user';
         $actorRawId = (string) ($actor['id'] ?? 'usr_' . $actorUserId);
         $actorNumericId = (int) substr($actorRawId, (int) strrpos($actorRawId, '_') + 1);
         $profileId = $actorNumericId > 0 ? $actorNumericId : $actorUserId;
-        $deepLink = $actorKind === 'square' ? '/square/' . $profileId : '/' . $profileId;
+        $deepLink = \Meydan\Core\Support\Links::profile($actor);
         (new NotificationService())->fromTemplate($recipient, 'follow', $actorKind, $actorUserId, 'actor', $targetId, $deepLink, 'follow:actor:' . $targetType . ':' . $targetId, true);
     }
 

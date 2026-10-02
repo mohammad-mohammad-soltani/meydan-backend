@@ -26,7 +26,7 @@ final class SquareChannelField
 
     public static function render(\WP_User $user): void
     {
-        if (!current_user_can('edit_user', $user->ID) || !in_array('meydan_square', (array) $user->roles, true)) {
+        if (!current_user_can('edit_user', $user->ID) || !\Meydan\Core\Support\Actor::isEntityAccount((int) $user->ID)) {
             return;
         }
         echo '<h2>اتصال کانال‌ها</h2>';

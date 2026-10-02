@@ -8,6 +8,7 @@ use Meydan\Core\Storage\AttachmentStorage;
 
 use Meydan\Core\Domain\CreatorService;
 use Meydan\Core\Domain\SpeakerService;
+use Meydan\Core\Domain\EntityKinds;
 use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Integrations\Channels\Channels;
 use Meydan\Core\Uploads\VideoProcessor;
@@ -155,7 +156,7 @@ final class Serializer
         if ($sourceNarrative > 0 && !UserAccess::visibleNarrative($sourceNarrative)) return null;
         $producerType = (string) get_post_meta($id, 'meydan_producer_actor_type', true);
         $producerId = (int) get_post_meta($id, 'meydan_producer_actor_id', true);
-        if (($producerType === 'user' && !UserAccess::visibleUser($producerId)) || ($producerType === 'square' && !UserAccess::visibleSquare($producerId))) return null;
+        if (($producerType === 'user' && !UserAccess::visibleUser($producerId)) || (EntityKinds::isEntityActorType($producerType) && !UserAccess::visibleEntity($producerId))) return null;
         $attachments = array_values(array_filter(
             (array) get_post_meta($id, 'meydan_attachments', true),
             'is_array'
@@ -276,22 +277,34 @@ final class Serializer
         ];
     }
 
+    /** A square only; other entity kinds are not squares. */
     public static function square(int|WP_Post $post, bool $includeNarrativeCount = true): ?array
     {
         $post = $post instanceof WP_Post ? $post : get_post($post);
-        if (!$post || $post->post_type !== 'meydan_square' || in_array($post->post_status, ['trash', 'auto-draft'], true) || !UserAccess::visibleSquare((int) $post->ID)) {
+        if (!$post || $post->post_type !== EntityKinds::postType(EntityKinds::SQUARE)) return null;
+        return self::entity($post, $includeNarrativeCount);
+    }
+
+    /** Public profile payload of an entity of any kind. Only squares carry location and schedule. */
+    public static function entity(int|WP_Post $post, bool $includeNarrativeCount = true): ?array
+    {
+        $post = $post instanceof WP_Post ? $post : get_post($post);
+        $kind = $post ? EntityKinds::kindForPostType((string) $post->post_type) : null;
+        if (!$post || $kind === null || in_array($post->post_status, ['trash', 'auto-draft'], true) || !UserAccess::visibleEntity((int) $post->ID)) {
             return null;
         }
         $id = (int) $post->ID;
         global $wpdb;
-        $geo = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}meydan_square_geo WHERE square_id = %d", $id), ARRAY_A);
+        $hasLocation = EntityKinds::hasLocation($kind);
+        $geo = $hasLocation ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}meydan_square_geo WHERE square_id = %d", $id), ARRAY_A) : null;
         return [
             'id' => $id,
+            'kind' => $kind,
+            'handle' => ((($ownerForHandle = Actor::squareOwnerUserId($id)) > 0) ? Handles::ofUser($ownerForHandle) : '') ?: (string) get_post_meta($id, 'meydan_handle', true),
             'name' => Actor::squareDisplayName($id),
             'description' => (string) get_user_meta(Actor::squareOwnerUserId($id), 'meydan_about', true) ?: $post->post_content,
             'avatar_url' => Actor::squareAvatarUrl($id),
             'cover_url' => Actor::squareCoverUrl($id),
-            'kind' => \Meydan\Core\Domain\EntityKinds::kindOf($id),
             'verified' => true,
             'approval_status' => (string) get_post_meta($id, 'meydan_approval_status', true) ?: 'pending_verification',
             'eitaa_channel' => Channels::value(Actor::squareOwnerUserId($id), 'eitaa'),
@@ -303,7 +316,7 @@ final class Serializer
                 'latitude' => (float) $geo['latitude'],
                 'longitude' => (float) $geo['longitude'],
             ] : null,
-            'schedule' => self::squareSchedule($id),
+            'schedule' => $hasLocation ? self::squareSchedule($id) : [],
             'stats' => [
                 'narratives' => $includeNarrativeCount ? self::squareNarrativeCount($id) : null,
             ],

@@ -32,7 +32,7 @@ final class EventSubscriber
             return;
         }
         $squareId = (int) $objectId;
-        if ($squareId <= 0 || get_post_type($squareId) !== 'meydan_square') {
+        if ($squareId <= 0 || !\Meydan\Core\Domain\EntityKinds::isEntity($squareId)) {
             return;
         }
         if ((string) $metaValue !== 'pending_verification') {

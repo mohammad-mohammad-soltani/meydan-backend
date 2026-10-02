@@ -130,8 +130,8 @@ final class SquareAdminService
     /** @param array<string,mixed> $input */
     public static function update(int $id, array $input): true|WP_Error
     {
-        if (get_post_type($id) !== 'meydan_square' || get_post_status($id) === 'trash') {
-            return new WP_Error('not_found', 'میدان پیدا نشد.', ['status' => 404]);
+        if (!EntityKinds::isEntity($id) || get_post_status($id) === 'trash') {
+            return new WP_Error('not_found', 'مورد پیدا نشد.', ['status' => 404]);
         }
         $post = ['ID' => $id];
         if (array_key_exists('name', $input) || array_key_exists('square_name', $input)) {
@@ -155,9 +155,10 @@ final class SquareAdminService
             if ($owner > 0) Handles::store($owner, $handle);
             else update_post_meta($id, 'meydan_handle', $handle);
         }
-        if (array_key_exists('start_date', $input)) SquareActivity::setStartDate($id, sanitize_text_field((string) $input['start_date']));
-        $geo = self::geo($id);
-        if (isset($input['province_id'], $input['city_id'], $input['address'], $input['latitude'], $input['longitude'])) {
+        $isSquare = EntityKinds::kindOf($id) === EntityKinds::SQUARE;
+        if ($isSquare && array_key_exists('start_date', $input)) SquareActivity::setStartDate($id, sanitize_text_field((string) $input['start_date']));
+        $geo = $isSquare ? self::geo($id) : null;
+        if ($isSquare && isset($input['province_id'], $input['city_id'], $input['address'], $input['latitude'], $input['longitude'])) {
             $lat = self::coordinate($input['latitude'], NAN);
             $lng = self::coordinate($input['longitude'], NAN);
             $location = self::resolveLocation($input, $lat, $lng);
@@ -170,7 +171,7 @@ final class SquareAdminService
         }
         $owner = (int) get_post_meta($id, 'meydan_owner_user_id', true);
         if ($owner > 0) self::saveChannels($id, $owner, $input);
-        AuditLogger::log('square_updated', 'square', $id, null, Serializer::square($id));
+        AuditLogger::log('square_updated', 'square', $id, null, Serializer::entity($id));
         return true;
     }
 

@@ -28,7 +28,7 @@ assert "repairImportedLineBreaks" in migrations, "migration must repair already-
 assert "meydan_import_source" in migrations and "eitaa" in migrations, "repair must be scoped to Eitaa imports only"
 assert "<br>\\n" in migrations or "<br />\\n" in migrations or "preg_replace" in migrations, "repair must collapse legacy br + raw newline pairs"
 assert "meydan_eitaa_channel" in field, "Square profile must expose the Eitaa channel field"
-assert "meydan_square" in field, "channel field must be guarded to Square accounts"
+assert "isEntityAccount" in field, "channel field must be guarded to entity accounts (square, media, collective, organization)"
 
 for needle in ["X-Meydan-Eitaa-Timestamp", "X-Meydan-Eitaa-Nonce", "X-Meydan-Eitaa-Signature", "hash_equals", "hash_hmac('sha256'"]:
     assert needle in auth, f"integration auth missing {needle}"

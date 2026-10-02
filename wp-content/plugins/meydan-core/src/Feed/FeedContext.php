@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Feed;
 
+use Meydan\Core\Domain\EntityKinds;
+
 use Meydan\Core\Support\Viewer;
 
 /** Immutable request data shared by Feed V2 pipeline stages. */
@@ -36,7 +38,7 @@ final class FeedContext
 
     public function addFollowing(string $type, int $id): void
     {
-        if ($id > 0 && in_array($type, ['user', 'square'], true)) {
+        if ($id > 0 && in_array($type, EntityKinds::actorTypes(), true)) {
             $this->followingActors[$type . ':' . $id] = true;
         }
     }

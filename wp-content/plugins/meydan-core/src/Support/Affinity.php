@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Support;
 
+use Meydan\Core\Domain\EntityKinds;
+
 final class Affinity
 {
     private const WEIGHTS = [
@@ -76,7 +78,7 @@ final class Affinity
         foreach ($actors as $actor) {
             $type = (string) ($actor['type'] ?? '');
             $id = (int) ($actor['id'] ?? 0);
-            if (!in_array($type, ['user', 'square'], true) || $id <= 0) {
+            if (!in_array($type, EntityKinds::actorTypes(), true) || $id <= 0) {
                 continue;
             }
             $key = $type . ':' . $id;

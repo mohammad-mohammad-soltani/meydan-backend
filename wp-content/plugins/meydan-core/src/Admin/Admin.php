@@ -44,7 +44,7 @@ final class Admin
  public function menus():void
  {
   add_menu_page('میدان','میدان','read_meydan','meydan',[$this,'dashboard'],'dashicons-networking',3);
-  $this->cpt('meydan_narrative','روایت‌ها','publish_meydan_narratives');$this->cpt('meydan_content','محتوا','manage_meydan_content');$this->cpt('meydan_creator','تولیدکنندگان','manage_meydan_creators');$this->cpt('meydan_media_outlet','رسانه‌ها','manage_meydan_media_reflections');$this->cpt('meydan_square','میدان‌ها','manage_meydan_squares');
+  $this->cpt('meydan_narrative','روایت‌ها','publish_meydan_narratives');$this->cpt('meydan_content','محتوا','manage_meydan_content');$this->cpt('meydan_creator','تولیدکنندگان','manage_meydan_creators');$this->cpt('meydan_media_outlet','رسانه‌ها','manage_meydan_media_reflections');$this->cpt('meydan_square','میدان‌ها','manage_meydan_squares');$this->cpt('meydan_media_acct','حساب‌های رسانه','manage_meydan_squares');$this->cpt('meydan_collective','مجموعه‌ها','manage_meydan_squares');$this->cpt('meydan_organization','سازمان‌ها','manage_meydan_squares');
   // Manual creation is one screen for both objects (square + owner account),
   // so it sits next to the square list instead of inside the CPT add form.
   add_submenu_page('meydan','افزودن میدان و کاربر','افزودن میدان و کاربر','manage_meydan_squares',ManualSquare::PAGE,[ManualSquare::class,'render']);
@@ -611,18 +611,18 @@ JS
   */
  public static function applySquareStatus(int $id,string $status,string $adminNote=''):void
  {
-  if(get_post_type($id)!=='meydan_square'){return;}
+  if(!\Meydan\Core\Domain\EntityKinds::isEntity($id)){return;}
   if(!in_array($status,['approved','rejected','suspended','pending_verification'],true)){return;}
-  $before=Serializer::square($id);
+  $before=Serializer::entity($id);
   update_post_meta($id,'meydan_approval_status',$status);
   if($adminNote!==''){update_post_meta($id,'meydan_admin_note',$adminNote);}
   if($status==='approved'){update_post_meta($id,'meydan_verified',1);wp_update_post(['ID'=>$id,'post_status'=>'publish']);}
   elseif($status==='rejected'){update_post_meta($id,'meydan_verified',0);wp_update_post(['ID'=>$id,'post_status'=>'pending']);}
   elseif($status==='suspended'){update_post_meta($id,'meydan_verified',0);wp_update_post(['ID'=>$id,'post_status'=>'draft']);}
-  AuditLogger::log('square_'.$status,'square',$id,$before,Serializer::square($id));
+  AuditLogger::log('square_'.$status,'square',$id,$before,Serializer::entity($id));
   \Meydan\Core\Domain\EntityKinds::syncOutletStatus($id,$status);
   $owner=(int)get_post_meta($id,'meydan_owner_user_id',true);
-  if($owner&&(in_array($status,['approved','rejected'],true)))(new NotificationService())->fromTemplate($owner,$status==='approved'?'square_verified':'square_rejected',null,null,'square',$id,'/square/'.$id);
+  if($owner&&(in_array($status,['approved','rejected'],true)))(new NotificationService())->fromTemplate($owner,$status==='approved'?'square_verified':'square_rejected',null,null,'square',$id,\Meydan\Core\Support\Links::forEntity($id));
  }
  public function squareApprovals():void{global $wpdb;$q=new \WP_Query(['post_type'=>'meydan_square','post_status'=>['pending','publish','draft'],'posts_per_page'=>100,'meta_key'=>'meydan_approval_status','orderby'=>'date','order'=>'DESC']);echo '<div class="wrap"><h1>درخواست‌های تأیید میدان</h1><table class="widefat striped"><thead><tr><th>ID</th><th>نام</th><th>وضعیت</th><th>موقعیت</th><th>عملیات</th></tr></thead><tbody>';foreach($q->posts as $p){$s=Serializer::square($p);$g=$s['location']??[];echo '<tr><td>'.$p->ID.'</td><td><a href="'.esc_url(get_edit_post_link($p->ID)).'">'.esc_html($p->post_title).'</a></td><td>'.esc_html($s['approval_status']).'</td><td>'.esc_html(($g['address']??'').' '.($g['latitude']??'').' '.($g['longitude']??'')).'</td><td><form method="post">';wp_nonce_field('meydan_admin_action');echo '<input type="hidden" name="meydan_admin_action" value="square_status"><input type="hidden" name="id" value="'.$p->ID.'"><select name="status"><option value="approved">Approve</option><option value="rejected">Reject</option><option value="suspended">Suspend</option><option value="pending_verification">Restore pending</option></select><input name="admin_note" placeholder="Admin note"><button class="button">اعمال</button></form></td></tr>';}echo '</tbody></table></div>';}
  public function map():void{global $wpdb;$rows=$wpdb->get_results("SELECT g.*,p.post_title FROM {$wpdb->prefix}meydan_square_geo g JOIN {$wpdb->posts} p ON p.ID=g.square_id WHERE p.post_type='meydan_square'",ARRAY_A);echo '<div class="wrap"><h1>نقشه میدان‌ها</h1><div id="meydan-admin-map" style="height:70vh"></div><script>window.MEYDAN_MAP_POINTS='.wp_json_encode($rows).';</script></div>';}
@@ -762,7 +762,15 @@ JS
    Channels::save($uid);
   }
  }
- public function syncAccountTypeForRole(int $uid,string $role):void{if($role==='meydan_speaker'){update_user_meta($uid,'meydan_account_type','speaker');return;}if($role!=='meydan_square'){update_user_meta($uid,'meydan_account_type','user');return;}$sid=(int)get_user_meta($uid,'meydan_square_id',true);if(get_post_type($sid)!=='meydan_square'){$user=get_userdata($uid);$name=(string)get_user_meta($uid,'meydan_full_name',true);$sid=wp_insert_post(['post_type'=>'meydan_square','post_status'=>'pending','post_title'=>$name?:($user?->display_name?:'میدان'),'post_content'=>(string)get_user_meta($uid,'meydan_about',true),'post_author'=>$uid],true);if(is_wp_error($sid))return;update_user_meta($uid,'meydan_square_id',(int)$sid);update_post_meta($sid,'meydan_owner_user_id',$uid);update_post_meta($sid,'meydan_approval_status','pending_verification');update_post_meta($sid,'meydan_verified',0);AuditLogger::log('square_created_from_role_change','square',(int)$sid,null,['user_id'=>$uid]);}update_user_meta($uid,'meydan_account_type','square');}
+ public function syncAccountTypeForRole(int $uid,string $role):void{
+  if($role==='meydan_speaker'){update_user_meta($uid,'meydan_account_type','speaker');return;}
+  if($role==='meydan_official'){update_user_meta($uid,'meydan_account_type','official');return;}
+  $kind=$role==='meydan_square'?'square':(array_search($role,\Meydan\Core\Domain\EntityKinds::ROLES,true)?:null);
+  if($kind===null){update_user_meta($uid,'meydan_account_type','user');return;}
+  $sid=\Meydan\Core\Support\Actor::entityId($uid);
+  if($sid<=0){$user=get_userdata($uid);$name=(string)get_user_meta($uid,'meydan_full_name',true);$sid=wp_insert_post(['post_type'=>\Meydan\Core\Domain\EntityKinds::postType($kind),'post_status'=>'pending','post_title'=>$name?:($user?->display_name?:\Meydan\Core\Domain\EntityKinds::label($kind)),'post_content'=>(string)get_user_meta($uid,'meydan_about',true),'post_author'=>$uid],true);if(is_wp_error($sid))return;update_user_meta($uid,'meydan_square_id',(int)$sid);update_post_meta($sid,'meydan_owner_user_id',$uid);update_post_meta($sid,'meydan_approval_status','pending_verification');update_post_meta($sid,'meydan_verified',0);AuditLogger::log('square_created_from_role_change','square',(int)$sid,null,['user_id'=>$uid,'kind'=>$kind]);}
+  update_user_meta($uid,'meydan_account_type',$kind);
+ }
  public function assets(string $hook):void{if(!str_contains($hook,'meydan')&&!in_array(get_current_screen()?->post_type,['meydan_square','meydan_narrative','meydan_content','meydan_creator','meydan_media_outlet','meydan_initiative','meydan_campaign'],true))return;wp_enqueue_style('meydan-leaflet','https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',[], '1.9.4');wp_enqueue_script('meydan-leaflet','https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',[], '1.9.4',true);wp_add_inline_style('meydan-leaflet','.meydan-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px}.meydan-card{background:#fff;border:1px solid #ccd0d4;padding:18px}.meydan-card strong{display:block;font-size:28px}.meydan-inline-form{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.meydan-inline-form textarea{width:240px;height:38px}');wp_add_inline_script('meydan-leaflet',"document.addEventListener('DOMContentLoaded',()=>{if(!window.L)return;const all=document.getElementById('meydan-admin-map');if(all){const m=L.map(all).setView([32.4,53.7],5);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);(window.MEYDAN_MAP_POINTS||[]).forEach(p=>L.marker([parseFloat(p.latitude),parseFloat(p.longitude)]).addTo(m).bindPopup('<b>'+String(p.post_title).replace(/[<>]/g,'')+'</b><br>ID '+p.square_id));}});");}
  private function input(string $name,string $label,string $value,string $type='text',string $step='1'):void{echo '<p><label><b>'.esc_html($label).'</b><br><input class="widefat" type="'.esc_attr($type).'" step="'.esc_attr($step).'" name="'.esc_attr($name).'" value="'.esc_attr($value).'"></label></p>';}
  private function textarea(string $name,string $label,string $value):void{echo '<p><label><b>'.esc_html($label).'</b><br><textarea class="widefat" rows="4" name="'.esc_attr($name).'">'.esc_textarea($value).'</textarea></label></p>';}

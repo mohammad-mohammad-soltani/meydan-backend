@@ -26,8 +26,7 @@ final class BindingService
             $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
             $isSquare = self::activeSquare($squareId);
             $user = get_userdata($userId);
-            $isSquareAccount = (string) get_user_meta($userId, 'meydan_account_type', true) === 'square'
-                || ($user && in_array('meydan_square', (array) $user->roles, true));
+            $isSquareAccount = \Meydan\Core\Support\Actor::isEntityAccount($userId);
 
             // A deleted/trashed square account must never silently fall back
             // to a plain user target, otherwise its channel keeps importing.
@@ -45,7 +44,9 @@ final class BindingService
             $items[] = [
                 'user_id' => $userId,
                 'square_id' => $isSquare ? $squareId : 0,
+                // `square` means an entity target of any kind; `kind` says which.
                 'target_type' => $isSquare ? 'square' : 'user',
+                'kind' => $isSquare ? \Meydan\Core\Domain\EntityKinds::kindOf($squareId) : 'user',
                 'channel' => $channel,
                 'last_success_at' => $last ? gmdate('c', strtotime((string) $last . ' UTC')) : null,
             ];
@@ -65,8 +66,7 @@ final class BindingService
             return false;
         }
 
-        $isSquareAccount = (string) get_user_meta($userId, 'meydan_account_type', true) === 'square'
-            || in_array('meydan_square', (array) $user->roles, true);
+        $isSquareAccount = \Meydan\Core\Support\Actor::isEntityAccount($userId);
         if ($isSquareAccount) {
             return false;
         }
@@ -106,7 +106,7 @@ final class BindingService
 
     private static function activeSquare(int $squareId): bool
     {
-        if ($squareId <= 0 || get_post_type($squareId) !== 'meydan_square') {
+        if ($squareId <= 0 || !\Meydan\Core\Domain\EntityKinds::isEntity($squareId)) {
             return false;
         }
 

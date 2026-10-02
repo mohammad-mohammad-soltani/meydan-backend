@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Meydan\Core\Rest;
 
 use Meydan\Core\Audit\AuditLogger;
+use Meydan\Core\Domain\EntityKinds;
 use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Support\Actor;
@@ -23,15 +24,18 @@ final class MeController extends BaseController
         $uid = get_current_user_id();
         $type = $this->accountType($uid);
 
-        if ($type === 'square') {
-            $sid = (int) get_user_meta($uid, 'meydan_square_id', true);
+        if (EntityKinds::isEntityActorType($type)) {
+            $sid = Actor::entityId($uid);
+            $entity = $this->entityProfile($sid);
             return Response::cache(
                 Response::ok([
-                    'account_type' => 'square',
+                    'account_type' => $type,
                     ...$this->rolePayload($uid),
                     // Set only for an approved media account: the outlet it files reflections under.
                     'media_outlet_id' => \Meydan\Core\Domain\MediaReflectionSync::outletForUser($uid) ?: null,
-                    'square' => $this->squareProfile($sid),
+                    // `entity` is the profile of any kind; `square` stays for squares only.
+                    'entity' => $entity,
+                    ...($type === EntityKinds::SQUARE ? ['square' => $entity] : []),
                 ]),
                 'private, no-store'
             );
@@ -176,9 +180,10 @@ final class MeController extends BaseController
         $narrativeBody = $narratives->get_data();
         if ($narratives->get_status() >= 400) return $narratives;
 
+        $isEntity = EntityKinds::isEntityActorType((string) ($me['account_type'] ?? ''));
         $isSquare = ($me['account_type'] ?? '') === 'square';
-        $sid = $isSquare ? (int) get_user_meta($uid, 'meydan_square_id', true) : 0;
-        $ownerId = $isSquare ? Actor::squareOwnerUserId($sid) : $uid;
+        $sid = $isEntity ? Actor::entityId($uid) : 0;
+        $ownerId = $isEntity ? Actor::squareOwnerUserId($sid) : $uid;
         $comments = $ownerId > 0 && !UserAccess::disabled($ownerId)
             ? get_comments(['user_id' => $ownerId, 'type' => 'meydan_comment', 'status' => 'approve', 'number' => 50, 'orderby' => 'comment_date_gmt', 'order' => 'DESC'])
             : [];
@@ -202,7 +207,7 @@ final class MeController extends BaseController
         $uid = get_current_user_id();
         // Author actor type never carries `speaker`: it is a user actor.
         $type = Actor::actorType($uid);
-        $actorId = $type === 'square' ? (int) get_user_meta($uid, 'meydan_square_id', true) : $uid;
+        $actorId = $type !== 'user' ? Actor::entityId($uid) : $uid;
         return $this->actorNarratives($type, $actorId, $r);
     }
 
@@ -246,16 +251,17 @@ final class MeController extends BaseController
         return Response::ok(array_map([$this, 'speakerRow'], $rows ?: []));
     }
 
+    /** Edits the account's entity profile; any kind (square, media, collective, organization). */
     public function patchSquare(WP_REST_Request $r)
     {
-        if ($e = $this->guardSquare()) return $e;
+        if ($e = $this->guardEntity()) return $e;
         $uid = get_current_user_id();
-        $sid = (int) get_user_meta($uid, 'meydan_square_id', true);
+        $sid = Actor::entityId($uid);
         $p = $this->json($r);
-        $before = $this->squareProfile($sid);
+        $before = $this->entityProfile($sid);
         if (isset($p['name'])) {
             $name = sanitize_text_field((string) $p['name']);
-            if ($name === '') return Response::error('validation_failed', 'نام میدان الزامی است.', 422, ['name' => 'required']);
+            if ($name === '') return Response::error('validation_failed', 'نام الزامی است.', 422, ['name' => 'required']);
             wp_update_post(['ID' => $sid, 'post_title' => $name]);
         }
         if (isset($p['description'])) update_user_meta($uid, 'meydan_about', wp_kses_post((string) $p['description']));
@@ -272,12 +278,12 @@ final class MeController extends BaseController
         if (isset($p['subtitle'])) update_user_meta($uid, 'meydan_headline', sanitize_text_field((string) $p['subtitle']));
         if (isset($p['profile_about'])) update_user_meta($uid, 'meydan_about', wp_kses_post((string) $p['profile_about']));
         if (isset($p['profile_skills'])) update_user_meta($uid, 'meydan_skills', array_values(array_filter(array_map('sanitize_text_field', (array) $p['profile_skills']))));
-        if (array_key_exists('start_date', $p)) {
+        if (array_key_exists('start_date', $p) && Actor::isSquare($uid)) {
             $saved = SquareActivity::setStartDate($sid, $p['start_date']);
             if (is_wp_error($saved)) return $this->error($saved);
         }
-        AuditLogger::log('square_updated', 'square', $sid, $before, $this->squareProfile($sid));
-        return Response::ok($this->squareProfile($sid));
+        AuditLogger::log('square_updated', 'square', $sid, $before, $this->entityProfile($sid));
+        return Response::ok($this->entityProfile($sid));
     }
 
     public function putSquareLocation(WP_REST_Request $r)
@@ -300,7 +306,7 @@ final class MeController extends BaseController
             'updated_at' => current_time('mysql', true),
         ]);
         AuditLogger::log('square_location_updated', 'square', $sid, $before, $p);
-        return Response::ok($this->squareProfile($sid)['location']);
+        return Response::ok($this->entityProfile($sid)['location']);
     }
 
     public function schedule(WP_REST_Request $r)
@@ -428,9 +434,9 @@ final class MeController extends BaseController
         ];
     }
 
-    private function squareProfile(int $sid): ?array
+    private function entityProfile(int $sid): ?array
     {
-        $data = Serializer::square($sid);
+        $data = Serializer::entity($sid);
         if (!$data) return null;
         $post = get_post($sid);
         $data['slug'] = $post ? $post->post_name : (string) $sid;
@@ -442,17 +448,20 @@ final class MeController extends BaseController
         $data['subtitle'] = (string) get_user_meta($ownerId, 'meydan_headline', true) ?: (string) get_post_meta($sid, 'meydan_subtitle', true);
         $data['profile_about'] = (string) get_user_meta($ownerId, 'meydan_about', true) ?: (string) get_post_meta($sid, 'meydan_profile_about', true);
         $data['profile_skills'] = array_values((array) get_user_meta($ownerId, 'meydan_skills', true) ?: (array) get_post_meta($sid, 'meydan_profile_skills', true));
-        $data['square_stats'] = array_values((array) get_post_meta($sid, 'meydan_square_stats', true));
         $data['resume_stats'] = array_values((array) get_post_meta($sid, 'meydan_resume_stats', true));
-        $data['start_date'] = SquareActivity::startDate($sid);
         $data['stats'] = is_array($data['stats'] ?? null) ? $data['stats'] : [];
-        $data['stats']['active_nights'] = SquareActivity::activeNights($sid);
+        // Start date and active nights exist only for squares.
+        if (EntityKinds::hasLocation((string) ($data['kind'] ?? ''))) {
+            $data['square_stats'] = array_values((array) get_post_meta($sid, 'meydan_square_stats', true));
+            $data['start_date'] = SquareActivity::startDate($sid);
+            $data['stats']['active_nights'] = SquareActivity::activeNights($sid);
+        }
         return $data;
     }
 
     private function actorNarratives(string $type, int $id, WP_REST_Request $r)
     {
-        if ($type === 'square') {
+        if ($type !== 'user') {
             // Posts are indexed by author; the old nested OR over postmeta
             // joined it four times and took seconds on a busy account.
             $ownerId = Actor::squareOwnerUserId($id);
@@ -485,6 +494,7 @@ final class MeController extends BaseController
     }
 
     private function guard(){return is_user_logged_in()?null:Response::error('unauthenticated','برای انجام این عملیات باید وارد شوید.',401);}
+    private function guardEntity(){if($e=$this->guard())return $e;return Actor::isEntityAccount((int)get_current_user_id())?null:Response::error('forbidden','این عملیات فقط برای حساب میدان، رسانه، مجموعه یا سازمان مجاز است.',403);}
     private function guardSquare(){if($e=$this->guard())return $e;return Actor::isSquare((int)get_current_user_id())?null:Response::error('forbidden','این عملیات فقط برای حساب میدان مجاز است.',403);}
     public function speakerRow(array $r):array{return ['id'=>(int)$r['id'],'creator_id'=>(int)$r['creator_id'],'speaker_user_id'=>(int)($r['speaker_user_id']??0)?:null,'venue'=>$r['venue'],'requested_at'=>gmdate(DATE_ATOM,strtotime($r['requested_at'].' UTC')),'note'=>$r['note'],'status'=>$r['status'],'created_at'=>gmdate(DATE_ATOM,strtotime($r['created_at'].' UTC'))];}
 }

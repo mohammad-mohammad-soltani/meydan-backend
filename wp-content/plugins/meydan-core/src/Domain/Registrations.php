@@ -83,6 +83,10 @@ final class Registrations
         // `meydan_speaker` role, with the profile stored in user meta.
         self::postType('meydan_media_outlet', 'رسانه‌ها', 'رسانه', true, 'manage_meydan_media_reflections', ['title', 'thumbnail']);
         self::postType('meydan_square', 'میدان‌ها', 'میدان', true, 'manage_meydan_squares', ['title', 'editor', 'thumbnail', 'author']);
+        // Media, collectives and organizations are entities of their own, not squares.
+        self::postType('meydan_media_acct', 'حساب‌های رسانه', 'حساب رسانه', true, 'manage_meydan_squares', ['title', 'editor', 'thumbnail', 'author']);
+        self::postType('meydan_collective', 'مجموعه‌ها', 'مجموعه', true, 'manage_meydan_squares', ['title', 'editor', 'thumbnail', 'author']);
+        self::postType('meydan_organization', 'سازمان‌ها', 'سازمان', true, 'manage_meydan_squares', ['title', 'editor', 'thumbnail', 'author']);
         self::postType('meydan_initiative', 'ابتکارها', 'ابتکار', true, 'manage_meydan_initiatives', ['title', 'editor', 'thumbnail']);
         self::postType('meydan_campaign', 'کمپین‌ها', 'کمپین', true, 'manage_meydan_campaigns', ['title', 'editor', 'thumbnail']);
     }

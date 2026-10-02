@@ -100,6 +100,27 @@ final class CliCommand
         \WP_CLI::success(sprintf('%d object(s) are now public-read.', $result['processed']));
     }
 
+    /**
+     * Move media/collective/organization accounts out of the square post type.
+     *
+     * ## OPTIONS
+     *
+     * [--dry-run]
+     * : Count what would move without changing anything.
+     *
+     * @subcommand migrate-entities
+     * @param array<int,string> $args
+     * @param array<string,string> $assocArgs
+     */
+    public function migrate_entities(array $args = [], array $assocArgs = []): void
+    {
+        $report = \Meydan\Core\Domain\EntityMigration::run(isset($assocArgs['dry-run']));
+        foreach ($report as $key => $count) {
+            \WP_CLI::log(sprintf('%-14s %d', $key, $count));
+        }
+        \WP_CLI::success(isset($assocArgs['dry-run']) ? 'Dry run: nothing changed.' : 'Entities migrated.');
+    }
+
     /** Run/repair database migrations. */
     public function migrate(): void
     {

@@ -58,11 +58,11 @@ PUT /uploads/(?P<upload_id>[A-Za-z0-9_\\-]+)/chunks/(?P<index>\\d+)
 POST /uploads/(?P<upload_id>[A-Za-z0-9_\\-]+)/complete
 DELETE /uploads/(?P<upload_id>[A-Za-z0-9_\\-]+)
 GET /timeline
-GET /actors/(?P<type>user|square)/(?P<id>\\d+)/replies
-PUT /actors/(?P<type>user|square)/(?P<id>\\d+)/follow
-DELETE /actors/(?P<type>user|square)/(?P<id>\\d+)/follow
-GET /actors/(?P<type>user|square)/(?P<id>\\d+)/followers
-GET /actors/(?P<type>user|square)/(?P<id>\\d+)/following
+GET /actors/(?P<type>user|square|media|collective|organization)/(?P<id>\\d+)/replies
+PUT /actors/(?P<type>user|square|media|collective|organization)/(?P<id>\\d+)/follow
+DELETE /actors/(?P<type>user|square|media|collective|organization)/(?P<id>\\d+)/follow
+GET /actors/(?P<type>user|square|media|collective|organization)/(?P<id>\\d+)/followers
+GET /actors/(?P<type>user|square|media|collective|organization)/(?P<id>\\d+)/following
 GET /content
 GET /report-days
 GET /report-days/(?P<date>\d{4}-\d{2}-\d{2})

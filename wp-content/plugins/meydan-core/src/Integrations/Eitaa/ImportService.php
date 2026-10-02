@@ -113,7 +113,7 @@ final class ImportService
             }
             $postId = (int) $result;
 
-            update_post_meta($postId, 'meydan_author_actor_type', $squareId > 0 ? 'square' : 'user');
+            update_post_meta($postId, 'meydan_author_actor_type', $squareId > 0 ? \Meydan\Core\Domain\EntityKinds::kindOf($squareId) : 'user');
             update_post_meta($postId, 'meydan_author_actor_id', $squareId > 0 ? $squareId : $userId);
             update_post_meta($postId, 'meydan_attachments', $attachments);
             update_post_meta($postId, 'meydan_import_source', 'eitaa');

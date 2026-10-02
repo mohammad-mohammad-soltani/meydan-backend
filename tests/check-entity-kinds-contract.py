@@ -19,7 +19,7 @@ for k in ["'square'", "'collective'", "'media'", "'organization'"]:
 for role in ['meydan_collective', 'meydan_media', 'meydan_organization']:
     assert role in kinds
 assert 'EntityKinds::ROLE_LABELS' in regs
-assert "add_role('meydan_square')" in kinds
+assert "set_role(self::roleFor($kind))" in kinds  # exactly the kind's role, no secondary square role
 
 # Only a square requires a location; accounts stay pending until an admin approves.
 assert "if($type==='square'&&$kind==='square')$required=array_merge" in auth
@@ -30,7 +30,7 @@ assert 'EntityKinds::createLinkedOutlet' in auth
 assert "'post_status' => 'draft'" in kinds
 assert 'public function mediaLink' in squares
 assert "'kind' => EntityKinds::kindOf($id)" in squares
-assert 'NOT EXISTS' in squares  # legacy squares without kind meta read as square
+assert 'EntityKinds::postType($kind)' in squares  # each kind is listed from its own post type
 
 # Student / seminarian detail is additive.
 assert 'meydan_student_kind' in auth and 'meydan_student_kind' in users
@@ -77,10 +77,39 @@ assert 'postmeta' not in mrt and 'p.post_author=%d' in mrt
 cnt = ser.split('function squareNarrativeCount')[1].split('set_transient')[0]
 assert 'WP_Query' not in cnt and 'post_author = %d' in cnt
 assert 'EntityKinds::syncOutletStatus($id,$status)' in adm and 'syncOutletStatus' not in asc
-assert "'kind' => \\Meydan\\Core\\Domain\\EntityKinds::kindOf($id)" in ser
+assert "'kind' => $kind," in ser
 print('own profile perf contract ok')
 
 # Profile lists include the account's reposts (UNION by time, flagged reposted_at).
 assert "UNION ALL" in page and "'reposted_at'" in page and "i.action = 'repost'" in page
 assert "listByAuthor($ownerId,$r,'square:'.$sid,true)" in sq
 print('profile reposts contract ok')
+
+# Separate entities: own post type per kind, one registry, no hard-coded actor-type lists.
+assert "'media' => 'meydan_media_acct'" in kinds and "'collective' => 'meydan_collective'" in kinds and "'organization' => 'meydan_organization'" in kinds
+for pt in ['meydan_media_acct', 'meydan_collective', 'meydan_organization']:
+    assert pt in regs
+import re
+for path in root.rglob('*.php'):
+    text = path.read_text(encoding='utf-8')
+    for bad in ["['user', 'square']", "['user','square']", "IN ('user','square')"]:
+        assert bad not in text, f"hard-coded actor types in {path.relative_to(root)}: use EntityKinds::actorTypes()"
+    assert "'/square/'" not in text.replace("'/square/' . $", "") or path.name == 'EntityMigration.php', f"hand-built /square/ link in {path.relative_to(root)}: use Links::profile()"
+print('separate entities contract ok')
+
+# One link format: /{handle}. Resolver, entity API and the reserved-handle list exist.
+links = (root / 'Support/Links.php').read_text(encoding='utf-8')
+handles = (root / 'Support/Handles.php').read_text(encoding='utf-8')
+assert "return '/' . $handle" in links
+assert "self::r('/profiles/(?P<handle>[A-Za-z0-9_]+)','GET',[$profiles,'resolve'])" in routes
+assert "self::r('/entities/(?P<kind>square|media|collective|organization)/(?P<id>\\d+)','GET',[$entity,'get'])" in routes
+for word in ['home', 'explore', 'chat', 'compose', 'posts', 'profile', 'media', 'collective', 'organization', 'square', 'users', 'auth']:
+    assert f"'{word}'" in handles.split('RESERVED = [')[1].split('];')[0], word
+assert 'EntityMigration::run' in mig and 'migrate_entities' in (root / 'Support/CliCommand.php').read_text(encoding='utf-8')
+
+# Search has a section per kind and never searches owners of unpublished entities.
+exp = (root / 'Rest/ExploreController.php').read_text(encoding='utf-8')
+for section in ["'media' => []", "'collectives' => []", "'organizations' => []"]:
+    assert section in exp
+assert "private function searchEntities" in exp and "get_post_status($entityId) !== 'publish'" in exp
+print('links and search contract ok')

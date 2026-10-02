@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Support;
 
+use Meydan\Core\Domain\EntityKinds;
 use Meydan\Core\Domain\UserAccess;
 final class Actor
 {
     /**
-     * Canonical account type for a user: `square`, `speaker`, `official` or `user`.
+     * Canonical account type for a user: an entity kind (`square`, `media`,
+     * `collective`, `organization`), `speaker`, `official` or `user`.
      *
      * The WordPress role is authoritative — administrators may change it
      * directly — so a stale `meydan_account_type` meta is repaired on read.
@@ -18,7 +20,13 @@ final class Actor
         $stored = (string) get_user_meta($userId, 'meydan_account_type', true);
         $user = get_userdata($userId);
         $roles = $user ? (array) $user->roles : [];
-        if (in_array('meydan_square', $roles, true)) {
+        $kind = null;
+        foreach (EntityKinds::ROLES as $roleKind => $role) {
+            if (in_array($role, $roles, true)) $kind = $roleKind;
+        }
+        if ($kind !== null) {
+            $type = $kind;
+        } elseif (in_array('meydan_square', $roles, true)) {
             $type = 'square';
         } elseif (in_array('meydan_speaker', $roles, true)) {
             $type = 'speaker';
@@ -34,15 +42,32 @@ final class Actor
     }
 
     /**
-     * Author/interaction actor type for a user: always `square` or `user`.
+     * Author/interaction actor type for a user: `user` or an entity kind.
      *
      * A speaker is a *user* actor even though its account type is `speaker`:
-     * narratives, follows and affinity are keyed on `user|square`, so letting
+     * narratives, follows and affinity are keyed on the actor type, so letting
      * `speaker` leak into those tables would orphan its content.
      */
     public static function actorType(int $userId): string
     {
-        return self::accountType($userId) === 'square' ? 'square' : 'user';
+        $type = self::accountType($userId);
+        return EntityKinds::isEntityActorType($type) ? $type : 'user';
+    }
+
+    /** True for an account that owns an entity of any kind (square, media, collective, organization). */
+    public static function isEntityAccount(int $userId): bool
+    {
+        return EntityKinds::isEntityActorType(self::accountType($userId));
+    }
+
+    /**
+     * Entity post owned by a user, of any kind, or 0. The id lives in the
+     * `meydan_square_id` user meta for every kind (a historical name).
+     */
+    public static function entityId(int $userId): int
+    {
+        $id = (int) get_user_meta($userId, 'meydan_square_id', true);
+        return EntityKinds::isEntity($id) ? $id : 0;
     }
 
     public static function isSquare(int $userId): bool
@@ -122,10 +147,10 @@ final class Actor
     public static function forUser(int $userId): array
     {
         $type = self::accountType($userId);
-        if ($type === 'square') {
-            $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
-            if ($squareId > 0) {
-                return self::forSquare($squareId);
+        if (EntityKinds::isEntityActorType($type)) {
+            $entityId = self::entityId($userId);
+            if ($entityId > 0) {
+                return self::forEntity($entityId);
             }
         }
 
@@ -136,6 +161,7 @@ final class Actor
             'id' => 'usr_' . $userId,
             'type' => 'user',
             'account_type' => $type,
+            'handle' => Handles::ofUser($userId),
             'display_name' => (string) get_user_meta($userId, 'meydan_full_name', true) ?: ($user?->display_name ?: 'کاربر میدان'),
             'avatar_url' => self::avatarUrl((int) get_user_meta($userId, 'meydan_avatar_media_id', true)),
             'verified' => self::isVerifiedUser($userId),
@@ -150,24 +176,34 @@ final class Actor
         ];
     }
 
+    /** Public actor payload of an entity of any kind; `type` and `kind` both carry the kind. */
+    public static function forEntity(int $entityId): array
+    {
+        $kind = EntityKinds::kindOf($entityId);
+        $handle = (($o = self::squareOwnerUserId($entityId)) > 0 ? Handles::ofUser($o) : '') ?: (string) get_post_meta($entityId, 'meydan_handle', true);
+        $actor = [
+            'id' => EntityKinds::prefix($kind) . $entityId,
+            'type' => $kind,
+            'kind' => $kind,
+            'display_name' => self::squareDisplayName($entityId),
+            'avatar_url' => self::squareAvatarUrl($entityId),
+            'handle' => $handle,
+            'verified' => (bool) get_post_meta($entityId, 'meydan_verified', true),
+        ];
+        if (EntityKinds::hasLocation($kind)) $actor['location_address'] = self::squareAddress($entityId);
+        return $actor;
+    }
+
     public static function forSquare(int $squareId): array
     {
-        return [
-            'id' => 'sq_' . $squareId,
-            'type' => 'square',
-            'display_name' => self::squareDisplayName($squareId),
-            'avatar_url' => self::squareAvatarUrl($squareId),
-            'handle' => (($o = self::squareOwnerUserId($squareId)) > 0 ? Handles::ofUser($o) : '') ?: (string) get_post_meta($squareId, 'meydan_handle', true),
-            'location_address' => self::squareAddress($squareId),
-            'verified' => (bool) get_post_meta($squareId, 'meydan_verified', true),
-        ];
+        return self::forEntity($squareId);
     }
 
     public static function fromNarrative(int $narrativeId): array
     {
         $type = (string) get_post_meta($narrativeId, 'meydan_author_actor_type', true);
         $id = (int) get_post_meta($narrativeId, 'meydan_author_actor_id', true);
-        return $type === 'square' ? self::forSquare($id) : self::forUser($id ?: (int) get_post_field('post_author', $narrativeId));
+        return EntityKinds::isEntityActorType($type) ? self::forEntity($id) : self::forUser($id ?: (int) get_post_field('post_author', $narrativeId));
     }
 
     public static function ownerUserId(string $type, int $actorId): int
@@ -175,7 +211,7 @@ final class Actor
         if ($type === 'user') {
             return $actorId;
         }
-        if ($type === 'square') {
+        if (EntityKinds::isEntityActorType($type)) {
             return self::squareOwnerUserId($actorId);
         }
         return 0;
@@ -186,8 +222,8 @@ final class Actor
         if ($type === 'user' && UserAccess::visibleUser($id)) {
             return self::forUser($id);
         }
-        if ($type === 'square' && UserAccess::visibleSquare($id)) {
-            return self::forSquare($id);
+        if (EntityKinds::isEntityActorType($type) && EntityKinds::kindOf($id) === $type && UserAccess::visibleEntity($id)) {
+            return self::forEntity($id);
         }
         return null;
     }
@@ -195,7 +231,7 @@ final class Actor
     public static function isVerifiedUser(int $userId): bool
     {
         $user = get_userdata($userId);
-        return (bool) ($user && (in_array('administrator', (array) $user->roles, true) || in_array('meydan_square', (array) $user->roles, true)));
+        return (bool) ($user && (in_array('administrator', (array) $user->roles, true) || self::isEntityAccount($userId)));
     }
 
     public static function squareOwnerUserId(int $squareId): int
@@ -214,7 +250,7 @@ final class Actor
         // A square is its own actor. Its public/admin name must come from the
         // square post title and must never fall back to the owner's name.
         $title = trim((string) get_the_title($squareId));
-        return $title !== '' ? $title : 'میدان';
+        return $title !== '' ? $title : EntityKinds::label(EntityKinds::kindOf($squareId));
     }
 
     public static function squareAvatarUrl(int $squareId): string

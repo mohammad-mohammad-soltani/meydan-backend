@@ -61,7 +61,7 @@ final class SpeakerService
             return new WP_Error('not_found', 'کاربر پیدا نشد.', ['status' => 404]);
         }
         $roles = (array) $user->roles;
-        if (in_array('administrator', $roles, true) || in_array('meydan_square', $roles, true)) {
+        if (in_array('administrator', $roles, true) || in_array('meydan_square', $roles, true) || array_intersect(EntityKinds::ROLES, $roles) !== []) {
             return new WP_Error('validation_failed', 'این حساب را نمی‌توان به سخنران تبدیل کرد.', ['status' => 422, 'fields' => ['user_id' => 'not_eligible']]);
         }
 
@@ -103,6 +103,7 @@ final class SpeakerService
         $roles = (array) $user->roles;
         return !in_array('administrator', $roles, true)
             && !in_array('meydan_square', $roles, true)
+            && array_intersect(EntityKinds::ROLES, $roles) === []
             && !in_array('meydan_official', $roles, true)
             && !in_array(self::ROLE, $roles, true);
     }

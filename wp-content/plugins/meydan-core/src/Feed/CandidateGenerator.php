@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Feed;
 
+use Meydan\Core\Domain\EntityKinds;
+
 /** Retrieves deterministic, age-limited narrative ids only. */
 final class CandidateGenerator
 {
@@ -73,7 +75,7 @@ final class CandidateGenerator
         global $wpdb;
         $rows = $wpdb->get_results($wpdb->prepare("SELECT object_type,object_id FROM {$wpdb->prefix}meydan_interactions WHERE user_id=%d AND action='follow'", $context->viewer->userId), ARRAY_A) ?: [];
         foreach ($rows as $row) {
-            if (in_array($row['object_type'], ['user', 'square'], true)) {
+            if (in_array($row['object_type'], EntityKinds::actorTypes(), true)) {
                 $context->addFollowing($row['object_type'], (int) $row['object_id']);
             }
         }

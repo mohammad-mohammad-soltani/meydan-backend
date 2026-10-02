@@ -57,7 +57,8 @@ final class NarrativeCleanup
     /** Permanently deletes narratives owned by a square before that square is deleted. */
     public static function deleteSquareNarratives(int $postId, WP_Post $post): void
     {
-        if ($postId <= 0 || $post->post_type !== 'meydan_square') {
+        $kind = EntityKinds::kindForPostType((string) $post->post_type);
+        if ($postId <= 0 || $kind === null) {
             return;
         }
 
@@ -68,12 +69,13 @@ final class NarrativeCleanup
              INNER JOIN {$wpdb->postmeta} actor_type
                ON actor_type.post_id = p.ID
               AND actor_type.meta_key = 'meydan_author_actor_type'
-              AND actor_type.meta_value = 'square'
+              AND actor_type.meta_value = %s
              INNER JOIN {$wpdb->postmeta} actor_id
                ON actor_id.post_id = p.ID
               AND actor_id.meta_key = 'meydan_author_actor_id'
              WHERE p.post_type = 'meydan_narrative'
                AND CAST(actor_id.meta_value AS UNSIGNED) = %d",
+            $kind,
             $postId
         ));
 
@@ -112,10 +114,10 @@ final class NarrativeCleanup
             $actorId = (int) get_post_meta($id, 'meydan_author_actor_id', true);
 
             $actorOrphaned = false;
-            if ($actorType === 'square') {
+            if (EntityKinds::isEntityActorType($actorType)) {
                 $square = $actorId > 0 ? get_post($actorId) : null;
                 $actorOrphaned = !$square
-                    || $square->post_type !== 'meydan_square'
+                    || !EntityKinds::isEntity((int) $square->ID)
                     || in_array($square->post_status, ['trash', 'auto-draft'], true);
             } elseif ($actorType === 'user') {
                 $ownerId = $actorId > 0 ? $actorId : (int) $post->post_author;

@@ -1246,7 +1246,7 @@
       }
     },
     {
-      "name": "GET /actors/(?P<type>user|square)/(?P<id>\\d+)/replies",
+      "name": "GET /actors/(?P<type>user|square|media|collective|organization)/(?P<id>\\d+)/replies",
       "request": {
         "method": "GET",
         "header": [
@@ -1272,7 +1272,7 @@
       }
     },
     {
-      "name": "PUT /actors/(?P<type>user|square)/(?P<id>\\d+)/follow",
+      "name": "PUT /actors/(?P<type>user|square|media|collective|organization)/(?P<id>\\d+)/follow",
       "request": {
         "method": "PUT",
         "header": [
@@ -1298,7 +1298,7 @@
       }
     },
     {
-      "name": "DELETE /actors/(?P<type>user|square)/(?P<id>\\d+)/follow",
+      "name": "DELETE /actors/(?P<type>user|square|media|collective|organization)/(?P<id>\\d+)/follow",
       "request": {
         "method": "DELETE",
         "header": [
@@ -1324,7 +1324,7 @@
       }
     },
     {
-      "name": "GET /actors/(?P<type>user|square)/(?P<id>\\d+)/followers",
+      "name": "GET /actors/(?P<type>user|square|media|collective|organization)/(?P<id>\\d+)/followers",
       "request": {
         "method": "GET",
         "header": [
@@ -1350,7 +1350,7 @@
       }
     },
     {
-      "name": "GET /actors/(?P<type>user|square)/(?P<id>\\d+)/following",
+      "name": "GET /actors/(?P<type>user|square|media|collective|organization)/(?P<id>\\d+)/following",
       "request": {
         "method": "GET",
         "header": [

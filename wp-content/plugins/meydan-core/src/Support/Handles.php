@@ -19,9 +19,19 @@ final class Handles
     public const MIN = 3;
     public const MAX = 30;
 
-    private const RESERVED = [
+    /**
+     * Handles live at the root of the site (`/{handle}`), so every top-level
+     * route, static path and entity name of the app is reserved. Keep it in
+     * sync with the app's routes (the frontend test checks its own copy).
+     */
+    public const RESERVED = [
         'admin', 'administrator', 'root', 'support', 'help', 'meydan', 'official', 'system',
         'api', 'www', 'null', 'undefined', 'me', 'user', 'users', 'square', 'speaker', 'works',
+        'squares', 'media', 'collective', 'collectives', 'organization', 'organizations', 'entities', 'profiles',
+        'home', 'explore', 'chat', 'compose', 'content', 'initiatives', 'map', 'podcasts', 'posts', 'post',
+        'profile', 'speakers', 'auth', 'direct', 'login', 'logout', 'register', 'signup', 'settings',
+        'notifications', 'search', 'images', 'maps', 'fonts', 'static', 'assets', 'offline', 'favicon',
+        'icon', 'manifest', 'robots', 'sitemap', 'sw', 'terms', 'privacy', 'about', 'contact',
     ];
 
     public static function normalize(string $handle): string

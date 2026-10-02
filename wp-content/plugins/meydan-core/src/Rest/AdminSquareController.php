@@ -23,17 +23,12 @@ final class AdminSquareController extends BaseController
         if (!$this->allowed()) return $this->forbidden();
         $page = max(1, (int) ($r->get_param('page') ?: 1));
         $perPage = min(100, max(1, (int) ($r->get_param('per_page') ?: 20)));
-        $args = ['post_type' => 'meydan_square', 'post_status' => ['publish', 'pending', 'draft'], 'posts_per_page' => $perPage, 'paged' => $page, 'orderby' => 'date', 'order' => 'DESC'];
+        $kind = sanitize_key((string) $r->get_param('kind')) ?: EntityKinds::SQUARE;
+        if (!EntityKinds::valid($kind)) return Response::error('validation_failed', 'نوع معتبر نیست.', 422, ['kind' => 'invalid']);
+        $args = ['post_type' => EntityKinds::postType($kind), 'post_status' => ['publish', 'pending', 'draft'], 'posts_per_page' => $perPage, 'paged' => $page, 'orderby' => 'date', 'order' => 'DESC'];
         if ($q = trim((string) $r->get_param('q'))) $args['s'] = $q;
         $meta = [];
         if ($status = sanitize_key((string) $r->get_param('status'))) $meta[] = ['key' => 'meydan_approval_status', 'value' => $status];
-        if ($kind = sanitize_key((string) $r->get_param('kind'))) {
-            if (!EntityKinds::valid($kind)) return Response::error('validation_failed', 'نوع معتبر نیست.', 422, ['kind' => 'invalid']);
-            // Legacy squares have no kind meta and count as `square`.
-            $meta[] = $kind === EntityKinds::SQUARE
-                ? ['relation' => 'OR', ['key' => 'meydan_entity_kind', 'compare' => 'NOT EXISTS'], ['key' => 'meydan_entity_kind', 'value' => 'square']]
-                : ['key' => 'meydan_entity_kind', 'value' => $kind];
-        }
         if ($r->has_param('verified')) $meta[] = ['key' => 'meydan_verified', 'value' => $this->bool($r->get_param('verified')) ? '1' : '0'];
         global $wpdb;
         $province = (int) $r->get_param('province_id');
@@ -79,7 +74,7 @@ final class AdminSquareController extends BaseController
     {
         if (!$this->allowed()) return $this->forbidden();
         $id = (int) $r['id'];
-        if (get_post_type($id) !== 'meydan_square' || get_post_status($id) === 'trash') return Response::error('not_found', 'میدان پیدا نشد.', 404);
+        if (!EntityKinds::isEntity($id) || get_post_status($id) === 'trash') return Response::error('not_found', 'میدان پیدا نشد.', 404);
         return Response::ok($this->adminSquare(get_post($id)));
     }
 
@@ -87,8 +82,8 @@ final class AdminSquareController extends BaseController
     {
         if (!$this->allowed()) return $this->forbidden();
         $id = (int) $r['id'];
-        $before = Serializer::square($id);
-        if (!$before) return Response::error('not_found', 'میدان پیدا نشد.', 404);
+        $before = Serializer::entity($id);
+        if (!$before) return Response::error('not_found', 'مورد پیدا نشد.', 404);
         $saved = SquareAdminService::update($id, $this->json($r));
         if (is_wp_error($saved)) return $this->error($saved);
         return Response::ok($this->adminSquare(get_post($id)));
@@ -98,8 +93,8 @@ final class AdminSquareController extends BaseController
     {
         if (!$this->allowed()) return $this->forbidden();
         $id = (int) $r['id'];
-        $before = Serializer::square($id);
-        if (!$before) return Response::error('not_found', 'میدان پیدا نشد.', 404);
+        $before = Serializer::entity($id);
+        if (!$before) return Response::error('not_found', 'مورد پیدا نشد.', 404);
 
         $deleted = SquareDeletionService::deletePermanently($id);
         if (is_wp_error($deleted)) return $this->error($deleted);
@@ -122,7 +117,7 @@ final class AdminSquareController extends BaseController
     {
         if (!$this->allowed()) return $this->forbidden();
         $id = (int) $r['id'];
-        if (get_post_type($id) !== 'meydan_square') return Response::error('not_found', 'میدان پیدا نشد.', 404);
+        if (!EntityKinds::isEntity($id)) return Response::error('not_found', 'مورد پیدا نشد.', 404);
         $p = $this->json($r);
         $status = sanitize_key((string) ($p['status'] ?? ''));
         if (!in_array($status, SquareAdminService::STATUSES, true)) return Response::error('validation_failed', 'وضعیت انتخاب‌شده معتبر نیست.', 422, ['status' => 'invalid']);
@@ -135,7 +130,7 @@ final class AdminSquareController extends BaseController
     {
         if (!$this->allowed()) return $this->forbidden();
         $id = (int) $r['id'];
-        if (get_post_type($id) !== 'meydan_square') return Response::error('not_found', 'مورد پیدا نشد.', 404);
+        if (EntityKinds::kindOf($id) !== 'media' || !EntityKinds::isEntity($id)) return Response::error('not_found', 'مورد پیدا نشد.', 404);
         $p = $this->json($r);
         $outletId = (int) ($p['outlet_id'] ?? 0);
         $before = EntityKinds::linkedOutlet($id) ?: null;
@@ -224,7 +219,7 @@ final class AdminSquareController extends BaseController
 
             return [
                 'id' => $id,
-                'name' => trim((string) $post->post_title) ?: 'میدان',
+                'name' => trim((string) $post->post_title) ?: EntityKinds::label(EntityKinds::kindOf($id)),
                 'avatar_url' => Actor::squareAvatarUrl($id) ?: null,
                 'post_status' => (string) $post->post_status,
                 'approval_status' => (string) get_post_meta($id, 'meydan_approval_status', true) ?: 'pending_verification',
@@ -249,7 +244,7 @@ final class AdminSquareController extends BaseController
     private function adminSquare(?\WP_Post $post): ?array
     {
         if (!$post) return null;
-        $data = Serializer::square($post);
+        $data = Serializer::entity($post);
         if (!$data) return null;
         $id = (int) $post->ID;
         $ownerId = (int) get_post_meta($id, 'meydan_owner_user_id', true);

@@ -27,8 +27,7 @@ final class BindingService
             if (!$user) continue;
             $squareId = (int) get_user_meta($userId, 'meydan_square_id', true);
             $isSquare = self::activeSquare($squareId);
-            $isSquareAccount = (string) get_user_meta($userId, 'meydan_account_type', true) === 'square'
-                || in_array('meydan_square', (array) $user->roles, true);
+            $isSquareAccount = \Meydan\Core\Support\Actor::isEntityAccount($userId);
 
             if ($isSquareAccount && !$isSquare) continue;
 
@@ -43,7 +42,9 @@ final class BindingService
             $items[] = [
                 'user_id' => $userId,
                 'square_id' => $isSquare ? $squareId : 0,
+                // `square` means an entity target of any kind; `kind` says which.
                 'target_type' => $isSquare ? 'square' : 'user',
+                'kind' => $isSquare ? \Meydan\Core\Domain\EntityKinds::kindOf($squareId) : 'user',
                 'channel' => $channel,
                 'last_success_at' => $last ? gmdate('c', strtotime((string) $last . ' UTC')) : null,
             ];
@@ -58,7 +59,7 @@ final class BindingService
         if (!$user) return false;
 
         $roles = (array) $user->roles;
-        if (in_array('meydan_square', $roles, true)) return false;
+        if (\Meydan\Core\Support\Actor::isEntityAccount($userId)) return false;
         if (!in_array('meydan_speaker', $roles, true) && !in_array('meydan_official', $roles, true)) return false;
 
         return self::channelForUser($userId) !== '';
@@ -76,14 +77,14 @@ final class BindingService
         $owner = (int) get_post_meta($squareId, 'meydan_owner_user_id', true);
         if ($owner > 0) {
             $user = get_userdata($owner);
-            if ($user && in_array('meydan_square', (array) $user->roles, true)
+            if ($user && \Meydan\Core\Support\Actor::isEntityAccount($owner)
                 && (int) get_user_meta($owner, 'meydan_square_id', true) === $squareId) {
                 return $owner;
             }
         }
 
         $ids = get_users([
-            'role' => 'meydan_square',
+            'role__in' => array_merge(['meydan_square'], array_values(\Meydan\Core\Domain\EntityKinds::ROLES)),
             'meta_key' => 'meydan_square_id',
             'meta_value' => $squareId,
             'fields' => 'ids',
@@ -94,7 +95,7 @@ final class BindingService
 
     private static function activeSquare(int $squareId): bool
     {
-        if ($squareId <= 0 || get_post_type($squareId) !== 'meydan_square') return false;
+        if ($squareId <= 0 || !\Meydan\Core\Domain\EntityKinds::isEntity($squareId)) return false;
         return !in_array((string) get_post_status($squareId), ['trash', 'auto-draft'], true);
     }
 
