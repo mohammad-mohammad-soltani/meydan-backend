@@ -6,6 +6,7 @@ namespace Meydan\Core\Domain;
 
 use Meydan\Core\Integrations\Channels\Channels;
 use Meydan\Core\Support\Actor;
+use Meydan\Core\Support\Handles;
 use WP_Error;
 
 /**
@@ -45,7 +46,7 @@ final class SpeakerService
     public const SPEAKER_CATEGORY_TAXONOMY = 'meydan_speaker_category';
 
     /** User meta keys holding the speaker profile. */
-    public const META_KEYS = ['role', 'handle', 'expertise', 'initials'];
+    public const META_KEYS = ['role', 'expertise', 'initials'];
 
     /**
      * Grants the speaker role to an existing account.
@@ -132,6 +133,11 @@ final class SpeakerService
 
         if (array_key_exists('bio', $input)) {
             update_user_meta($userId, 'meydan_about', wp_kses_post((string) $input['bio']));
+        }
+
+        if (array_key_exists('handle', $input) && trim((string) $input['handle']) !== '') {
+            $handle = Handles::set($userId, (string) $input['handle']);
+            if (is_wp_error($handle)) return $handle;
         }
 
         foreach (self::META_KEYS as $key) {

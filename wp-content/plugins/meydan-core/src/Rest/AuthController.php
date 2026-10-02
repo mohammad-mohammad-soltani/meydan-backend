@@ -8,6 +8,7 @@ use Meydan\Core\Auth\OtpService;
 use Meydan\Core\Auth\SessionService;
 use Meydan\Core\Notifications\NotificationService;
 use Meydan\Core\Support\Crypto;
+use Meydan\Core\Support\Handles;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\SquareActivity;
 use Meydan\Core\Support\UserEmails;
@@ -73,10 +74,13 @@ final class AuthController extends BaseController
     private function register(WP_REST_Request $r,string $type)
     {
         $p=$this->json($r);$token=(string)($p['registration_token']??'');
-        $phone=(new OtpService())->consumeRegistrationToken($token);if(is_wp_error($phone))return $this->error($phone);
         $required=$type==='user'?['full_name','province_id','city_id']:['square_name','province_id','city_id','address','latitude','longitude'];
         $fields=[];foreach($required as $key){if(!isset($p[$key])||$p[$key]==='')$fields[$key]='required';}
         if($fields)return Response::error('validation_failed','اطلاعات واردشده معتبر نیست.',422,$fields);
+        $handle=Handles::validate((string)($p['handle']??''));
+        if(is_wp_error($handle))return $this->error($handle);
+        // Spend the one-shot token only once the submission is acceptable.
+        $phone=(new OtpService())->consumeRegistrationToken($token);if(is_wp_error($phone))return $this->error($phone);
         $login='meydan_internal_'.strtolower(wp_generate_password(20,false,false));
         $display=$type==='user'?sanitize_text_field((string)$p['full_name']):sanitize_text_field((string)$p['square_name']);
         $uid=wp_insert_user(['user_login'=>$login,'user_pass'=>wp_generate_password(64,true,true),'display_name'=>$display,'user_email'=>UserEmails::placeholderEmailForPhone($phone),'role'=>$type==='user'?'meydan_user':'meydan_square']);
@@ -94,6 +98,7 @@ final class AuthController extends BaseController
             global $wpdb;$wpdb->replace($wpdb->prefix.'meydan_square_geo',['square_id'=>$sid,'province_id'=>(int)$p['province_id'],'city_id'=>(int)$p['city_id'],'address'=>sanitize_textarea_field((string)$p['address']),'latitude'=>(float)$p['latitude'],'longitude'=>(float)$p['longitude'],'updated_at'=>current_time('mysql',true)]);
             AuditLogger::log('square_registration','square',$sid,null,['status'=>'pending_verification'],$uid);
         }
+        Handles::store((int)$uid,$handle);
         $native=$this->nativeDevice($r);$session=(new SessionService())->issue($uid,$native?'Naghshman Android':null,$native);if(is_wp_error($session))return $this->error($session);
         $result=['authenticated'=>true,'access_token'=>$session['access_token'],'expires_in'=>$session['expires_in'],'account'=>['id'=>$uid,'account_type'=>$type]];
         // Keep browser refresh tokens in HttpOnly cookies; expose them only to

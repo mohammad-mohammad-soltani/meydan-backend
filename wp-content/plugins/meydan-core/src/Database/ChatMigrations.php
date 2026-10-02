@@ -6,7 +6,7 @@ namespace Meydan\Core\Database;
 
 final class ChatMigrations
 {
-    private const VERSION = '1.2.0';
+    private const VERSION = '1.2.2';
 
     public static function maybeRun(): void
     {
@@ -191,7 +191,7 @@ final class ChatMigrations
         ]);
 
         $participants = "{$p}participants";
-        $addColumns($participants, ['role' => "VARCHAR(16) NOT NULL DEFAULT 'member'"]);
+        $addColumns($participants, ['role' => "VARCHAR(16) NOT NULL DEFAULT 'member'", 'label' => 'VARCHAR(40) NULL']);
         $addKeys($participants, ['conversation_role' => 'KEY conversation_role (conversation_id, role)']);
 
         $messages = "{$p}messages";

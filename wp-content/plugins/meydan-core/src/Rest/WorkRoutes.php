@@ -18,7 +18,9 @@ final class WorkRoutes
         self::route('/works/summary', 'GET', [$w, 'summary']);
         self::route("/works/{$id}", 'GET', [$w, 'get']);
         self::route("/works/{$id}", 'PATCH', [$w, 'update']);
+        self::route("/works/{$id}", 'DELETE', [$w, 'destroy']);
         self::route("/works/{$id}/members", 'GET', [$w, 'members']);
+        self::route("/works/{$id}/members/(?P<user_id>\d+)/label", 'PUT', [$w, 'setLabel']);
         self::route("/works/{$id}/members/(?P<user_id>\d+)/role", 'PUT', [$w, 'setRole']);
         self::route("/works/{$id}/join", 'PUT', [$w, 'join']);
         self::route("/works/{$id}/join", 'DELETE', [$w, 'leave']);

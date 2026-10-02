@@ -80,13 +80,15 @@ final class WorkQueries
                 $join = " INNER JOIN {$p} pj ON pj.conversation_id=c.id AND pj.user_id={$uid} AND pj.archived_at IS NULL";
                 break;
             case 'my_tasks':
+                $join = " INNER JOIN {$p} pj ON pj.conversation_id=c.id AND pj.user_id={$uid} AND pj.archived_at IS NULL";
                 $where[] = "EXISTS (SELECT 1 FROM {$tp} t INNER JOIN {$m} m ON m.id=t.message_id WHERE t.user_id={$uid} AND m.conversation_id=c.id AND {$openTask})";
                 break;
             case 'late':
+                $join = " INNER JOIN {$p} pj ON pj.conversation_id=c.id AND pj.user_id={$uid} AND pj.archived_at IS NULL";
                 $where[] = "EXISTS (SELECT 1 FROM {$tp} t INNER JOIN {$m} m ON m.id=t.message_id WHERE t.user_id={$uid} AND m.conversation_id=c.id AND {$openTask} AND m.due_at IS NOT NULL AND m.due_at<UTC_TIMESTAMP())";
                 break;
             case 'mentions':
-                $where[] = "EXISTS (SELECT 1 FROM {$mn} x INNER JOIN {$m} m ON m.id=x.message_id INNER JOIN {$p} pp ON pp.conversation_id=m.conversation_id AND pp.user_id={$uid} WHERE x.user_id={$uid} AND m.conversation_id=c.id AND m.id>COALESCE(pp.last_read_message_id,0) AND m.deleted_at IS NULL)";
+                $where[] = "EXISTS (SELECT 1 FROM {$mn} x INNER JOIN {$m} m ON m.id=x.message_id INNER JOIN {$p} pp ON pp.conversation_id=m.conversation_id AND pp.user_id={$uid} AND pp.archived_at IS NULL WHERE x.user_id={$uid} AND m.conversation_id=c.id AND m.id>COALESCE(pp.last_read_message_id,0) AND m.deleted_at IS NULL)";
                 break;
         }
 
@@ -375,13 +377,14 @@ final class WorkQueries
             $load[(int) $r['user_id']] = ['open' => (int) $r['open_n'], 'done' => (int) $r['done_n']];
         }
 
-        $users = WorkUsers::summaries($ids);
+        $users = WorkUsers::summaries($ids, $conversationId);
         $items = [];
         foreach ($rows as $r) {
             $id = (int) $r['user_id'];
             $items[] = [
                 'user' => $users[$id] ?? null,
                 'role' => (string) $r['role'],
+                'label' => $users[$id]['work_label'] ?? null,
                 'joined_at' => WorkMessages::iso((string) $r['joined_at']),
                 'open_tasks' => $load[$id]['open'] ?? 0,
                 'done_tasks' => $load[$id]['done'] ?? 0,
@@ -452,7 +455,9 @@ final class WorkQueries
             $conversationId,
             $userId
         ));
-        AsyncDispatcher::queueRealtimeToUsers([$userId], 'work:read', ['workId' => (string) $conversationId, 'messageId' => (string) $messageId]);
+        // Read markers fire constantly and only matter to the reader's other sessions: publish
+        // fire-and-forget instead of queueing a WP-Cron job (which rewrites the shared `cron` option).
+        \Meydan\Core\Support\SoketiRealtime::publishNonBlocking(['private-user-' . $userId], 'work:read', ['workId' => (string) $conversationId, 'messageId' => (string) $messageId]);
         return true;
     }
 }

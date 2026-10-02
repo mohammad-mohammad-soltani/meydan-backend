@@ -107,7 +107,8 @@ final class WorkMessages
         }
         if (in_array($kind, [...self::KINDS, 'system'], true)) {
             $where[] = $wpdb->prepare('m.kind=%s', $kind);
-        } elseif (!empty($opts['mine'])) {
+        }
+        if (!empty($opts['mine'])) {
             $tp = self::t('work_task_people');
             $mm = self::t('message_mentions');
             $uid = (int) $viewerId;
@@ -235,6 +236,26 @@ final class WorkMessages
             }
         }
 
+        // 6b. Invited people of private meetings (capped per meeting; visible only to those who can see the meeting).
+        $invited = [];
+        $privateMeetings = array_values(array_map(
+            static fn($r): int => (int) $r->id,
+            array_filter($rows, static fn($r): bool => $r->kind === 'meeting' && (int) $r->is_private === 1)
+        ));
+        if ($privateMeetings) {
+            foreach ($wpdb->get_results($wpdb->prepare(
+                'SELECT message_id,user_id FROM ' . self::t('message_audience') . ' WHERE message_id IN (' . self::marks($privateMeetings) . ')',
+                ...$privateMeetings
+            )) ?: [] as $r) {
+                $list = &$invited[(int) $r->message_id];
+                $list = $list ?? [];
+                if (count($list) < 12) {
+                    $list[] = (int) $r->user_id;
+                }
+                unset($list);
+            }
+        }
+
         // 7. Seen counts.
         $seen = [];
         $memberTotal = 0;
@@ -296,7 +317,16 @@ final class WorkMessages
                 array_push($userIds, ...$list);
             }
         }
-        $users = WorkUsers::summaries($userIds);
+        foreach ($invited as $list) {
+            array_push($userIds, ...$list);
+        }
+        $users = WorkUsers::summaries($userIds, $conversationId);
+        $roleIds = array_values(array_unique(array_merge([$viewerId], array_map(static fn($r): int => (int) $r->sender_user_id, $rows))));
+        $roles = [];
+        foreach ($wpdb->get_results($wpdb->prepare('SELECT user_id,role FROM ' . self::t('participants') . ' WHERE conversation_id=%d AND archived_at IS NULL AND user_id IN (' . self::marks($roleIds) . ')', $conversationId, ...$roleIds)) ?: [] as $participant) {
+            $roles[(int) $participant->user_id] = (string) $participant->role;
+        }
+        $viewerManager = WorkGroups::canManage($roles[$viewerId] ?? null, $viewerId);
         $user = static fn(int $id): ?array => $users[$id] ?? null;
 
         $out = [];
@@ -315,6 +345,7 @@ final class WorkMessages
                     'title' => (string) ($refPayload['title'] ?? ''),
                     'body' => $ref->deleted_at ? '' : mb_substr((string) $ref->body, 0, 160),
                     'sender_name' => (string) (($user((int) $ref->sender_user_id)['name'] ?? 'کاربر')),
+                    'sender_label' => $user((int) $ref->sender_user_id)['work_label'] ?? null,
                 ];
             }
 
@@ -323,7 +354,9 @@ final class WorkMessages
                 'conversation_id' => (string) $r->conversation_id,
                 'kind' => (string) $r->kind,
                 'client_id' => (string) $r->client_id,
+                'can_reply' => !$deleted && $r->kind !== 'system' && ($viewerManager || WorkGroups::canManage($roles[(int) $r->sender_user_id] ?? null, (int) $r->sender_user_id)),
                 'sender' => $user((int) $r->sender_user_id),
+                'sender_role' => $roles[(int) $r->sender_user_id] ?? null,
                 'body' => $deleted ? '' : (string) $r->body,
                 'created_at' => self::iso((string) $r->created_at),
                 'edited_at' => self::iso($r->edited_at),
@@ -332,6 +365,7 @@ final class WorkMessages
                 'pinned' => $r->pinned_at !== null,
                 'reply_to' => $reply,
                 'reply_count' => $replyCounts[$id] ?? 0,
+                'attachment' => !$deleted && $r->attachment_json ? json_decode((string) $r->attachment_json, true) : null,
                 'reactions' => $reactions[$id] ?? [],
                 'mentions' => array_values(array_filter(array_map($user, $mentions[$id] ?? []))),
             ];
@@ -358,6 +392,7 @@ final class WorkMessages
                         'priority' => (string) ($payload['priority'] ?? 'normal'),
                         'due_at' => self::iso($r->due_at),
                         'late' => $r->due_at !== null && in_array($status, ['todo', 'doing'], true) && strtotime((string) $r->due_at . ' UTC') < time(),
+                        'soon' => $r->due_at !== null && in_array($status, ['todo', 'doing'], true) && ($dueTs = (int) strtotime((string) $r->due_at . ' UTC')) >= time() && $dueTs - time() < 21600,
                         'capacity' => $capacity,
                         'assignees' => array_values(array_filter(array_map($user, $assignees))),
                         'volunteers' => array_values(array_filter(array_map($user, $volunteers))),
@@ -373,12 +408,14 @@ final class WorkMessages
                         'agenda' => (string) ($payload['agenda'] ?? ''),
                         'going' => (int) ($rsvp[$id]['yes']['c'] ?? 0),
                         'not_going' => (int) ($rsvp[$id]['no']['c'] ?? 0),
+                        'invited' => array_values(array_filter(array_map($user, $invited[$id] ?? []))),
                         'my_response' => !empty($rsvp[$id]['yes']['mine']) ? 'yes' : (!empty($rsvp[$id]['no']['mine']) ? 'no' : null),
                     ];
                 } elseif ($r->kind === 'announcement') {
                     $msg['announcement'] = [
                         'title' => (string) ($payload['title'] ?? ''),
                         'urgent' => (bool) ($payload['urgent'] ?? false),
+                        'important' => (bool) ($payload['important'] ?? false),
                         'seen_count' => (int) ($seen[$id]['c'] ?? 0),
                         'member_total' => $memberTotal,
                         'seen_by_me' => (bool) ($seen[$id]['mine'] ?? false),
@@ -508,11 +545,23 @@ final class WorkMessages
             $userId,
             $clientId
         ));
+        if ($existing > 0 && (int) self::row($existing)->conversation_id !== $conversationId) {
+            return new WP_Error('client_id_conflict', 'شناسه پیام قبلاً استفاده شده است.', ['status' => 409]);
+        }
         if ($existing > 0) {
             return self::one($existing, $userId, $manager) ?? new WP_Error('message_not_found', 'پیام پیدا نشد.', ['status' => 404]);
         }
 
         $body = sanitize_textarea_field((string) ($input['body'] ?? ''));
+        $attachment = null;
+        if (!empty($input['attachment']['id'])) {
+            $mediaId = (int) $input['attachment']['id'];
+            $media = get_post($mediaId);
+            if (!$media || $media->post_type !== 'attachment' || ((int) $media->post_author !== $userId && !WorkGroups::isSiteAdmin($userId))) {
+                return new WP_Error('invalid_attachment', 'فایل پیوست معتبر نیست.', ['status' => 422]);
+            }
+            $attachment = ['id' => (string) $mediaId, 'name' => sanitize_text_field((string) ($input['attachment']['name'] ?? $media->post_title)), 'mime_type' => (string) $media->post_mime_type, 'url' => (string) wp_get_attachment_url($mediaId)];
+        }
         $replyTo = max(0, (int) ($input['reply_to_id'] ?? 0));
 
         // Members can only answer a manager's message.
@@ -546,7 +595,7 @@ final class WorkMessages
         $pinned = false;
 
         if ($kind === 'text') {
-            if ($body === '') {
+            if ($body === '' && !$attachment) {
                 return new WP_Error('empty_message', 'پیام نمی‌تواند خالی باشد.', ['status' => 422]);
             }
         } else {
@@ -560,7 +609,7 @@ final class WorkMessages
             if ($kind === 'task') {
                 $priority = sanitize_key((string) ($spec['priority'] ?? 'normal'));
                 $payload['priority'] = in_array($priority, self::PRIORITIES, true) ? $priority : 'normal';
-                $payload['capacity'] = min(500, max(0, (int) ($spec['capacity'] ?? 0)));
+                $payload['capacity'] = max(0, (int) ($spec['capacity'] ?? 0));
                 $due = trim((string) ($spec['due_at'] ?? ''));
                 if ($due !== '') {
                     $ts = strtotime($due);
@@ -571,7 +620,7 @@ final class WorkMessages
                 }
                 $taskStatus = 'todo';
                 $assignees = self::membersOnly($conversationId, (array) ($spec['assignee_ids'] ?? []));
-                foreach (array_slice((array) ($spec['items'] ?? []), 0, 50) as $t) {
+                foreach ((array) ($spec['items'] ?? []) as $t) {
                     $t = mb_substr(sanitize_text_field((string) $t), 0, 255);
                     if ($t !== '') {
                         $itemTitles[] = $t;
@@ -587,8 +636,13 @@ final class WorkMessages
                 }
             } elseif ($kind === 'announcement') {
                 $payload['urgent'] = !empty($spec['urgent']);
+                $payload['important'] = !empty($spec['important']);
                 $pinned = !empty($spec['pinned']);
             } elseif ($kind === 'poll') {
+                $provided = array_values((array) ($spec['options'] ?? []));
+                if (trim(sanitize_text_field((string) ($provided[0] ?? ''))) === '' || trim(sanitize_text_field((string) ($provided[1] ?? ''))) === '') {
+                    return new WP_Error('poll_options', 'گزینه اول و دوم الزامی هستند.', ['status' => 422]);
+                }
                 $options = [];
                 foreach ((array) ($spec['options'] ?? []) as $o) {
                     $o = mb_substr(sanitize_text_field((string) $o), 0, 190);
@@ -599,7 +653,7 @@ final class WorkMessages
                 if (count($options) < 2) {
                     return new WP_Error('poll_options', 'حداقل دو گزینه لازم است.', ['status' => 422]);
                 }
-                $payload['options'] = array_slice($options, 0, 10);
+                $payload['options'] = $options;
             }
         }
 
@@ -633,6 +687,7 @@ final class WorkMessages
             'sender_user_id' => $userId,
             'client_id' => $clientId,
             'body' => $body,
+            'attachment_json' => $attachment ? wp_json_encode($attachment) : null,
             'kind' => $kind,
             'payload_json' => $payload ? wp_json_encode($payload, JSON_UNESCAPED_UNICODE) : null,
             'reply_to_id' => $replyTo ?: null,

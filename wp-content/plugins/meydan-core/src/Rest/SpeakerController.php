@@ -7,6 +7,7 @@ use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Domain\SpeakerAdminService;
 use Meydan\Core\Support\Response;
+use Meydan\Core\Support\Handles;
 use Meydan\Core\Support\Serializer;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -48,7 +49,7 @@ final class SpeakerController extends BaseController
             if ($category !== '' && !in_array($category, (array) get_user_meta($id, 'meydan_speaker_categories', true), true)) continue;
             if ($search !== '') {
                 $cities = array_map(static fn($cityId): string => $cityNames[(int) $cityId] ?? '', $item['cities']);
-                $haystack = mb_strtolower(implode(' ', [$item['name'], get_user_meta($id, 'meydan_handle', true), get_user_meta($id, 'meydan_expertise', true), $item['bio'], $item['role'], implode(' ', $cities)]));
+                $haystack = mb_strtolower(implode(' ', [$item['name'], Handles::ofUser($id), get_user_meta($id, 'meydan_expertise', true), $item['bio'], $item['role'], implode(' ', $cities)]));
                 if (!str_contains($haystack, $search)) continue;
             }
             $matches[] = ['id' => $id, 'name' => (string) $item['name']];
@@ -309,7 +310,7 @@ final class SpeakerController extends BaseController
         }
         $id = (int) $d['id'];
         $d['slug'] = sanitize_title((string) $d['name']) ?: (string) $id;
-        $d['handle'] = (string) get_user_meta($id, 'meydan_handle', true);
+        $d['handle'] = Handles::ofUser($id);
         $d['expertise'] = (string) get_user_meta($id, 'meydan_expertise', true);
         $d['initials'] = (string) get_user_meta($id, 'meydan_initials', true);
         return $d;

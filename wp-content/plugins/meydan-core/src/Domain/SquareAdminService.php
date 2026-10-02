@@ -9,6 +9,7 @@ use Meydan\Core\Auth\OtpService;
 use Meydan\Core\Integrations\Channels\Channels;
 use Meydan\Core\Notifications\NotificationService;
 use Meydan\Core\Support\Crypto;
+use Meydan\Core\Support\Handles;
 use Meydan\Core\Support\Geocoder;
 use Meydan\Core\Support\Serializer;
 use Meydan\Core\Support\SquareActivity;
@@ -56,6 +57,13 @@ final class SquareAdminService
         $email = sanitize_email((string) ($input['email'] ?? ''));
         if ($email !== '' && (!is_email($email) || email_exists($email))) {
             return new WP_Error('validation_failed', 'ایمیل معتبر نیست یا قبلاً ثبت شده است.', ['status' => 422, 'fields' => ['email' => 'invalid_or_taken']]);
+        }
+
+        $rawHandle = trim((string) ($input['handle'] ?? ''));
+        $handle = null;
+        if ($rawHandle !== '') {
+            $handle = Handles::validate($rawHandle);
+            if (is_wp_error($handle)) return $handle;
         }
 
         $status = sanitize_key((string) ($input['status'] ?? 'pending_verification'));
@@ -107,6 +115,7 @@ final class SquareAdminService
             update_user_meta($userId, 'meydan_avatar_media_id', $avatar);
         }
         update_user_meta($userId, 'meydan_square_id', $squareId);
+        Handles::store($userId, $handle ?? Handles::generate($name));
         if ((string) ($input['start_date'] ?? '') !== '') {
             SquareActivity::setStartDate($squareId, sanitize_text_field((string) $input['start_date']));
         }
@@ -139,6 +148,13 @@ final class SquareAdminService
             if (array_key_exists($key, $input)) update_post_meta($id, 'meydan_' . $key, sanitize_text_field((string) $input[$key]));
         }
         if (array_key_exists('avatar_media_id', $input)) update_post_meta($id, 'meydan_avatar_media_id', max(0, (int) $input['avatar_media_id']));
+        if (array_key_exists('handle', $input) && trim((string) $input['handle']) !== '') {
+            $owner = (int) get_post_meta($id, 'meydan_owner_user_id', true);
+            $handle = Handles::validate((string) $input['handle'], $owner);
+            if (is_wp_error($handle)) return $handle;
+            if ($owner > 0) Handles::store($owner, $handle);
+            else update_post_meta($id, 'meydan_handle', $handle);
+        }
         if (array_key_exists('start_date', $input)) SquareActivity::setStartDate($id, sanitize_text_field((string) $input['start_date']));
         $geo = self::geo($id);
         if (isset($input['province_id'], $input['city_id'], $input['address'], $input['latitude'], $input['longitude'])) {

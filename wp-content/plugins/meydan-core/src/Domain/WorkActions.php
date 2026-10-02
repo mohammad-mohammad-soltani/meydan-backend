@@ -52,6 +52,20 @@ final class WorkActions
             : null;
     }
 
+    private static function notifyChanged(array $context, int $userId): void
+    {
+        $row = $context['row'];
+        if (!$context['manager'] || $row->kind === 'text') return;
+        $recipients = WorkMessages::memberIds((int) $row->conversation_id);
+        if ((int) $row->is_private === 1) {
+            global $wpdb;
+            $audience = array_map('intval', $wpdb->get_col($wpdb->prepare('SELECT user_id FROM ' . WorkGroups::table('message_audience') . ' WHERE message_id=%d', (int) ($row->thread_root_id ?: $row->id))) ?: []);
+            $recipients = array_unique(array_merge($audience, WorkGroups::managerIds((int) $row->conversation_id)));
+        }
+        $payload = json_decode((string) $row->payload_json, true) ?: [];
+        WorkMessages::notify($context['conv'], $userId, 'work_message_updated', array_diff($recipients, [$userId]), (int) $row->id, (string) ($payload['title'] ?? ''), [], 'work:edit:' . $row->id . ':' . wp_generate_uuid4());
+    }
+
     private static function rootOf(object $row): ?int
     {
         return (int) $row->is_private === 1 ? (int) ($row->thread_root_id ?: $row->id) : null;
@@ -113,6 +127,7 @@ final class WorkActions
         if ($c instanceof WP_Error) {
             return $c;
         }
+        if ($err = self::requireMember($c['role'], $c['manager'])) return $err;
         $row = $c['row'];
         if ($row->deleted_at !== null || ((int) $row->sender_user_id !== $userId && !$c['manager'])) {
             return new WP_Error('forbidden', 'اجازه ویرایش این پیام را ندارید.', ['status' => 403]);
@@ -121,7 +136,7 @@ final class WorkActions
         $update = ['edited_at' => current_time('mysql', true)];
         if (array_key_exists('body', $input)) {
             $body = sanitize_textarea_field((string) $input['body']);
-            if ($body === '' && $row->kind === 'text') {
+            if ($body === '' && $row->kind === 'text' && !$row->attachment_json) {
                 return new WP_Error('empty_message', 'پیام نمی‌تواند خالی باشد.', ['status' => 422]);
             }
             $update['body'] = $body;
@@ -136,6 +151,7 @@ final class WorkActions
             $update['payload_json'] = wp_json_encode($payload, JSON_UNESCAPED_UNICODE);
         }
         $wpdb->update(WorkGroups::table('messages'), $update, ['id' => $messageId]);
+        self::notifyChanged($c, $userId);
         return self::updated(WorkMessages::row($messageId) ?? $row, $userId, $c['manager']);
     }
 
@@ -145,6 +161,7 @@ final class WorkActions
         if ($c instanceof WP_Error) {
             return $c;
         }
+        if ($err = self::requireMember($c['role'], $c['manager'])) return $err;
         $row = $c['row'];
         if ((int) $row->sender_user_id !== $userId && !$c['manager']) {
             return new WP_Error('forbidden', 'اجازه حذف این پیام را ندارید.', ['status' => 403]);
@@ -152,9 +169,11 @@ final class WorkActions
         global $wpdb;
         $wpdb->update(WorkGroups::table('messages'), [
             'body' => '',
+            'attachment_json' => null,
             'deleted_at' => current_time('mysql', true),
             'pinned_at' => null,
         ], ['id' => $messageId]);
+        self::notifyChanged($c, $userId);
         WorkMessages::broadcast((int) $row->conversation_id, 'work:message:deleted', $messageId, self::rootOf($row));
         return true;
     }
@@ -190,13 +209,17 @@ final class WorkActions
 
         // Capacity must hold under concurrency: serialise on the task row.
         $wpdb->query('START TRANSACTION');
-        $wpdb->get_var($wpdb->prepare('SELECT id FROM ' . WorkGroups::table('messages') . ' WHERE id=%d FOR UPDATE', $messageId));
+        $locked = $wpdb->get_row($wpdb->prepare('SELECT task_status,payload_json,deleted_at FROM ' . WorkGroups::table('messages') . ' WHERE id=%d FOR UPDATE', $messageId));
+        if (!$locked || $locked->deleted_at !== null || in_array((string) $locked->task_status, ['done', 'ok'], true)) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('task_closed', 'این وظیفه بسته شده است.', ['status' => 409]);
+        }
         $counts = $wpdb->get_row($wpdb->prepare(
             "SELECT SUM(role='assignee') AS a, SUM(role='volunteer') AS v, SUM(user_id=%d) AS me FROM {$people} WHERE message_id=%d",
             $userId,
             $messageId
         ));
-        $payload = $row->payload_json ? (json_decode((string) $row->payload_json, true) ?: []) : [];
+        $payload = $locked->payload_json ? (json_decode((string) $locked->payload_json, true) ?: []) : [];
         $capacity = (int) ($payload['capacity'] ?? 0);
         $error = null;
         if ((int) ($counts->me ?? 0) > 0) {
@@ -238,7 +261,7 @@ final class WorkActions
 
         global $wpdb;
         $mine = (bool) $wpdb->get_var($wpdb->prepare(
-            'SELECT 1 FROM ' . WorkGroups::table('work_task_people') . ' WHERE message_id=%d AND user_id=%d LIMIT 1',
+            'SELECT 1 FROM ' . WorkGroups::table('work_task_people') . ' t INNER JOIN ' . WorkGroups::table('messages') . ' m ON m.id=t.message_id INNER JOIN ' . WorkGroups::table('participants') . ' p ON p.conversation_id=m.conversation_id AND p.user_id=t.user_id AND p.archived_at IS NULL WHERE t.message_id=%d AND t.user_id=%d LIMIT 1',
             $messageId,
             $userId
         ));
@@ -263,7 +286,8 @@ final class WorkActions
             return new WP_Error('invalid_transition', 'در وضعیت فعلی این عملیات ممکن نیست.', ['status' => 409]);
         }
 
-        $wpdb->update(WorkGroups::table('messages'), ['task_status' => $rule['to']], ['id' => $messageId]);
+        $changed = $wpdb->query($wpdb->prepare('UPDATE ' . WorkGroups::table('messages') . ' SET task_status=%s WHERE id=%d AND task_status=%s AND deleted_at IS NULL', $rule['to'], $messageId, $current));
+        if ($changed !== 1) return new WP_Error('invalid_transition', 'وضعیت وظیفه تغییر کرده است؛ دوباره تلاش کنید.', ['status' => 409]);
         if ($action === 'finish') {
             $wpdb->query($wpdb->prepare('UPDATE ' . WorkGroups::table('work_task_items') . ' SET done=1, done_by=%d WHERE message_id=%d AND done=0', $userId, $messageId));
         }
@@ -271,15 +295,9 @@ final class WorkActions
 
         $payload = $row->payload_json ? (json_decode((string) $row->payload_json, true) ?: []) : [];
         $title = (string) ($payload['title'] ?? '');
-        if (in_array($action, ['finish'], true) && !$manager) {
-            WorkMessages::notify($c['conv'], $userId, 'work_task_status', array_diff(WorkGroups::managerIds((int) $row->conversation_id), [$userId]), $messageId, $title);
-        } elseif (in_array($action, ['approve', 'reopen'], true)) {
-            $responsible = array_map('intval', $wpdb->get_col($wpdb->prepare(
-                'SELECT user_id FROM ' . WorkGroups::table('work_task_people') . ' WHERE message_id=%d',
-                $messageId
-            )) ?: []);
-            WorkMessages::notify($c['conv'], $userId, 'work_task_status', array_diff($responsible, [$userId]), $messageId, $title);
-        }
+        $responsible = array_map('intval', $wpdb->get_col($wpdb->prepare('SELECT user_id FROM ' . WorkGroups::table('work_task_people') . ' WHERE message_id=%d', $messageId)) ?: []);
+        $recipients = array_unique(array_merge($responsible, WorkGroups::managerIds((int) $row->conversation_id)));
+        WorkMessages::notify($c['conv'], $userId, 'work_task_status', array_diff($recipients, [$userId]), $messageId, $title, [], 'work:status:' . $messageId . ':' . wp_generate_uuid4());
         return self::updated(WorkMessages::row($messageId) ?? $row, $userId, $manager);
     }
 
@@ -302,6 +320,8 @@ final class WorkActions
         $people = WorkGroups::table('work_task_people');
 
         $next = WorkMessages::membersOnly($convId, $assigneeIds);
+        $wpdb->query('START TRANSACTION');
+        $wpdb->get_var($wpdb->prepare('SELECT id FROM ' . WorkGroups::table('messages') . ' WHERE id=%d FOR UPDATE', $messageId));
         $prev = array_map('intval', $wpdb->get_col($wpdb->prepare("SELECT user_id FROM {$people} WHERE message_id=%d AND role='assignee'", $messageId)) ?: []);
         $added = array_values(array_diff($next, $prev));
         $removed = array_values(array_diff($prev, $next));
@@ -316,6 +336,8 @@ final class WorkActions
             $rows = array_map(static fn(int $u): string => '(' . $messageId . ',' . $u . ",'assignee','{$now}')", $added);
             $wpdb->query("INSERT IGNORE INTO {$people} (message_id,user_id,role,created_at) VALUES " . implode(',', $rows));
         }
+        if ($next) $wpdb->query($wpdb->prepare("DELETE FROM {$people} WHERE message_id=%d AND role='volunteer'", $messageId));
+        $wpdb->query('COMMIT');
         foreach (array_slice($added, 0, 5) as $u) {
             WorkMessages::system($convId, $userId, 'task_assigned', $messageId, $u);
         }
@@ -369,15 +391,13 @@ final class WorkActions
         }
         global $wpdb;
         $items = WorkGroups::table('work_task_items');
-        if ((int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$items} WHERE message_id=%d", $messageId)) >= 50) {
-            return new WP_Error('too_many_items', 'حداکثر ۵۰ زیرکار مجاز است.', ['status' => 422]);
-        }
         $wpdb->query($wpdb->prepare(
             "INSERT INTO {$items} (message_id,title,sort) SELECT %d,%s,COALESCE(MAX(sort),0)+1 FROM {$items} WHERE message_id=%d",
             $messageId,
             $title,
             $messageId
         ));
+        self::notifyChanged($c, $userId);
         return self::updated($c['row'], $userId, $c['manager']);
     }
 
@@ -419,6 +439,7 @@ final class WorkActions
             $wpdb->update(WorkGroups::table('messages'), ['task_status' => 'doing'], ['id' => (int) $row->id]);
             WorkMessages::system((int) $row->conversation_id, $userId, 'task_started', (int) $row->id);
         }
+        self::notifyChanged($c, $userId);
         return self::updated(WorkMessages::row((int) $row->id) ?? $row, $userId, $c['manager']);
     }
 
@@ -438,6 +459,7 @@ final class WorkActions
             return new WP_Error('forbidden', 'فقط مدیر و مسئول‌های وظیفه می‌توانند زیرکار را ویرایش کنند.', ['status' => 403]);
         }
         $wpdb->delete(WorkGroups::table('work_task_items'), ['id' => $itemId]);
+        self::notifyChanged($c, $userId);
         return self::updated($c['row'], $userId, $c['manager']);
     }
 
@@ -448,7 +470,7 @@ final class WorkActions
         }
         global $wpdb;
         return (bool) $wpdb->get_var($wpdb->prepare(
-            'SELECT 1 FROM ' . WorkGroups::table('work_task_people') . ' WHERE message_id=%d AND user_id=%d LIMIT 1',
+            'SELECT 1 FROM ' . WorkGroups::table('work_task_people') . ' t INNER JOIN ' . WorkGroups::table('messages') . ' m ON m.id=t.message_id INNER JOIN ' . WorkGroups::table('participants') . ' p ON p.conversation_id=m.conversation_id AND p.user_id=t.user_id AND p.archived_at IS NULL WHERE t.message_id=%d AND t.user_id=%d LIMIT 1',
             $messageId,
             $userId
         ));
@@ -493,6 +515,8 @@ final class WorkActions
         }
         global $wpdb;
         $row = $c['row'];
+        $wpdb->query('START TRANSACTION');
+        $wpdb->get_var($wpdb->prepare('SELECT id FROM ' . WorkGroups::table('messages') . ' WHERE id=%d FOR UPDATE', $messageId));
         $inserted = (int) $wpdb->query($wpdb->prepare(
             'INSERT IGNORE INTO ' . WorkGroups::table('work_announcement_seen') . ' (message_id,user_id,seen_at) VALUES (%d,%d,%s)',
             $messageId,
@@ -504,8 +528,7 @@ final class WorkActions
             $payload = $row->payload_json ? (json_decode((string) $row->payload_json, true) ?: []) : [];
             [$title, $body] = WorkMessages::copy('work_announcement_seen', $userId, (string) $c['conv']['title'], (string) ($payload['title'] ?? ''));
             $actor = WorkMessages::actorRef($userId);
-            // Aggregated per announcement; push only for the first few and then every 25th
-            // so a 10k-member group does not buzz the manager's phone 10k times.
+            // Aggregate the app row; every acknowledgement still triggers push.
             (new \Meydan\Core\Notifications\NotificationService())->create(
                 (int) $row->sender_user_id,
                 'work_announcement_seen',
@@ -521,9 +544,10 @@ final class WorkActions
                 null,
                 null,
                 true,
-                $count <= 3 || $count % 25 === 0,
+                true,
             );
         }
+        $wpdb->query('COMMIT');
         return self::updated($row, $userId, $c['manager']);
     }
 
@@ -547,7 +571,7 @@ final class WorkActions
         if ($more) {
             array_pop($rows);
         }
-        $users = WorkUsers::summaries(array_map(static fn($r): int => (int) $r->user_id, $rows));
+        $users = WorkUsers::summaries(array_map(static fn($r): int => (int) $r->user_id, $rows), (int) $c['conv']['id']);
         $items = array_map(static fn($r): array => ['user' => $users[(int) $r->user_id] ?? null, 'seen_at' => WorkMessages::iso((string) $r->seen_at)], $rows);
         $last = $rows ? end($rows) : null;
         return ['items' => $items, 'next_cursor' => $more && $last ? $last->seen_at . '|' . $last->user_id : null];
@@ -607,6 +631,36 @@ final class WorkActions
     }
 
     /* ----------------------------- roles ----------------------------- */
+
+    /** Owner / site admin sets a free-text attribute (صفت) shown after a member's name. Empty clears it. */
+    public static function setLabel(array $conv, int $actorId, ?string $actorRole, int $targetId, string $label): array|WP_Error
+    {
+        if (!WorkGroups::canManage($actorRole, $actorId)) {
+            return new WP_Error('forbidden', 'فقط مدیر کار می‌تواند صفت تعیین کند.', ['status' => 403]);
+        }
+        $convId = (int) $conv['id'];
+        if (WorkGroups::role($convId, $targetId) === null) {
+            return new WP_Error('member_not_found', 'این فرد عضو کار نیست.', ['status' => 404]);
+        }
+        $label = trim(mb_substr(sanitize_text_field($label), 0, 40));
+        global $wpdb;
+        $wpdb->update(WorkGroups::table('participants'), ['label' => $label === '' ? null : $label], ['conversation_id' => $convId, 'user_id' => $targetId]);
+        \Meydan\Core\Notifications\AsyncDispatcher::queueRealtimeToUsers(WorkMessages::memberIds($convId), 'work:updated', ['workId' => (string) $convId]);
+        return ['label' => $label === '' ? null : $label];
+    }
+
+    /** Permanently delete a work group (owner or site admin). */
+    public static function deleteWork(array $conv, int $actorId, ?string $actorRole): true|WP_Error
+    {
+        if (!WorkGroups::canAdminister($actorRole, $actorId)) {
+            return new WP_Error('forbidden', 'فقط مدیر کار یا مدیر سایت می‌تواند کار را حذف کند.', ['status' => 403]);
+        }
+        $convId = (int) $conv['id'];
+        $members = WorkMessages::memberIds($convId);
+        WorkGroups::delete($convId, (int) ($conv['initiative_id'] ?? 0));
+        \Meydan\Core\Notifications\AsyncDispatcher::queueRealtimeToUsers($members, 'work:updated', ['workId' => (string) $convId, 'deleted' => true]);
+        return true;
+    }
 
     public static function setRole(array $conv, int $actorId, ?string $actorRole, int $targetId, string $role): true|WP_Error
     {

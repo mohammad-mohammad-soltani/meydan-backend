@@ -12,6 +12,7 @@ use Meydan\Core\Domain\UserDeletionService;
 use Meydan\Core\Integrations\Channels\Channels;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Crypto;
+use Meydan\Core\Support\Handles;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\UserEmails;
 use WP_Error;
@@ -102,6 +103,8 @@ final class AdminUserController extends BaseController
             wp_delete_user($id);
             return $this->error($changed);
         }
+        // After the role change so a freshly created square mirrors the handle.
+        $validated['handle'] ? Handles::store($id, $validated['handle']) : Handles::ensure($id, $name);
         AuditLogger::log('user_created', 'user', $id, null, ['role' => $role]);
         return Response::ok($this->serialize($id), [], 201);
     }
@@ -119,6 +122,8 @@ final class AdminUserController extends BaseController
             if (is_wp_error($changed)) return $this->error($changed);
         }
         $this->saveProfile($id, $p, $validated);
+        if ($validated['handle']) Handles::store($id, $validated['handle']);
+        else Handles::ensure($id);
         AuditLogger::log('user_updated', 'user', $id, ['role' => $before['role']], ['role' => (string) get_userdata($id)->roles[0], 'fields' => array_keys($p)]);
         return Response::ok($this->serialize($id));
     }
@@ -184,6 +189,14 @@ final class AdminUserController extends BaseController
                 if (array_filter($matches, static fn($candidate) => (int) $candidate !== $id)) $fields['phone'] = 'taken';
             }
         }
+        $handle = null;
+        if (array_key_exists('handle', $p) && trim((string) $p['handle']) !== '') {
+            $handle = Handles::validate((string) $p['handle'], $id);
+            if (is_wp_error($handle)) {
+                $fields['handle'] = (string) ($handle->get_error_data()['fields']['handle'] ?? 'invalid');
+                $handle = null;
+            }
+        }
         if (array_key_exists('is_student_or_seminarian', $p) && !is_bool($p['is_student_or_seminarian'])) $fields['is_student_or_seminarian'] = 'invalid';
         if (array_key_exists('email', $p)) {
             $email = sanitize_email((string) $p['email']);
@@ -200,7 +213,7 @@ final class AdminUserController extends BaseController
             if ($province <= 0 || !$wpdb->get_var($wpdb->prepare("SELECT 1 FROM {$wpdb->prefix}meydan_cities WHERE id=%d AND province_id=%d AND active=1", $city, $province))) $fields['city_id'] = 'invalid';
         }
         if ($fields) return new WP_Error('validation_failed', 'اطلاعات واردشده معتبر نیست.', ['status' => 422, 'fields' => $fields]);
-        return ['phone' => $phone];
+        return ['phone' => $phone, 'handle' => $handle];
     }
 
     private function saveProfile(int $id, array $p, array $validated): void
@@ -318,6 +331,7 @@ final class AdminUserController extends BaseController
         $cover = (int) get_user_meta($id, 'meydan_cover_media_id', true);
         return ['id' => $id, 'full_name' => (string) get_user_meta($id, 'meydan_full_name', true) ?: $user->display_name,
             'phone' => $this->phone($id), 'email' => UserEmails::isPlaceholder($user->user_email) ? '' : $user->user_email,
+            'handle' => Handles::ofUser($id),
             'role' => (string) ($user->roles[0] ?? ''), 'roles' => array_values((array) $user->roles),
             'disabled' => UserAccess::disabled($id), 'headline' => (string) get_user_meta($id, 'meydan_headline', true),
             'about' => (string) get_user_meta($id, 'meydan_about', true),

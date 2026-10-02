@@ -27,6 +27,7 @@ final class SettingsPage
         'comment_reply' => 'پاسخ به نظر',
         'mention' => 'اشاره به کاربر',
         'initiative_join' => 'پیوستن به کار',
+        'work_message_updated' => 'به‌روزرسانی پیام کار',
         'work_task_created' => 'وظیفه جدید در کار',
         'work_task_assigned' => 'مسئولیت وظیفه',
         'work_task_status' => 'تغییر وضعیت وظیفه',

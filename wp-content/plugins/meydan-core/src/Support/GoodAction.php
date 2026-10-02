@@ -64,7 +64,7 @@ final class GoodAction
 
         $plain = trim(wp_strip_all_tags(strip_shortcodes($narrative->post_content)));
         $firstLine = trim((string) preg_split('/\R/u', $plain, 2)[0]);
-        $title = $firstLine !== '' ? mb_substr($firstLine, 0, 120) : 'کار خوب میدان';
+        $title = $firstLine !== '' ? mb_substr($firstLine, 0, 120) : 'کار میدان';
 
         $initiativeId = wp_insert_post([
             'post_type' => 'meydan_initiative',

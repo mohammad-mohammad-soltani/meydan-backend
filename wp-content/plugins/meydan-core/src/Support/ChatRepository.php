@@ -535,12 +535,8 @@ final class ChatRepository
         $actor = Actor::forUser($userId);
         $profileType = (string) ($actor['type'] ?? 'user');
         $profileId = $userId;
-        $handle = '@' . (string) $user->user_nicename;
-        if ($profileType === 'square') {
-            $profileId = (int) get_user_meta($userId, 'meydan_square_id', true);
-            $squareHandle = (string) get_post_meta($profileId, 'meydan_handle', true);
-            $handle = $squareHandle !== '' ? (str_starts_with($squareHandle, '@') ? $squareHandle : '@' . $squareHandle) : '@square_' . $profileId;
-        }
+        if ($profileType === 'square') $profileId = (int) get_user_meta($userId, 'meydan_square_id', true);
+        $handle = Handles::display($userId);
 
         return [
             'id' => (string) $userId,

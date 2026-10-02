@@ -57,14 +57,40 @@ final class Actor
         return $squareId > 0 && get_post_type($squareId) === 'meydan_square' ? $squareId : 0;
     }
 
+    /** @var array<int,string> request-local cache, filled in bulk by primeSquareAddresses(). */
+    private static array $addressCache = [];
+
+    /** One query for many squares, so listing N squares never costs N address lookups. */
+    public static function primeSquareAddresses(array $squareIds): void
+    {
+        global $wpdb;
+        $ids = array_values(array_unique(array_filter(array_map('intval', $squareIds), static fn(int $id): bool => $id > 0 && !isset(self::$addressCache[$id]))));
+        if (!$ids) {
+            return;
+        }
+        foreach ($ids as $id) {
+            self::$addressCache[$id] = '';
+        }
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT square_id, address FROM {$wpdb->prefix}meydan_square_geo WHERE square_id IN (" . implode(',', array_fill(0, count($ids), '%d')) . ')',
+            ...$ids
+        ), ARRAY_A) ?: [];
+        foreach ($rows as $row) {
+            self::$addressCache[(int) $row['square_id']] = (string) $row['address'];
+        }
+    }
+
     /** Registered address of a square, used as the invitation venue. '' when unset. */
     public static function squareAddress(int $squareId): string
     {
         if ($squareId <= 0) {
             return '';
         }
+        if (isset(self::$addressCache[$squareId])) {
+            return self::$addressCache[$squareId];
+        }
         global $wpdb;
-        return (string) $wpdb->get_var($wpdb->prepare(
+        return self::$addressCache[$squareId] = (string) $wpdb->get_var($wpdb->prepare(
             "SELECT address FROM {$wpdb->prefix}meydan_square_geo WHERE square_id = %d",
             $squareId
         ));
@@ -131,7 +157,7 @@ final class Actor
             'type' => 'square',
             'display_name' => self::squareDisplayName($squareId),
             'avatar_url' => self::squareAvatarUrl($squareId),
-            'handle' => (string) get_post_meta($squareId, 'meydan_handle', true),
+            'handle' => (($o = self::squareOwnerUserId($squareId)) > 0 ? Handles::ofUser($o) : '') ?: (string) get_post_meta($squareId, 'meydan_handle', true),
             'location_address' => self::squareAddress($squareId),
             'verified' => (bool) get_post_meta($squareId, 'meydan_verified', true),
         ];

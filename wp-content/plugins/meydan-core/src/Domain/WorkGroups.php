@@ -53,6 +53,9 @@ final class WorkGroups
         if ($existing > 0) {
             return $existing;
         }
+        if (self::isClosed($initiativeId)) {
+            return 0;
+        }
 
         $post = get_post($initiativeId);
         if (!$post || $post->post_type !== 'meydan_initiative' || $post->post_status !== 'publish') {
@@ -94,6 +97,36 @@ final class WorkGroups
         update_post_meta($initiativeId, 'meydan_work_id', $conversationId);
 
         return $conversationId;
+    }
+
+    /** A deleted work keeps its initiative post (the tweet) but can no longer be joined. */
+    public static function isClosed(int $initiativeId): bool
+    {
+        return (bool) get_post_meta($initiativeId, 'meydan_work_closed', true);
+    }
+
+    /**
+     * Permanently remove a work group: messages, side tables, memberships. The
+     * initiative post stays and is flagged closed so joining is disabled.
+     * Set-based deletes only — a fixed number of statements however big the room is.
+     */
+    public static function delete(int $conversationId, int $initiativeId): void
+    {
+        global $wpdb;
+        $m = self::table('messages');
+        foreach (['message_mentions', 'message_audience', 'work_task_people', 'work_task_items', 'work_meeting_rsvps', 'work_announcement_seen', 'work_poll_votes', 'reactions'] as $side) {
+            $wpdb->query($wpdb->prepare(
+                'DELETE s FROM ' . self::table($side) . " s INNER JOIN {$m} m ON m.id=s.message_id WHERE m.conversation_id=%d",
+                $conversationId
+            ));
+        }
+        $wpdb->delete($m, ['conversation_id' => $conversationId]);
+        $wpdb->delete(self::table('participants'), ['conversation_id' => $conversationId]);
+        $wpdb->delete(self::table('conversations'), ['id' => $conversationId]);
+        if ($initiativeId > 0) {
+            delete_post_meta($initiativeId, 'meydan_work_id');
+            update_post_meta($initiativeId, 'meydan_work_closed', 1);
+        }
     }
 
     /** The viewer's role in the work, or null when they are not a member. */

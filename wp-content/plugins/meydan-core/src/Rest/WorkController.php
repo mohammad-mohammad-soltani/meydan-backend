@@ -78,6 +78,28 @@ final class WorkController extends BaseController
         return $this->reply($result === true ? ['role' => sanitize_key((string) ($input['role'] ?? ''))] : $result);
     }
 
+    public function setLabel(WP_REST_Request $r): mixed
+    {
+        $conv = WorkQueries::conversation((int) $r['id']);
+        if (!$conv) {
+            return $this->notFound();
+        }
+        $uid = get_current_user_id();
+        $input = $this->json($r);
+        return $this->reply(WorkActions::setLabel($conv, $uid, WorkGroups::role((int) $conv['id'], $uid), (int) $r['user_id'], (string) ($input['label'] ?? '')));
+    }
+
+    public function destroy(WP_REST_Request $r): mixed
+    {
+        $conv = WorkQueries::conversation((int) $r['id']);
+        if (!$conv) {
+            return $this->notFound();
+        }
+        $uid = get_current_user_id();
+        $result = WorkActions::deleteWork($conv, $uid, WorkGroups::role((int) $conv['id'], $uid));
+        return $this->reply($result === true ? ['deleted' => true] : $result);
+    }
+
     public function join(WP_REST_Request $r): mixed
     {
         return $this->setMembership((int) $r['id'], true);
@@ -105,7 +127,8 @@ final class WorkController extends BaseController
     public function read(WP_REST_Request $r): mixed
     {
         $input = $this->json($r);
-        return $this->reply(WorkQueries::markRead((int) $r['id'], get_current_user_id(), (int) ($input['message_id'] ?? 0)) === true ? ['read' => true] : new WP_Error('invalid_message', 'پیام معتبر نیست.', ['status' => 422]));
+        $result = WorkQueries::markRead((int) $r['id'], get_current_user_id(), (int) ($input['message_id'] ?? 0));
+        return $this->reply($result === true ? ['read' => true] : $result);
     }
 
     /* ----------------------------- messages -------------------------- */
@@ -154,7 +177,8 @@ final class WorkController extends BaseController
 
     public function delete(WP_REST_Request $r): mixed
     {
-        return $this->reply(WorkActions::delete((int) $r['id'], get_current_user_id()) === true ? ['deleted' => true] : new WP_Error('message_not_found', 'پیام پیدا نشد.', ['status' => 404]));
+        $result = WorkActions::delete((int) $r['id'], get_current_user_id());
+        return $this->reply($result === true ? ['deleted' => true] : $result);
     }
 
     public function react(WP_REST_Request $r): mixed

@@ -35,6 +35,7 @@ final class NotificationService
         'admin_notice' => ['title' => 'پیام میدان', 'body' => 'پیام جدیدی از مدیریت میدان دارید.'],
         'system' => ['title' => 'اعلان سیستم', 'body' => 'یک اعلان سیستمی جدید دارید.'],
         'content_published' => ['title' => 'محتوای جدید', 'body' => 'محتوای جدیدی منتشر شد.'],
+        'work_message_updated' => ['title' => 'به‌روزرسانی کار', 'body' => '{actor} یک پیام در کار را به‌روز کرد.'],
         'work_task_created' => ['title' => 'وظیفه جدید', 'body' => '{actor} یک وظیفه جدید در کار گذاشت.'],
         'work_task_assigned' => ['title' => 'مسئولیت وظیفه', 'body' => '{actor} شما را مسئول یک وظیفه کرد.'],
         'work_task_status' => ['title' => 'وضعیت وظیفه', 'body' => '{actor} وضعیت یک وظیفه را تغییر داد.'],
@@ -110,7 +111,7 @@ final class NotificationService
 
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_notifications';
-        if ($entityType && $entityId && $actorType && $actorId) {
+        if ($entityType && $entityId && $actorType && $actorId && !in_array($type, ['work_announcement_seen', 'initiative_join'], true)) {
             $dupe = $wpdb->get_var($wpdb->prepare(
                 "SELECT id FROM {$table} WHERE recipient_user_id = %d AND type = %s AND actor_type = %s AND actor_id = %d AND entity_type = %s AND entity_id = %d AND created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY) LIMIT 1",
                 $recipientUserId, $type, $actorType, $actorId, $entityType, $entityId

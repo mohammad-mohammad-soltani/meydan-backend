@@ -2,7 +2,7 @@
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
-initiative = (root / "wp-content/plugins/meydan-core/src/Rest/InitiativeController.php").read_text(encoding="utf-8")
+initiative = (root / "wp-content/plugins/meydan-core/src/Domain/InitiativeMembership.php").read_text(encoding="utf-8")
 service = (root / "wp-content/plugins/meydan-core/src/Notifications/NotificationService.php").read_text(encoding="utf-8")
 controller = (root / "wp-content/plugins/meydan-core/src/Rest/NotificationController.php").read_text(encoding="utf-8")
 settings = (root / "wp-content/plugins/meydan-core/src/Admin/SettingsPage.php").read_text(encoding="utf-8")

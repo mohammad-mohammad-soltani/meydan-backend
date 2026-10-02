@@ -13,6 +13,7 @@ final class InitiativeController extends BaseController
  {
   $initiative=Serializer::initiative($id);
   if(!$initiative)return Response::error('not_found','ابتکار پیدا نشد.',404);
+  if($on&&!empty($initiative['work_closed']))return Response::error('work_closed','این کار حذف شده و امکان پیوستن به آن نیست.',409);
   $v=$this->viewer();
   if(!$v->isAuthenticated()&&!$initiative['allow_guest_join'])return Response::error('unauthenticated','این ابتکار نیاز به ورود دارد.',401);
   if($v->isAuthenticated()){

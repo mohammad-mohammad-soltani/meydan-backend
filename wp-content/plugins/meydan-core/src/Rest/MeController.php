@@ -6,6 +6,7 @@ namespace Meydan\Core\Rest;
 use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Support\Actor;
+use Meydan\Core\Support\Handles;
 use Meydan\Core\Support\Cursor;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\Serializer;
@@ -98,6 +99,10 @@ final class MeController extends BaseController
         foreach (['province_id', 'city_id'] as $k) {
             if (array_key_exists($k, $p)) update_user_meta($uid, 'meydan_' . $k, (int) $p[$k]);
         }
+        if (array_key_exists('handle', $p)) {
+            $handle = Handles::set($uid, (string) $p['handle']);
+            if (is_wp_error($handle)) return $this->error($handle);
+        }
         if (array_key_exists('avatar_media_id', $p)) {
             $avatarId = $this->profileImageMediaId($p['avatar_media_id'], $uid, 'avatar');
             if (is_wp_error($avatarId)) return $this->error($avatarId);
@@ -113,7 +118,7 @@ final class MeController extends BaseController
         // endpoint; the account is the profile, so there is no second object.
         if (Actor::isSpeaker($uid)) {
             $speaker = [];
-            foreach (['role', 'handle', 'expertise', 'initials'] as $k) {
+            foreach (['role', 'expertise', 'initials'] as $k) {
                 if (array_key_exists($k, $p)) $speaker[$k] = $p[$k];
             }
             if (array_key_exists('categories', $p)) $speaker['categories'] = (array) $p['categories'];
@@ -221,6 +226,10 @@ final class MeController extends BaseController
             update_user_meta($uid, 'meydan_avatar_media_id', $avatarId);
         }
         if (array_key_exists('cover_media_id', $p)) {$coverId = $this->profileImageMediaId($p['cover_media_id'], $uid, 'cover');if (is_wp_error($coverId)) return $this->error($coverId);update_user_meta($uid, 'meydan_cover_media_id', $coverId);}
+        if (array_key_exists('handle', $p)) {
+            $handle = Handles::set($uid, (string) $p['handle']);
+            if (is_wp_error($handle)) return $this->error($handle);
+        }
         if (isset($p['subtitle'])) update_user_meta($uid, 'meydan_headline', sanitize_text_field((string) $p['subtitle']));
         if (isset($p['profile_about'])) update_user_meta($uid, 'meydan_about', wp_kses_post((string) $p['profile_about']));
         if (isset($p['profile_skills'])) update_user_meta($uid, 'meydan_skills', array_values(array_filter(array_map('sanitize_text_field', (array) $p['profile_skills']))));
@@ -366,6 +375,7 @@ final class MeController extends BaseController
             'avatar_url' => Actor::avatarUrl((int) get_user_meta($uid, 'meydan_avatar_media_id', true)),
             'cover_media_id' => (int) get_user_meta($uid, 'meydan_cover_media_id', true) ?: null,
             'cover_url' => Actor::coverUrl($uid),
+            'handle' => Handles::ofUser($uid),
             'headline' => (string) get_user_meta($uid, 'meydan_headline', true),
             'verified' => Actor::isVerifiedUser($uid),
             'verified_official' => Actor::isOfficial($uid),
@@ -389,7 +399,7 @@ final class MeController extends BaseController
         $data['avatar_media_id'] = (int) get_user_meta($ownerId, 'meydan_avatar_media_id', true) ?: ((int) get_post_meta($sid, 'meydan_avatar_media_id', true) ?: null);
         $data['cover_media_id'] = (int) get_user_meta($ownerId, 'meydan_cover_media_id', true) ?: null;
         $data['cover_url'] = Actor::coverUrl($ownerId);
-        $data['handle'] = (string) get_post_meta($sid, 'meydan_handle', true);
+        $data['handle'] = Handles::ofUser($ownerId);
         $data['subtitle'] = (string) get_user_meta($ownerId, 'meydan_headline', true) ?: (string) get_post_meta($sid, 'meydan_subtitle', true);
         $data['profile_about'] = (string) get_user_meta($ownerId, 'meydan_about', true) ?: (string) get_post_meta($sid, 'meydan_profile_about', true);
         $data['profile_skills'] = array_values((array) get_user_meta($ownerId, 'meydan_skills', true) ?: (array) get_post_meta($sid, 'meydan_profile_skills', true));

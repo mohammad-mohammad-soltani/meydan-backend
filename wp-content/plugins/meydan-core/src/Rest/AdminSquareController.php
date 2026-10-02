@@ -7,6 +7,7 @@ namespace Meydan\Core\Rest;
 use Meydan\Core\Admin\Admin;
 use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Domain\SquareAdminService;
+use Meydan\Core\Support\Handles;
 use Meydan\Core\Domain\SquareDeletionService;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Response;
@@ -204,6 +205,7 @@ final class AdminSquareController extends BaseController
                 'owner_user_id' => $ownerId > 0 ? $ownerId : null,
                 'owner' => $owner ? ['id' => $ownerId, 'name' => (string) $owner->display_name] : null,
                 'admin_note' => (string) get_post_meta($id, 'meydan_admin_note', true),
+                'handle' => ($ownerId > 0 ? Handles::ofUser($ownerId) : '') ?: (string) get_post_meta($id, 'meydan_handle', true),
                 'location' => $geo ? [
                     'province_id' => (int) $geo['province_id'],
                     'city_id' => (int) $geo['city_id'],
@@ -226,6 +228,7 @@ final class AdminSquareController extends BaseController
         $data['owner_user_id'] = $ownerId ?: null;
         $data['owner'] = $ownerId > 0 && get_userdata($ownerId) ? ['id' => $ownerId, 'name' => (string) get_userdata($ownerId)->display_name] : null;
         $data['admin_note'] = (string) get_post_meta($id, 'meydan_admin_note', true);
+        $data['handle'] = ($ownerId > 0 ? Handles::ofUser($ownerId) : '') ?: (string) get_post_meta($id, 'meydan_handle', true);
         $data['verified'] = (bool) get_post_meta($id, 'meydan_verified', true);
         return $data;
     }

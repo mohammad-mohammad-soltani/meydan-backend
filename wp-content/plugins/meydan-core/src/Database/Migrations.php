@@ -49,6 +49,7 @@ final class Migrations
         // Guarded and cheap: migrateSpeakerUsers() returns immediately once done.
         self::migrateSpeakerUsers();
         \Meydan\Core\Domain\WorkGroups::backfill();
+        \Meydan\Core\Support\Handles::backfill();
     }
 
     public static function run(): void

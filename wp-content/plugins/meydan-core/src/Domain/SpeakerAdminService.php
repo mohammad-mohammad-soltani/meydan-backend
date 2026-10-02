@@ -7,6 +7,7 @@ namespace Meydan\Core\Domain;
 use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Auth\OtpService;
 use Meydan\Core\Support\Crypto;
+use Meydan\Core\Support\Handles;
 use Meydan\Core\Support\UserEmails;
 use WP_Error;
 
@@ -43,6 +44,13 @@ final class SpeakerAdminService
             return self::validation('شهر انتخاب‌شده معتبر نیست.', ['city_id' => 'invalid']);
         }
 
+        $rawHandle = trim((string) ($input['handle'] ?? ''));
+        $handle = null;
+        if ($rawHandle !== '') {
+            $handle = Handles::validate($rawHandle);
+            if (is_wp_error($handle)) return $handle;
+        }
+
         $userId = wp_insert_user([
             'user_login' => 'meydan_internal_' . strtolower(wp_generate_password(20, false, false)),
             'user_pass' => wp_generate_password(64, true, true),
@@ -62,6 +70,8 @@ final class SpeakerAdminService
         if ($province > 0) update_user_meta($userId, 'meydan_province_id', $province);
         if ($city > 0) update_user_meta($userId, 'meydan_city_id', $city);
         UserEmails::ensureEmail($userId);
+
+        Handles::store($userId, $handle ?? Handles::generate($name));
 
         $promoted = SpeakerService::promote($userId);
         if (is_wp_error($promoted)) {
