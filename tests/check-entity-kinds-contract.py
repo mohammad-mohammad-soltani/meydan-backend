@@ -120,3 +120,13 @@ work = (root / 'Domain/WorkUsers.php').read_text(encoding='utf-8')
 assert "'verified_speaker'" in chat and "'verified_speaker'" in work and "'verified_speaker'" in me
 assert "$kind === EntityKinds::SQUARE ? true : (bool) get_post_meta($id, 'meydan_verified', true)" in ser  # approved media/organizations are ticked
 print('badges contract ok')
+
+# Reference-design profile: pinned post, likes/highlights tabs, followed-by, social counts.
+extras = (root / 'Domain/ProfileExtras.php').read_text(encoding='utf-8')
+actor = (root / 'Rest/ActorController.php').read_text(encoding='utf-8')
+for route in ["/likes','GET',[$actor,'likes']", "/highlights','GET',[$actor,'highlights']", "/followed-by','GET',[$actor,'followedBy']", "self::r('/me/pinned-narrative','PUT',[$me,'pinNarrative'])"]:
+    assert route in routes, route
+assert "(int) $post->post_author !== $ownerUserId" in extras  # only own narratives can be pinned
+assert "'pinned' =>" in me and 'ProfileExtras::withPinned(' in actor
+assert "'social'=>ProfileExtras::social('user',$id,$id)" in actor
+print('profile extras contract ok')

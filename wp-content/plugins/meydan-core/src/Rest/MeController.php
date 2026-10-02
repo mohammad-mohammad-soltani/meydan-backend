@@ -6,6 +6,7 @@ namespace Meydan\Core\Rest;
 use Meydan\Core\Audit\AuditLogger;
 use Meydan\Core\Domain\EntityKinds;
 use Meydan\Core\Domain\SpeakerService;
+use Meydan\Core\Domain\ProfileExtras;
 use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Handles;
@@ -86,15 +87,8 @@ final class MeController extends BaseController
      */
     private function social(int $uid, string $type): array
     {
-        global $wpdb;
-        $table = $wpdb->prefix . 'meydan_interactions';
         $isEntity = EntityKinds::isEntityActorType($type);
-        $objectType = $isEntity ? $type : 'user';
-        $objectId = $isEntity ? Actor::entityId($uid) : $uid;
-        return [
-            'followers' => $objectId > 0 ? (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE object_type=%s AND object_id=%d AND action='follow'", $objectType, $objectId)) : 0,
-            'following' => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE user_id=%d AND action='follow'", $uid)),
-        ];
+        return ProfileExtras::social($isEntity ? $type : 'user', $isEntity ? Actor::entityId($uid) : $uid, $uid);
     }
 
     /** @return array{role:?string,roles:array<int,string>} */
@@ -215,6 +209,7 @@ final class MeController extends BaseController
             'me' => $me,
             'narratives' => $narrativeBody['data'] ?? [],
             'replies' => array_values(array_filter(array_map([Serializer::class, 'comment'], $comments))),
+            'pinned' => ($pinnedId = ProfileExtras::pinnedId($ownerId)) > 0 ? Serializer::narrative($pinnedId) : null,
             'square_meta' => $isSquare ? [
                 'start_date' => SquareActivity::startDate($sid),
                 'media_reflections' => SquareController::mediaReflectionTotal($sid, $ownerId),
@@ -222,6 +217,17 @@ final class MeController extends BaseController
         ], [
             'next_cursor' => $narrativeBody['meta']['next_cursor'] ?? null,
         ]), 'private, no-store');
+    }
+
+    /** Pins one of the viewer's own narratives to their profile; `null` unpins. */
+    public function pinNarrative(WP_REST_Request $r)
+    {
+        if ($e = $this->guard()) return $e;
+        $p = $this->json($r);
+        $uid = get_current_user_id();
+        $saved = ProfileExtras::setPinned($uid, (int) ($p['narrative_id'] ?? 0));
+        if (is_wp_error($saved)) return $this->error($saved);
+        return Response::ok(['pinned_narrative_id' => ProfileExtras::pinnedId($uid) ?: null]);
     }
 
     public function narratives(WP_REST_Request $r)

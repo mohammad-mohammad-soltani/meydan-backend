@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Meydan\Core\Rest;
 
 use Meydan\Core\Domain\EntityKinds;
+use Meydan\Core\Domain\ProfileExtras;
 use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Handles;
@@ -33,7 +34,7 @@ final class EntityController extends BaseController
         $id = $this->visibleId($r);
         if ($id <= 0) return Response::error('not_found', 'مورد پیدا نشد.', 404);
         $ownerId = Actor::squareOwnerUserId($id);
-        return ProfileNarrativePage::listByAuthor($ownerId, $r, EntityKinds::kindOf($id) . ':' . $id, true);
+        return ProfileExtras::withPinned(ProfileNarrativePage::listByAuthor($ownerId, $r, EntityKinds::kindOf($id) . ':' . $id, true), $ownerId, $r);
     }
 
     /** The entity id when it exists, matches the kind in the URL, is published and visible. */
@@ -48,7 +49,6 @@ final class EntityController extends BaseController
 
     private function enrich(array $data, int $id): array
     {
-        global $wpdb;
         $ownerId = Actor::squareOwnerUserId($id);
         $post = get_post($id);
         $data['slug'] = $post ? $post->post_name : (string) $id;
@@ -58,11 +58,8 @@ final class EntityController extends BaseController
         $data['profile_about'] = (string) get_user_meta($ownerId, 'meydan_about', true) ?: (string) get_post_meta($id, 'meydan_profile_about', true);
         $data['verified'] = (bool) get_post_meta($id, 'meydan_verified', true);
         $data['stats'] = is_array($data['stats'] ?? null) ? $data['stats'] : [];
-        $data['stats']['followers'] = (int) $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}meydan_interactions WHERE object_type=%s AND object_id=%d AND action='follow'",
-            EntityKinds::kindOf($id),
-            $id
-        ));
+        $data['social'] = ProfileExtras::social(EntityKinds::kindOf($id), $id, $ownerId);
+        $data['stats']['followers'] = $data['social']['followers'];
         return $data;
     }
 }
