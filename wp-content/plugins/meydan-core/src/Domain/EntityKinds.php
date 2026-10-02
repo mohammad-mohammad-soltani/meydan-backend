@@ -42,14 +42,6 @@ final class EntityKinds
         return self::valid($kind) ? $kind : self::SQUARE;
     }
 
-    /** WP_Query meta clause matching one kind; legacy squares (no meta) count as `square`. */
-    public static function metaClause(string $kind): array
-    {
-        return $kind === self::SQUARE
-            ? ['relation' => 'OR', ['key' => 'meydan_entity_kind', 'compare' => 'NOT EXISTS'], ['key' => 'meydan_entity_kind', 'value' => 'square']]
-            : ['key' => 'meydan_entity_kind', 'value' => $kind];
-    }
-
     /** Primary WordPress role for a kind (square keeps the legacy role). */
     public static function roleFor(string $kind): string
     {

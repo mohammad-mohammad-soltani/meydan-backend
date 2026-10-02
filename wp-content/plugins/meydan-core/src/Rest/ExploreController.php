@@ -185,8 +185,6 @@ final class ExploreController extends BaseController
         $squareQuery = new WP_Query([
             'post_type' => 'meydan_square',
             'post_status' => 'publish',
-            // Suggested squares are squares only, not collectives, media or organizations.
-            'meta_query' => [\Meydan\Core\Domain\EntityKinds::metaClause('square')],
             'posts_per_page' => 12,
             'orderby' => 'date',
             'order' => 'DESC',
