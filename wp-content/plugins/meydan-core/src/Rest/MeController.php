@@ -31,6 +31,7 @@ final class MeController extends BaseController
                 Response::ok([
                     'account_type' => $type,
                     ...$this->rolePayload($uid),
+                    'social' => $this->social($uid, $type),
                     // Set only for an approved media account: the outlet it files reflections under.
                     'media_outlet_id' => \Meydan\Core\Domain\MediaReflectionSync::outletForUser($uid) ?: null,
                     // `entity` is the profile of any kind; `square` stays for squares only.
@@ -46,6 +47,7 @@ final class MeController extends BaseController
                 Response::ok([
                     'account_type' => 'speaker',
                     ...$this->rolePayload($uid),
+                    'social' => $this->social($uid, $type),
                     'profile' => $this->profile($uid),
                     'speaker' => Serializer::speaker($uid),
                 ]),
@@ -58,6 +60,7 @@ final class MeController extends BaseController
                 Response::ok([
                     'account_type' => 'official',
                     ...$this->rolePayload($uid),
+                    'social' => $this->social($uid, $type),
                     'profile' => $this->profile($uid),
                 ]),
                 'private, no-store'
@@ -68,10 +71,30 @@ final class MeController extends BaseController
             Response::ok([
                 'account_type' => 'user',
                 ...$this->rolePayload($uid),
+                'social' => $this->social($uid, $type),
                 'profile' => $this->profile($uid),
             ]),
             'private, no-store'
         );
+    }
+
+    /**
+     * Follower and following counts for the viewer's own actor; both hit the
+     * interactions table's existing indexes (object_lookup, user_action).
+     *
+     * @return array{followers:int,following:int}
+     */
+    private function social(int $uid, string $type): array
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_interactions';
+        $isEntity = EntityKinds::isEntityActorType($type);
+        $objectType = $isEntity ? $type : 'user';
+        $objectId = $isEntity ? Actor::entityId($uid) : $uid;
+        return [
+            'followers' => $objectId > 0 ? (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE object_type=%s AND object_id=%d AND action='follow'", $objectType, $objectId)) : 0,
+            'following' => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE user_id=%d AND action='follow'", $uid)),
+        ];
     }
 
     /** @return array{role:?string,roles:array<int,string>} */
