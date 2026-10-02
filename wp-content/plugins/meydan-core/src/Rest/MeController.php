@@ -424,6 +424,7 @@ final class MeController extends BaseController
             'headline' => (string) get_user_meta($uid, 'meydan_headline', true),
             'verified' => Actor::isVerifiedUser($uid),
             'verified_official' => Actor::isOfficial($uid),
+            'verified_speaker' => Actor::isVerifiedSpeaker($uid),
             'province_id' => (int) get_user_meta($uid, 'meydan_province_id', true) ?: null,
             'city_id' => (int) get_user_meta($uid, 'meydan_city_id', true) ?: null,
             'location_label' => (string) get_user_meta($uid, 'meydan_location_label', true),

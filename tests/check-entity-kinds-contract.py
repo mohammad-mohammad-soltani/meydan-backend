@@ -113,3 +113,10 @@ for section in ["'media' => []", "'collectives' => []", "'organizations' => []"]
     assert section in exp
 assert "private function searchEntities" in exp and "get_post_status($entityId) !== 'publish'" in exp
 print('links and search contract ok')
+
+# Every actor payload carries the speaker flag next to the tick, so no surface can drop it.
+chat = (root / 'Support/ChatRepository.php').read_text(encoding='utf-8')
+work = (root / 'Domain/WorkUsers.php').read_text(encoding='utf-8')
+assert "'verified_speaker'" in chat and "'verified_speaker'" in work and "'verified_speaker'" in me
+assert "$kind === EntityKinds::SQUARE ? true : (bool) get_post_meta($id, 'meydan_verified', true)" in ser  # approved media/organizations are ticked
+print('badges contract ok')

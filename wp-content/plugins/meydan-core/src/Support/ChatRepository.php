@@ -528,6 +528,7 @@ final class ChatRepository
             'avatar_url' => null,
             'verified' => false,
             'verified_official' => false,
+            'verified_speaker' => false,
             'profile_type' => 'user',
             'profile_id' => (string) $userId,
         ];
@@ -545,6 +546,7 @@ final class ChatRepository
             'avatar_url' => !empty($actor['avatar_url']) ? (string) $actor['avatar_url'] : null,
             'verified' => (bool) ($actor['verified'] ?? false),
             'verified_official' => (bool) ($actor['verified_official'] ?? false),
+            'verified_speaker' => (bool) ($actor['verified_speaker'] ?? false),
             'profile_type' => \Meydan\Core\Domain\EntityKinds::isEntityActorType($profileType) ? $profileType : 'user',
             'profile_id' => (string) $profileId,
         ];
