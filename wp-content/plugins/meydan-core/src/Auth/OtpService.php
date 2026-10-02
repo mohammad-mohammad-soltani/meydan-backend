@@ -136,11 +136,11 @@ final class OtpService
         if (strtotime((string) $row->expires_at . ' UTC') < time()) {
             return new WP_Error('otp_expired', 'کد ورود منقضی شده است.', ['status' => 422]);
         }
-        if ((int) $row->attempt_count >= 5) {
+        // Atomic claim of one attempt: concurrent guesses cannot exceed the cap by racing a read-then-write.
+        $claimed = (int) $wpdb->query($wpdb->prepare("UPDATE {$table} SET attempt_count = attempt_count + 1 WHERE id = %d AND attempt_count < 5 AND consumed_at IS NULL", (int) $row->id));
+        if ($claimed !== 1) {
             return new WP_Error('otp_locked', 'تعداد تلاش‌های ورود بیش از حد مجاز است.', ['status' => 429]);
         }
-
-        $wpdb->query($wpdb->prepare("UPDATE {$table} SET attempt_count = attempt_count + 1 WHERE id = %d", (int) $row->id));
         if (!password_verify($code, (string) $row->code_hash)) {
             return new WP_Error('otp_invalid', 'کد یا چالش ورود معتبر نیست.', ['status' => 422]);
         }
@@ -148,7 +148,10 @@ final class OtpService
         $phone = Crypto::decrypt((string) $row->phone_ciphertext);
         $userId = $this->findUserByPhoneHash((string) $row->phone_hash);
         $now = current_time('mysql', true);
-        $wpdb->update($table, ['consumed_at' => $now], ['id' => (int) $row->id]);
+        // Single-use: only the request that flips consumed_at may continue (parallel correct-code replays lose).
+        if ((int) $wpdb->query($wpdb->prepare("UPDATE {$table} SET consumed_at = %s WHERE id = %d AND consumed_at IS NULL", $now, (int) $row->id)) !== 1) {
+            return new WP_Error('otp_invalid', 'کد یا چالش ورود معتبر نیست.', ['status' => 422]);
+        }
 
         if ($userId > 0) {
             if (UserAccess::disabled($userId)) return new WP_Error('account_disabled', 'این حساب غیرفعال است.', ['status' => 403]);

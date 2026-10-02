@@ -28,7 +28,37 @@ final class RateLimiter
 
     public static function ip(): string
     {
-        $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
-        return Crypto::hash($ip);
+        return Crypto::hash(self::clientIp());
+    }
+
+    /**
+     * Real client address behind reverse proxies. `X-Forwarded-For` is honoured only
+     * when the TCP peer is itself a trusted proxy (private/loopback ranges, plus any
+     * `MEYDAN_TRUSTED_PROXIES` entries, comma-separated IPs); the chain is walked from
+     * the right so a client-supplied prefix can never choose its own address.
+     */
+    public static function clientIp(): string
+    {
+        $peer = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+        if ($peer === '' || !filter_var($peer, FILTER_VALIDATE_IP)) {
+            return '0.0.0.0';
+        }
+        $extra = array_filter(array_map('trim', explode(',', (string) (getenv('MEYDAN_TRUSTED_PROXIES') ?: ''))));
+        $trusted = static fn(string $ip): bool => in_array($ip, $extra, true)
+            || filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+        if (!$trusted($peer)) {
+            return $peer;
+        }
+        $chain = array_map('trim', explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '')));
+        for ($i = count($chain) - 1; $i >= 0; $i--) {
+            $candidate = $chain[$i];
+            if (!filter_var($candidate, FILTER_VALIDATE_IP)) {
+                break;
+            }
+            if (!$trusted($candidate)) {
+                return $candidate;
+            }
+        }
+        return $peer;
     }
 }

@@ -12,7 +12,7 @@ final class AuditLogger
     {
         $adminId ??= get_current_user_id();
         global $wpdb;
-        $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+        $ip = \Meydan\Core\Support\RateLimiter::clientIp();
         $wpdb->insert($wpdb->prefix . 'meydan_audit_log', [
             'admin_id' => max(0, $adminId),
             'action' => sanitize_key($action),
