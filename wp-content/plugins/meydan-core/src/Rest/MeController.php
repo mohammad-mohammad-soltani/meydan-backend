@@ -120,6 +120,13 @@ final class MeController extends BaseController
             }
         }
 
+        if (array_key_exists('website', $p)) {
+            $site = trim((string) $p['website']);
+            if ($site !== '' && !preg_match('#^https?://#i', $site)) $site = 'https://' . $site;
+            $site = $site === '' ? '' : esc_url_raw($site, ['http', 'https']);
+            if ($site === '' && trim((string) $p['website']) !== '') return Response::error('validation_failed', 'نشانی وب‌سایت معتبر نیست.', 422, ['website' => 'invalid']);
+            update_user_meta($uid, 'meydan_website', mb_substr($site, 0, 200));
+        }
         foreach (['province_id', 'city_id'] as $k) {
             if (array_key_exists($k, $p)) update_user_meta($uid, 'meydan_' . $k, (int) $p[$k]);
         }
@@ -457,7 +464,9 @@ final class MeController extends BaseController
             'cover_media_id' => (int) get_user_meta($uid, 'meydan_cover_media_id', true) ?: null,
             'cover_url' => Actor::coverUrl($uid),
             'handle' => Handles::ofUser($uid),
+            'handle_locked_until' => Handles::lockedUntil($uid),
             'headline' => (string) get_user_meta($uid, 'meydan_headline', true),
+            'website' => (string) get_user_meta($uid, 'meydan_website', true),
             'verified' => Actor::isVerifiedUser($uid),
             'verified_official' => Actor::isOfficial($uid),
             'verified_speaker' => Actor::isVerifiedSpeaker($uid),
@@ -482,6 +491,7 @@ final class MeController extends BaseController
         $data['cover_media_id'] = (int) get_user_meta($ownerId, 'meydan_cover_media_id', true) ?: null;
         $data['cover_url'] = Actor::coverUrl($ownerId);
         $data['handle'] = Handles::ofUser($ownerId);
+        $data['handle_locked_until'] = Handles::lockedUntil($ownerId);
         $data['subtitle'] = (string) get_user_meta($ownerId, 'meydan_headline', true) ?: (string) get_post_meta($sid, 'meydan_subtitle', true);
         $data['profile_about'] = (string) get_user_meta($ownerId, 'meydan_about', true) ?: (string) get_post_meta($sid, 'meydan_profile_about', true);
         $data['profile_skills'] = array_values((array) get_user_meta($ownerId, 'meydan_skills', true) ?: (array) get_post_meta($sid, 'meydan_profile_skills', true));

@@ -124,11 +124,37 @@ final class Handles
         }
     }
 
-    /** Validates then stores; used wherever a person types their handle. */
+    /** Days a person has to wait before changing their handle again. */
+    public const CHANGE_LOCK_DAYS = 30;
+    private const CHANGED_AT = 'meydan_handle_changed_at';
+
+    /** When the next change is allowed (ISO 8601), or null when it is allowed now. */
+    public static function lockedUntil(int $userId): ?string
+    {
+        $changedAt = (int) get_user_meta($userId, self::CHANGED_AT, true);
+        if ($changedAt <= 0) return null;
+        $until = $changedAt + self::CHANGE_LOCK_DAYS * DAY_IN_SECONDS;
+        return $until > time() ? gmdate(DATE_ATOM, $until) : null;
+    }
+
+    /**
+     * Validates then stores; used wherever a person types their handle.
+     *
+     * Changing an existing handle starts a 30-day lock (the old profile link
+     * stops working); setting the first one, or re-saving the same one, does not.
+     */
     public static function set(int $userId, string $raw): string|WP_Error
     {
         $handle = self::validate($raw, $userId);
         if (is_wp_error($handle)) return $handle;
+        $current = self::ofUser($userId);
+        if ($current !== '' && $current !== $handle) {
+            $until = self::lockedUntil($userId);
+            if ($until !== null) {
+                return new WP_Error('validation_failed', 'شناسه را فقط هر ۳۰ روز یک بار می‌توان تغییر داد.', ['status' => 422, 'fields' => ['handle' => 'locked'], 'locked_until' => $until]);
+            }
+            update_user_meta($userId, self::CHANGED_AT, time());
+        }
         self::store($userId, $handle);
         return $handle;
     }
