@@ -22,27 +22,44 @@ final class ContentHubController extends BaseController
 
     public function audio(WP_REST_Request $request)
     {
-        $q = trim((string) $request->get_param('q'));
-        $key = 'meydan_hub_audio_' . md5($q);
-        $data = get_transient($key);
+        $q = mb_substr(trim((string) $request->get_param('q')), 0, 80);
+        // Only the default shelves are stored: caching every search text would let anyone fill the options table.
+        $data = $q === '' ? get_transient('meydan_hub_audio') : false;
         if (!is_array($data)) {
             $data = $q === '' ? $this->audioShelves() : $this->audioSearch($q);
-            set_transient($key, $data, self::CACHE_SECONDS);
+            if ($q === '') set_transient('meydan_hub_audio', $data, self::CACHE_SECONDS);
         }
         return Response::cache(Response::ok($data), 'public, max-age=60, stale-while-revalidate=300');
     }
 
     public function notes(WP_REST_Request $request)
     {
-        $q = trim((string) $request->get_param('q'));
+        $q = mb_substr(trim((string) $request->get_param('q')), 0, 80);
         $category = sanitize_title((string) $request->get_param('category'));
-        $key = 'meydan_hub_notes_' . md5($q . '|' . $category);
-        $data = get_transient($key);
+        $plain = $q === '' && $category === '';
+        $data = $plain ? get_transient('meydan_hub_notes') : false;
         if (!is_array($data)) {
             $data = $this->noteShelves($q, $category);
-            set_transient($key, $data, self::CACHE_SECONDS);
+            if ($plain) set_transient('meydan_hub_notes', $data, self::CACHE_SECONDS);
         }
         return Response::cache(Response::ok($data), 'public, max-age=60, stale-while-revalidate=300');
+    }
+
+    /** A full, paged list of the people («faces») or entities («squares») that publish audio. */
+    public function producerList(WP_REST_Request $request)
+    {
+        $kind = (string) $request->get_param('kind') === 'squares' ? 'squares' : 'faces';
+        $offset = max(0, (int) $request->get_param('offset'));
+        $limit = 30;
+        $key = 'meydan_hub_producers_' . $kind . '_' . $offset;
+        $rows = get_transient($key);
+        if (!is_array($rows)) {
+            $types = $kind === 'faces' ? ['user', 'speaker', 'official'] : ['square', 'media', 'collective', 'organization'];
+            $rows = $this->producers($types, $limit + 1, $offset);
+            set_transient($key, $rows, self::CACHE_SECONDS);
+        }
+        $more = count($rows) > $limit;
+        return Response::cache(Response::ok(array_slice($rows, 0, $limit), ['next_offset' => $more ? $offset + $limit : null]), 'public, max-age=60, stale-while-revalidate=300');
     }
 
     /** @return array<string,mixed> */
@@ -179,7 +196,7 @@ final class ContentHubController extends BaseController
      * @param string[] $types
      * @return array<int,array<string,mixed>>
      */
-    private function producers(array $types, int $limit): array
+    private function producers(array $types, int $limit, int $offset = 0): array
     {
         global $wpdb;
         $marks = implode(',', array_fill(0, count($types), '%s'));
@@ -191,8 +208,8 @@ final class ContentHubController extends BaseController
                 WHERE t.meta_key = 'meydan_producer_actor_type' AND t.meta_value IN ({$marks})
                 GROUP BY t.meta_value, i.meta_value
                 ORDER BY audios DESC
-                LIMIT %d";
-        $rows = $wpdb->get_results($wpdb->prepare($sql, ...[...$types, $limit])) ?: [];
+                LIMIT %d OFFSET %d";
+        $rows = $wpdb->get_results($wpdb->prepare($sql, ...[...$types, $limit, $offset])) ?: [];
         $out = [];
         foreach ($rows as $row) {
             $actor = Actor::parse((string) $row->type, (int) $row->actor_id);
