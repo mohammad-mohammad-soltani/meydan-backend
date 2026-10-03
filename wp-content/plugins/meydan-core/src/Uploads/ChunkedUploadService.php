@@ -452,6 +452,26 @@ final class ChunkedUploadService
         return count($ids);
     }
 
+    /**
+     * Frees the chunk directories of sessions nobody finished (closed tab, lost
+     * connection). Without this every abandoned video stays on disk forever.
+     * Bounded per run so a backlog never holds a request open.
+     */
+    public function purgeExpired(int $limit = 50): int
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_uploads';
+        $ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT upload_id FROM {$table} WHERE status='started' AND expires_at < UTC_TIMESTAMP() ORDER BY id ASC LIMIT %d",
+            $limit,
+        )) ?: [];
+        foreach ($ids as $uploadId) {
+            $this->cleanup((string) $uploadId);
+            $wpdb->update($table, ['status' => 'expired'], ['upload_id' => (string) $uploadId]);
+        }
+        return count($ids);
+    }
+
     public function abort(string $uploadId, int $userId): array|WP_Error
     {
         $row = $this->row($uploadId, $userId);

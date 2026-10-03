@@ -105,6 +105,7 @@ final class Plugin
         add_action('init', [UploadCache::class, 'ensure'], 5);
         WordPressMediaHooks::register();
         VideoPosterBackfill::register();
+        \Meydan\Core\Uploads\UploadCleanup::register();
         NarrativeFeatureRefreshCron::register();
 
         CampaignCurrentGuard::register();
