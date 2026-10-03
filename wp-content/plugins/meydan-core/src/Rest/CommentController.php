@@ -15,7 +15,21 @@ use WP_REST_Request;
 
 final class CommentController extends BaseController
 {
-    public function list(WP_REST_Request $r){$nid=(int)$r['id'];if(get_post_type($nid)!=='meydan_narrative'||!UserAccess::visibleNarrative($nid))return Response::error('not_found','روایت پیدا نشد.',404);$offset=$this->cursorOffset((string)$r->get_param('cursor'));$comments=get_comments(['post_id'=>$nid,'parent'=>0,'type'=>'meydan_comment','status'=>'approve','number'=>20,'offset'=>$offset,'orderby'=>'comment_date_gmt','order'=>'DESC']);$data=array_values(array_filter(array_map([Serializer::class,'comment'],$comments)));$next=count($comments)===20?Cursor::encode(['o'=>$offset+20]):null;return Response::ok($data,['next_cursor'=>$next]);}
+    public function list(WP_REST_Request $r){$nid=(int)$r['id'];if(get_post_type($nid)!=='meydan_narrative'||!UserAccess::visibleNarrative($nid))return Response::error('not_found','روایت پیدا نشد.',404);$offset=$this->cursorOffset((string)$r->get_param('cursor'));$comments=get_comments(['post_id'=>$nid,'parent'=>0,'type'=>'meydan_comment','status'=>'approve','number'=>20,'offset'=>$offset,'orderby'=>'comment_date_gmt','order'=>'DESC']);Serializer::primeCommentLikes(array_map(static fn($c)=>(int)$c->comment_ID,$comments));$data=array_values(array_filter(array_map([Serializer::class,'comment'],$comments)));$next=count($comments)===20?Cursor::encode(['o'=>$offset+20]):null;return Response::ok($data,['next_cursor'=>$next]);}
+    public function like(WP_REST_Request $r){return $this->setLike((int)$r['id'],true);}
+    public function unlike(WP_REST_Request $r){return $this->setLike((int)$r['id'],false);}
+    /** Idempotent: repeating a like (or an unlike) changes nothing and still answers with the current state. */
+    private function setLike(int $id,bool $on){
+        if(!is_user_logged_in())return Response::error('unauthenticated','برای پسندیدن باید وارد شوید.',401);
+        $comment=get_comment($id);
+        if(!$comment||$comment->comment_type!=='meydan_comment'||!UserAccess::visibleNarrative((int)$comment->comment_post_ID))return Response::error('not_found','کامنت پیدا نشد.',404);
+        global $wpdb;$uid=get_current_user_id();$table=$wpdb->prefix.'meydan_interactions';
+        if($on)$wpdb->query($wpdb->prepare("INSERT IGNORE INTO {$table} (user_id, object_type, object_id, action, created_at) VALUES (%d, 'comment', %d, 'like', %s)",$uid,$id,current_time('mysql',true)));
+        else $wpdb->delete($table,['user_id'=>$uid,'object_type'=>'comment','object_id'=>$id,'action'=>'like']);
+        Serializer::forgetCommentLikes($id);
+        $data=Serializer::comment($id);
+        return Response::ok(['liked'=>$on,'likes'=>(int)($data['likes']??0)]);
+    }
     public function replies(WP_REST_Request $r){
         $cid=(int)$r['id'];$root=get_comment($cid);
         if(!$root||$root->comment_type!=='meydan_comment'||!UserAccess::visibleNarrative((int)$root->comment_post_ID))return Response::error('not_found','کامنت پیدا نشد.',404);
@@ -27,7 +41,7 @@ final class CommentController extends BaseController
         ))?:[];
         $ids=$this->descendants($rows,$cid);
         $pageIds=array_slice($ids,$offset,20);
-        $comments=array_values(array_filter(array_map('get_comment',$pageIds)));
+        $comments=array_values(array_filter(array_map('get_comment',$pageIds)));Serializer::primeCommentLikes($pageIds);
         $next=count($ids)>$offset+20?Cursor::encode(['o'=>$offset+20]):null;
         return Response::ok(array_values(array_filter(array_map([Serializer::class,'comment'],$comments))),['next_cursor'=>$next]);
     }

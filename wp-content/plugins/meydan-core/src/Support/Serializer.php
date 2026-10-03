@@ -405,6 +405,8 @@ final class Serializer
             'body' => $comment->comment_content,
             'parent_id' => (int) $comment->comment_parent ?: null,
             'reply_count' => (int) get_comments(['parent' => $comment->comment_ID, 'type' => 'meydan_comment', 'status' => 'approve', 'count' => true]),
+            'likes' => self::commentLikeState((int) $comment->comment_ID)['likes'],
+            'viewer_state' => (Viewer::current()->userId ?? 0) > 0 ? ['liked' => self::commentLikeState((int) $comment->comment_ID)['liked']] : null,
             'created_at' => self::date($comment->comment_date_gmt),
             'edited_at' => ($edited = get_comment_meta($comment->comment_ID, 'meydan_edited_at', true)) ? self::isoMeta((string) $edited) : null,
         ];
@@ -574,6 +576,61 @@ final class Serializer
         ), ARRAY_A) ?: [];
         $key = ['like' => 'liked', 'repost' => 'reposted', 'bookmark' => 'bookmarked'];
         foreach ($rows as $row) self::$narrativeStates[$userId][(int) $row['object_id']][$key[$row['action']]] = true;
+    }
+
+    /** @var array<int,int> */
+    private static array $commentLikeCounts = [];
+    /** @var array<int,array<int,bool>> viewer id => comment id => liked */
+    private static array $commentLiked = [];
+
+    /**
+     * Like totals (and the viewer's own likes) for a page of comments in two
+     * queries, so a comment list never costs one query per row.
+     *
+     * @param int[] $commentIds
+     */
+    public static function primeCommentLikes(array $commentIds): void
+    {
+        $userId = (int) (Viewer::current()->userId ?? 0);
+        $ids = array_values(array_unique(array_filter(array_map('intval', $commentIds), static fn(int $id): bool => $id > 0 && !isset(self::$commentLikeCounts[$id]))));
+        if (!$ids) return;
+        global $wpdb;
+        foreach ($ids as $id) self::$commentLikeCounts[$id] = 0;
+        $marks = implode(',', array_fill(0, count($ids), '%d'));
+        $table = $wpdb->prefix . 'meydan_interactions';
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT object_id, COUNT(*) AS likes FROM {$table} WHERE object_type = 'comment' AND action = 'like' AND object_id IN ($marks) GROUP BY object_id",
+            ...$ids
+        ), ARRAY_A) ?: [];
+        foreach ($rows as $row) self::$commentLikeCounts[(int) $row['object_id']] = (int) $row['likes'];
+        if ($userId > 0) {
+            foreach ($ids as $id) self::$commentLiked[$userId][$id] = false;
+            $mine = $wpdb->get_col($wpdb->prepare(
+                "SELECT object_id FROM {$table} WHERE user_id = %d AND object_type = 'comment' AND action = 'like' AND object_id IN ($marks)",
+                $userId,
+                ...$ids
+            )) ?: [];
+            foreach ($mine as $id) self::$commentLiked[$userId][(int) $id] = true;
+        }
+    }
+
+    /** A like was just written: the next read of this comment is fresh. */
+    public static function forgetCommentLikes(int $commentId): void
+    {
+        unset(self::$commentLikeCounts[$commentId]);
+        $userId = (int) (Viewer::current()->userId ?? 0);
+        unset(self::$commentLiked[$userId][$commentId]);
+    }
+
+    /** @return array{likes:int,liked:bool} */
+    private static function commentLikeState(int $commentId): array
+    {
+        $userId = (int) (Viewer::current()->userId ?? 0);
+        if (!isset(self::$commentLikeCounts[$commentId]) || ($userId > 0 && !isset(self::$commentLiked[$userId][$commentId]))) {
+            unset(self::$commentLikeCounts[$commentId]);
+            self::primeCommentLikes([$commentId]);
+        }
+        return ['likes' => self::$commentLikeCounts[$commentId] ?? 0, 'liked' => $userId > 0 && (self::$commentLiked[$userId][$commentId] ?? false)];
     }
 
     /** @return array{liked:bool,reposted:bool,bookmarked:bool} */
