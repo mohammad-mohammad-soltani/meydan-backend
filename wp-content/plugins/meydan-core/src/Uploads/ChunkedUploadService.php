@@ -16,6 +16,14 @@ final class ChunkedUploadService
 {
     public const CHUNK_SIZE = 5242880;
 
+    /**
+     * Size the web client slices files into (it stays under the 4.5 MB request
+     * ceiling of the proxy in front of this API). The index bound below must
+     * use the size actually sent, not CHUNK_SIZE: a 5 MB bound rejected the
+     * last chunks of every file above ~16 MB.
+     */
+    public const WIRE_CHUNK_SIZE = 4194304;
+
     private const BAD = [
         'php', 'php3', 'php4', 'php5', 'phtml', 'phar', 'exe', 'sh', 'bash',
         'bat', 'cmd', 'com', 'msi', 'dll', 'so', 'cgi', 'pl', 'py', 'rb',
@@ -103,7 +111,7 @@ final class ChunkedUploadService
             'purpose' => $purpose,
             'storage_scope' => $scope,
             'storage_owner' => $owner,
-            'chunk_size' => self::CHUNK_SIZE,
+            'chunk_size' => self::WIRE_CHUNK_SIZE,
             'status' => 'started',
             'created_at' => current_time('mysql', true),
             'expires_at' => gmdate('Y-m-d H:i:s', time() + DAY_IN_SECONDS),
@@ -122,7 +130,7 @@ final class ChunkedUploadService
         return [
             'upload_id' => $uploadId,
             'mode' => 'chunked',
-            'chunk_size' => self::CHUNK_SIZE,
+            'chunk_size' => self::WIRE_CHUNK_SIZE,
         ];
     }
 
@@ -138,7 +146,7 @@ final class ChunkedUploadService
         // against the declared size. A part is at most one CHUNK_SIZE, so
         // capping the index range caps total disk usage per session to
         // roughly the declared size (rounded up to the nearest chunk).
-        $maxIndex = max(0, (int) ceil(((int) $row->size) / self::CHUNK_SIZE) - 1);
+        $maxIndex = max(0, (int) ceil(((int) $row->size) / self::WIRE_CHUNK_SIZE) - 1);
         if ($index < 0 || $index > $maxIndex) {
             return new WP_Error('validation_failed', 'شماره قطعه معتبر نیست.', ['status' => 422]);
         }
@@ -156,8 +164,76 @@ final class ChunkedUploadService
         return ['upload_id' => $uploadId, 'index' => $index, 'received' => strlen($body)];
     }
 
+    /**
+     * Finishing is retry-safe: a client whose connection dropped (or whose
+     * proxy timed out) while the server kept working gets the finished result
+     * back instead of "not found", and two overlapping calls never assemble
+     * the same upload twice.
+     */
     public function complete(string $uploadId, int $userId): array|WP_Error
     {
+        $done = $this->completedPayload($uploadId, $userId);
+        if ($done !== null) {
+            return $done;
+        }
+        $lock = 'meydan_upl_busy_' . md5($uploadId);
+        if (get_transient($lock)) {
+            return new WP_Error('upload_processing', 'فایل در حال پردازش است؛ چند لحظه دیگر دوباره بررسی می‌شود.', ['status' => 409]);
+        }
+        set_transient($lock, 1, 660);
+        try {
+            return $this->finalize($uploadId, $userId);
+        } finally {
+            delete_transient($lock);
+        }
+    }
+
+    /** The result of an upload that already finished, or null. */
+    private function completedPayload(string $uploadId, int $userId): ?array
+    {
+        global $wpdb;
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, size FROM {$wpdb->prefix}meydan_uploads WHERE upload_id=%s AND user_id=%d AND status='completed' LIMIT 1",
+            $uploadId,
+            $userId,
+        ));
+        if (!$row) {
+            return null;
+        }
+        $attachmentId = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key='meydan_upload_session_id' AND meta_value=%s LIMIT 1",
+            $uploadId,
+        ));
+        if ($attachmentId <= 0 || !get_post($attachmentId)) {
+            return null;
+        }
+        $mime = (string) get_post_mime_type($attachmentId);
+        $url = (string) wp_get_attachment_url($attachmentId);
+        $metadata = (array) wp_get_attachment_metadata($attachmentId);
+        $payload = [
+            'media_id' => $attachmentId,
+            'type' => $this->kind($mime),
+            'url' => $url,
+            'size' => (int) $row->size,
+            'width' => isset($metadata['width']) ? (int) $metadata['width'] : null,
+            'height' => isset($metadata['height']) ? (int) $metadata['height'] : null,
+        ];
+        if (str_starts_with($mime, 'video/')) {
+            $payload += VideoProcessor::describe($attachmentId, $url, '', $metadata);
+        }
+        return $payload;
+    }
+
+    private function finalize(string $uploadId, int $userId): array|WP_Error
+    {
+        // Assembling, the faststart remux and the object-storage upload all run
+        // here; a long video must not be cut off by the default 30s limit.
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(600);
+        }
+        if (function_exists('ignore_user_abort')) {
+            @ignore_user_abort(true);
+        }
         $row = $this->row($uploadId, $userId);
         if (is_wp_error($row)) {
             return $row;
