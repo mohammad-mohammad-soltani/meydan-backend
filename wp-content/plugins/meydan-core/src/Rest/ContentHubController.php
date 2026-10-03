@@ -52,11 +52,13 @@ final class ContentHubController extends BaseController
         $offset = max(0, (int) $request->get_param('offset'));
         $limit = 30;
         $key = 'meydan_hub_producers_' . $kind . '_' . $offset;
-        $rows = get_transient($key);
+        // Only real page starts are stored, so arbitrary offsets cannot fill the options table.
+        $cacheable = $offset % $limit === 0 && $offset <= 600;
+        $rows = $cacheable ? get_transient($key) : false;
         if (!is_array($rows)) {
             $types = $kind === 'faces' ? ['user', 'speaker', 'official'] : ['square', 'media', 'collective', 'organization'];
             $rows = $this->producers($types, $limit + 1, $offset);
-            set_transient($key, $rows, self::CACHE_SECONDS);
+            if ($cacheable) set_transient($key, $rows, self::CACHE_SECONDS);
         }
         $more = count($rows) > $limit;
         return Response::cache(Response::ok(array_slice($rows, 0, $limit), ['next_offset' => $more ? $offset + $limit : null]), 'public, max-age=60, stale-while-revalidate=300');

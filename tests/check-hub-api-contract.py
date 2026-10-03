@@ -9,7 +9,8 @@ for route in ("/content/hub/audio", "/content/hub/notes", "/content/hub/producer
     assert f"'{route}'" in routes, route
     assert routes.count(f"'{route}'") >= 2, f"{route} must be registered and listed as public"
 assert "/comments/(?P<id>\\d+)/like" in routes
-assert "set_transient($key" not in hub and "md5(" not in hub, "searches must not create one cache row per text"
+assert "md5(" not in hub, "searches must not create one cache row per text"
+assert "$cacheable = $offset % $limit === 0" in hub, "producer pages are cached only at real page starts"
 assert "mb_substr(trim((string) $request->get_param('q')), 0, 80)" in hub
 assert "viewer_state'] = null" in explore, "the shared explore payload must carry no viewer state"
 assert "primeCommentLikes" in comments
