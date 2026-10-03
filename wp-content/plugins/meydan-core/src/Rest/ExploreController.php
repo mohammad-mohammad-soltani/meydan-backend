@@ -127,6 +127,20 @@ final class ExploreController extends BaseController
             ? (int) $window
             : 24;
 
+        return Response::ok([
+            'window' => $window,
+            'items' => $this->trendItems($hours, 20),
+        ]);
+    }
+
+    /**
+     * The hottest narratives of the last `$hours` hours, each with `trend_score`
+     * and `growth_pct` (engagement now against the same span before it).
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function trendItems(int $hours, int $limit): array
+    {
         global $wpdb;
 
         $weights = (array) get_option('meydan_trends', []);
@@ -150,32 +164,215 @@ final class ExploreController extends BaseController
                     AND p.post_status = 'publish'
                     AND p.post_date_gmt >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)
                 ORDER BY trend_score DESC
-                LIMIT 20",
+                LIMIT %d",
                 $likeWeight,
                 $repostWeight,
                 $commentWeight,
                 $shareWeight,
-                $hours
+                $hours,
+                $limit
             ),
             ARRAY_A
-        );
+        ) ?: [];
+
+        $ids = array_map(static fn(array $row): int => (int) $row['ID'], $rows);
+        $growth = $this->growth($ids, $hours);
+        if ($ids) {
+            _prime_post_caches($ids, false, true);
+            Serializer::primeNarrativeStates($ids);
+        }
 
         $items = [];
-
-        foreach ($rows ?: [] as $row) {
+        foreach ($rows as $row) {
             $narrative = Serializer::narrative((int) $row['ID']);
             if (!$narrative) {
                 continue;
             }
 
             $narrative['trend_score'] = round((float) $row['trend_score'], 4);
+            $narrative['growth_pct'] = $growth[(int) $row['ID']] ?? null;
             $items[] = $narrative;
         }
 
-        return Response::ok([
-            'window' => $window,
-            'items' => $items,
-        ]);
+        return $items;
+    }
+
+    /**
+     * Likes and reposts in the last `$hours` against the `$hours` before, as a
+     * percentage, for a page of narratives in one query. Null when there is
+     * nothing earlier to compare with.
+     *
+     * @param int[] $ids
+     * @return array<int,int|null>
+     */
+    private function growth(array $ids, int $hours): array
+    {
+        if (!$ids) return [];
+        global $wpdb;
+        $marks = implode(',', array_fill(0, count($ids), '%d'));
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT object_id,
+                SUM(created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)) AS now_count,
+                SUM(created_at <  DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)) AS before_count
+             FROM {$wpdb->prefix}meydan_interactions
+             WHERE object_type = 'narrative' AND action IN ('like','repost')
+               AND created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)
+               AND object_id IN ($marks)
+             GROUP BY object_id",
+            $hours,
+            $hours,
+            $hours * 2,
+            ...$ids
+        ), ARRAY_A) ?: [];
+        $out = [];
+        foreach ($rows as $row) {
+            $before = (int) $row['before_count'];
+            $out[(int) $row['object_id']] = $before > 0 ? (int) round((((int) $row['now_count']) - $before) / $before * 100) : null;
+        }
+        return $out;
+    }
+
+    /**
+     * Everything the explore landing shows, in one cached read: hot tags, entity
+     * suggestions, hot narratives, active entities and the most followed people.
+     */
+    public function home()
+    {
+        $cached = get_transient('meydan_explore_home');
+        if (is_array($cached)) {
+            return Response::cache(Response::ok($cached), 'public, max-age=60, stale-while-revalidate=300');
+        }
+        // One payload serves every visitor, so nothing viewer-specific may be baked into it.
+        $hot = array_map(static function (array $item): array {
+            $item['viewer_state'] = null;
+            return $item;
+        }, $this->trendItems(24, 6));
+        $data = [
+            'tags' => $this->hotTags(),
+            'hot' => $hot,
+            'active' => $this->activeEntities(),
+            'people' => $this->topFollowed(['user'], 6),
+            'entities' => $this->topFollowed(['square', 'media', 'collective', 'organization'], 8),
+        ];
+        set_transient('meydan_explore_home', $data, 60);
+        return Response::cache(Response::ok($data), 'public, max-age=60, stale-while-revalidate=300');
+    }
+
+    /** @return array<int,array{tag:string,count:int,hot:bool}> */
+    private function hotTags(): array
+    {
+        global $wpdb;
+        $rows = $wpdb->get_results(
+            "SELECT t.name, COUNT(DISTINCT r.object_id) AS uses
+             FROM {$wpdb->term_relationships} r
+             INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = r.term_taxonomy_id AND tt.taxonomy = 'meydan_narrative_tag'
+             INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+             INNER JOIN {$wpdb->posts} p ON p.ID = r.object_id AND p.post_type = 'meydan_narrative' AND p.post_status = 'publish'
+                AND p.post_date_gmt >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)
+             GROUP BY t.term_id, t.name
+             ORDER BY uses DESC, t.name ASC
+             LIMIT 8",
+            ARRAY_A
+        ) ?: [];
+        $out = [];
+        foreach ($rows as $index => $row) {
+            $out[] = ['tag' => (string) $row['name'], 'count' => (int) $row['uses'], 'hot' => $index < 3];
+        }
+        return $out;
+    }
+
+    /**
+     * Entities that published in the last week, busiest first. `live` marks the
+     * ones that posted within the last day.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function activeEntities(): array
+    {
+        global $wpdb;
+        $rows = $wpdb->get_results(
+            "SELECT t.meta_value AS type, i.meta_value AS actor_id, COUNT(*) AS posts,
+                    SUM(p.post_date_gmt >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY)) AS today
+             FROM {$wpdb->postmeta} t
+             INNER JOIN {$wpdb->posts} p ON p.ID = t.post_id AND p.post_type = 'meydan_narrative' AND p.post_status = 'publish'
+                AND p.post_date_gmt >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)
+             INNER JOIN {$wpdb->postmeta} i ON i.post_id = p.ID AND i.meta_key = 'meydan_author_actor_id'
+             WHERE t.meta_key = 'meydan_author_actor_type' AND t.meta_value IN ('square','media','collective','organization')
+             GROUP BY t.meta_value, i.meta_value
+             ORDER BY posts DESC
+             LIMIT 6",
+            ARRAY_A
+        ) ?: [];
+        $members = $this->followerCounts($rows, 'type', 'actor_id');
+        $out = [];
+        foreach ($rows as $row) {
+            $actor = Actor::parse((string) $row['type'], (int) $row['actor_id']);
+            if (!$actor) continue;
+            $out[] = [
+                'actor' => $actor,
+                'members' => $members[$row['type'] . ':' . (int) $row['actor_id']] ?? 0,
+                'posts' => (int) $row['posts'],
+                'live' => (int) $row['today'] > 0,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * The most followed accounts of some actor types, with their follower count
+     * and a one-line description.
+     *
+     * @param string[] $types
+     * @return array<int,array<string,mixed>>
+     */
+    private function topFollowed(array $types, int $limit): array
+    {
+        global $wpdb;
+        $marks = implode(',', array_fill(0, count($types), '%s'));
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT object_type AS type, object_id AS actor_id, COUNT(*) AS followers
+             FROM {$wpdb->prefix}meydan_interactions
+             WHERE action = 'follow' AND object_type IN ($marks)
+             GROUP BY object_type, object_id
+             ORDER BY followers DESC
+             LIMIT %d",
+            ...[...$types, $limit * 3]
+        ), ARRAY_A) ?: [];
+        $out = [];
+        foreach ($rows as $row) {
+            if (count($out) >= $limit) break;
+            $actor = Actor::parse((string) $row['type'], (int) $row['actor_id']);
+            if (!$actor) continue;
+            $ownerId = Actor::ownerUserId((string) $row['type'], (int) $row['actor_id']);
+            $description = (string) get_user_meta($ownerId, 'meydan_headline', true);
+            if ($description === '' && EntityKinds::isEntityActorType((string) $row['type'])) {
+                $description = (string) ($actor['location_address'] ?? '');
+            }
+            $out[] = ['actor' => $actor, 'followers' => (int) $row['followers'], 'description' => $description];
+        }
+        return $out;
+    }
+
+    /**
+     * Follower counts for a list of rows, keyed "type:id", in one query.
+     *
+     * @param array<int,array<string,mixed>> $rows
+     * @return array<string,int>
+     */
+    private function followerCounts(array $rows, string $typeKey, string $idKey): array
+    {
+        if (!$rows) return [];
+        global $wpdb;
+        $pairs = [];
+        foreach ($rows as $row) $pairs[] = $wpdb->prepare('(object_type = %s AND object_id = %d)', (string) $row[$typeKey], (int) $row[$idKey]);
+        $found = $wpdb->get_results(
+            "SELECT object_type, object_id, COUNT(*) AS followers FROM {$wpdb->prefix}meydan_interactions
+             WHERE action = 'follow' AND (" . implode(' OR ', $pairs) . ') GROUP BY object_type, object_id',
+            ARRAY_A
+        ) ?: [];
+        $out = [];
+        foreach ($found as $row) $out[$row['object_type'] . ':' . (int) $row['object_id']] = (int) $row['followers'];
+        return $out;
     }
 
     public function suggestions()
