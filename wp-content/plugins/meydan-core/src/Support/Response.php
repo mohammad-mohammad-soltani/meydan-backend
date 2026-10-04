@@ -32,9 +32,18 @@ final class Response
         return $id ??= 'req_' . substr(Crypto::randomToken(12), 0, 18);
     }
 
+    /**
+     * A shared ("public") policy only for anonymous readers: a signed-in reader's
+     * payload carries their own state (saved, liked, followed), which a CDN must
+     * never hand to someone else.
+     */
     public static function cache(WP_REST_Response $response, string $policy): WP_REST_Response
     {
+        if (str_starts_with(ltrim($policy), 'public') && get_current_user_id() > 0) {
+            $policy = 'private, no-store';
+        }
         $response->header('Cache-Control', $policy);
+        $response->header('Vary', 'Authorization, Cookie');
         return $response;
     }
 }

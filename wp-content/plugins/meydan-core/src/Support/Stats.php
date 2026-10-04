@@ -8,8 +8,64 @@ use Meydan\Core\Timeline\NarrativeFeatureStore;
 
 final class Stats
 {
+    /** @var array<int,array<string,int>> narrative id => stats, filled by primeNarratives() for one request */
+    private static array $narratives = [];
+    /** @var array<int,array<string,int>> content id => stats */
+    private static array $contents = [];
+
+    /**
+     * Stats for a page of narratives in four queries in total, instead of four
+     * per narrative (a 20-post timeline used to spend 80 queries on counters).
+     *
+     * @param int[] $ids
+     */
+    public static function primeNarratives(array $ids): void
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $id): bool => $id > 0 && !isset(self::$narratives[$id]))));
+        if (!$ids) return;
+        global $wpdb;
+        $marks = implode(',', array_fill(0, count($ids), '%d'));
+        $out = [];
+        foreach ($ids as $id) $out[$id] = ['views' => 0, 'likes' => 0, 'comments' => 0, 'reposts' => 0, 'quotes' => 0, 'shares' => 0];
+        foreach ($wpdb->get_results($wpdb->prepare("SELECT narrative_id, views, quotes, shares FROM {$wpdb->prefix}meydan_narrative_stats WHERE narrative_id IN ($marks)", ...$ids), ARRAY_A) ?: [] as $row) {
+            $id = (int) $row['narrative_id'];
+            $out[$id]['views'] = (int) $row['views'];
+            $out[$id]['quotes'] = (int) $row['quotes'];
+            $out[$id]['shares'] = (int) $row['shares'];
+        }
+        foreach ($wpdb->get_results($wpdb->prepare(
+            "SELECT object_id, action, COUNT(*) AS n FROM {$wpdb->prefix}meydan_interactions
+             WHERE object_type = 'narrative' AND action IN ('like','repost') AND object_id IN ($marks) GROUP BY object_id, action",
+            ...$ids
+        ), ARRAY_A) ?: [] as $row) {
+            $out[(int) $row['object_id']][$row['action'] === 'like' ? 'likes' : 'reposts'] = (int) $row['n'];
+        }
+        foreach ($wpdb->get_results($wpdb->prepare(
+            "SELECT comment_post_ID AS id, COUNT(*) AS n FROM {$wpdb->comments}
+             WHERE comment_type = 'meydan_comment' AND comment_approved = '1' AND comment_post_ID IN ($marks) GROUP BY comment_post_ID",
+            ...$ids
+        ), ARRAY_A) ?: [] as $row) {
+            $out[(int) $row['id']]['comments'] = (int) $row['n'];
+        }
+        self::$narratives = $out + self::$narratives;
+    }
+
+    /** @param int[] $ids */
+    public static function primeContents(array $ids): void
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $id): bool => $id > 0 && !isset(self::$contents[$id]))));
+        if (!$ids) return;
+        global $wpdb;
+        $marks = implode(',', array_fill(0, count($ids), '%d'));
+        foreach ($ids as $id) self::$contents[$id] = ['views' => 0, 'downloads' => 0, 'shares' => 0, 'bookmarks' => 0];
+        foreach ($wpdb->get_results($wpdb->prepare("SELECT content_id, views, downloads, shares, bookmarks FROM {$wpdb->prefix}meydan_content_stats WHERE content_id IN ($marks)", ...$ids), ARRAY_A) ?: [] as $row) {
+            self::$contents[(int) $row['content_id']] = ['views' => (int) $row['views'], 'downloads' => (int) $row['downloads'], 'shares' => (int) $row['shares'], 'bookmarks' => (int) $row['bookmarks']];
+        }
+    }
+
     public static function narrative(int $id): array
     {
+        if (isset(self::$narratives[$id])) return self::$narratives[$id];
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_narrative_stats';
         $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE narrative_id = %d", $id), ARRAY_A);
@@ -41,6 +97,7 @@ final class Stats
 
     public static function content(int $id): array
     {
+        if (isset(self::$contents[$id])) return self::$contents[$id];
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_content_stats';
         $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE content_id = %d", $id), ARRAY_A);
@@ -57,6 +114,7 @@ final class Stats
         if (!in_array($field, ['views', 'likes', 'comments', 'reposts', 'quotes', 'shares'], true) || $id <= 0) {
             return;
         }
+        unset(self::$narratives[$id]);
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_narrative_stats';
         $delta = max(-1_000_000, min(1_000_000, $delta));
@@ -78,6 +136,7 @@ final class Stats
         if (!in_array($field, ['views', 'downloads', 'shares', 'bookmarks'], true) || $id <= 0) {
             return;
         }
+        unset(self::$contents[$id]);
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_content_stats';
         $delta = max(-1_000_000, min(1_000_000, $delta));

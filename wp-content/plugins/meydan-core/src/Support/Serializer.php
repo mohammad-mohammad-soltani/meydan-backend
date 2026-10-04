@@ -184,7 +184,7 @@ final class Serializer
             'user_id' => $isUser && $userId > 0 ? $userId : null,
             'creator_id' => !$isUser && $creatorId > 0 ? $creatorId : null,
             'content_type' => (string) get_post_meta($id, 'meydan_content_type', true) ?: null,
-            'view_counts' => Stats::content($id)['views'],
+            'view_counts' => ($stats = Stats::content($id))['views'],
             'attached_media' => $attachedMedia,
             'media_cover' => $coverId > 0 ? $coverId : null,
             'media_cover_url' => $coverId > 0 ? (wp_get_attachment_url($coverId) ?: null) : null,
@@ -200,7 +200,7 @@ final class Serializer
             'usage_note' => (string) get_post_meta($id, 'meydan_usage_note', true),
             'featured' => (bool) get_post_meta($id, 'meydan_featured', true),
             'published_at' => self::date($post->post_date_gmt),
-            'stats' => Stats::content($id),
+            'stats' => $stats,
             'viewer_state' => ($viewer ?? Viewer::current())->isAuthenticated() ? [
                 'bookmarked' => self::interactionExists(($viewer ?? Viewer::current())->userId, 'content', $id, 'bookmark'),
             ] : null,
@@ -404,7 +404,7 @@ final class Serializer
             'author' => $authorId ? Actor::forUser($authorId) : null,
             'body' => $comment->comment_content,
             'parent_id' => (int) $comment->comment_parent ?: null,
-            'reply_count' => (int) get_comments(['parent' => $comment->comment_ID, 'type' => 'meydan_comment', 'status' => 'approve', 'count' => true]),
+            'reply_count' => self::$replyCounts[(int) $comment->comment_ID] ?? (int) get_comments(['parent' => $comment->comment_ID, 'type' => 'meydan_comment', 'status' => 'approve', 'count' => true]),
             'likes' => self::commentLikeState((int) $comment->comment_ID)['likes'],
             'viewer_state' => (Viewer::current()->userId ?? 0) > 0 ? ['liked' => self::commentLikeState((int) $comment->comment_ID)['liked']] : null,
             'created_at' => self::date($comment->comment_date_gmt),
@@ -561,6 +561,8 @@ final class Serializer
      */
     public static function primeNarrativeStates(array $narrativeIds): void
     {
+        // Counters are needed by every viewer, signed in or not.
+        Stats::primeNarratives($narrativeIds);
         $userId = (int) (Viewer::current()->userId ?? 0);
         if ($userId <= 0) return;
         global $wpdb;
@@ -582,6 +584,8 @@ final class Serializer
     private static array $commentLikeCounts = [];
     /** @var array<int,array<int,bool>> viewer id => comment id => liked */
     private static array $commentLiked = [];
+    /** @var array<int,int> comment id => direct reply count */
+    private static array $replyCounts = [];
 
     /**
      * Like totals (and the viewer's own likes) for a page of comments in two
@@ -596,6 +600,20 @@ final class Serializer
         if (!$ids) return;
         global $wpdb;
         foreach ($ids as $id) self::$commentLikeCounts[$id] = 0;
+        // Reply counts and authors ride along, so a page of comments never reads them one by one.
+        $marks0 = implode(',', array_fill(0, count($ids), '%d'));
+        foreach ($ids as $id) self::$replyCounts[$id] = 0;
+        foreach ($wpdb->get_results($wpdb->prepare(
+            "SELECT comment_parent AS id, COUNT(*) AS n FROM {$wpdb->comments} WHERE comment_type = 'meydan_comment' AND comment_approved = '1' AND comment_parent IN ($marks0) GROUP BY comment_parent",
+            ...$ids
+        ), ARRAY_A) ?: [] as $row) {
+            self::$replyCounts[(int) $row['id']] = (int) $row['n'];
+        }
+        $authors = array_values(array_unique(array_filter(array_map('intval', $wpdb->get_col($wpdb->prepare("SELECT user_id FROM {$wpdb->comments} WHERE comment_ID IN ($marks0)", ...$ids)) ?: []))));
+        if ($authors) {
+            cache_users($authors);
+            update_meta_cache('user', $authors);
+        }
         $marks = implode(',', array_fill(0, count($ids), '%d'));
         $table = $wpdb->prefix . 'meydan_interactions';
         $rows = $wpdb->get_results($wpdb->prepare(

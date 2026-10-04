@@ -23,6 +23,7 @@ final class ContentHubController extends BaseController
     public function audio(WP_REST_Request $request)
     {
         $q = mb_substr(trim((string) $request->get_param('q')), 0, 80);
+        if ($q !== '' && !$this->searchAllowed()) return Response::error('rate_limited', 'تعداد جست‌وجوها بیش از حد مجاز است.', 429);
         // Only the default shelves are stored: caching every search text would let anyone fill the options table.
         $data = $q === '' ? get_transient('meydan_hub_audio') : false;
         if (!is_array($data)) {
@@ -35,6 +36,7 @@ final class ContentHubController extends BaseController
     public function notes(WP_REST_Request $request)
     {
         $q = mb_substr(trim((string) $request->get_param('q')), 0, 80);
+        if ($q !== '' && !$this->searchAllowed()) return Response::error('rate_limited', 'تعداد جست‌وجوها بیش از حد مجاز است.', 429);
         $category = sanitize_title((string) $request->get_param('category'));
         $plain = $q === '' && $category === '';
         $data = $plain ? get_transient('meydan_hub_notes') : false;
@@ -43,6 +45,14 @@ final class ContentHubController extends BaseController
             if ($plain) set_transient('meydan_hub_notes', $data, self::CACHE_SECONDS);
         }
         return Response::cache(Response::ok($data), 'public, max-age=60, stale-while-revalidate=300');
+    }
+
+    /** Live search runs a LIKE scan; the same budget as /explore/search keeps it from being hammered. */
+    private function searchAllowed(): bool
+    {
+        $viewer = \Meydan\Core\Support\Viewer::current();
+        $key = $viewer->userId ? 'u' . $viewer->userId : 'g' . $viewer->id;
+        return \Meydan\Core\Support\RateLimiter::hit('search', $key, 60, MINUTE_IN_SECONDS)['allowed'];
     }
 
     /** A full, paged list of the people («faces») or entities («squares») that publish audio. */
@@ -138,7 +148,10 @@ final class ContentHubController extends BaseController
             'no_found_rows' => true,
         ]);
         $ids = wp_list_pluck($query->posts, 'ID');
-        if ($ids) update_meta_cache('post', $ids);
+        if ($ids) {
+            update_meta_cache('post', $ids);
+            \Meydan\Core\Support\Stats::primeContents($ids);
+        }
         $out = [];
         foreach ($query->posts as $post) {
             $item = Serializer::content($post);

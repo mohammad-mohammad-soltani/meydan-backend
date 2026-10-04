@@ -21,6 +21,7 @@ final class CommentController extends BaseController
     /** Idempotent: repeating a like (or an unlike) changes nothing and still answers with the current state. */
     private function setLike(int $id,bool $on){
         if(!is_user_logged_in())return Response::error('unauthenticated','برای پسندیدن باید وارد شوید.',401);
+        if(!\Meydan\Core\Support\RateLimiter::hit('like','u'.get_current_user_id(),120,MINUTE_IN_SECONDS)['allowed'])return Response::error('rate_limited','تعداد درخواست‌ها بیش از حد مجاز است.',429);
         $comment=get_comment($id);
         if(!$comment||$comment->comment_type!=='meydan_comment'||!UserAccess::visibleNarrative((int)$comment->comment_post_ID))return Response::error('not_found','کامنت پیدا نشد.',404);
         global $wpdb;$uid=get_current_user_id();$table=$wpdb->prefix.'meydan_interactions';
