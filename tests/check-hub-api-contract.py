@@ -15,3 +15,10 @@ assert "mb_substr(trim((string) $request->get_param('q')), 0, 80)" in hub
 assert "viewer_state'] = null" in explore, "the shared explore payload must carry no viewer state"
 assert "primeCommentLikes" in comments
 print("ok")
+
+# Every route registration is r(route, METHOD, [controller, 'method']): a stray extra string made PHP fatal on every REST request.
+import re as _re
+_routes = open("wp-content/plugins/meydan-core/src/Rest/Routes.php", encoding="utf-8").read()
+_bad = _re.findall(r"self::r\('[^']*','[^']*','(?!GET|POST|PUT|PATCH|DELETE)", _routes)
+assert not _bad, f"malformed self::r() calls: {_bad}"
+print("routes ok")
