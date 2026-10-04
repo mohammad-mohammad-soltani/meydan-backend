@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Timeline;
 
+use Meydan\Core\Support\NarrativeMediaFlags;
+
 /** Builds a stable, all-ages snapshot containing video narratives only. */
 final class VideoTimeline
 {
@@ -16,6 +18,19 @@ final class VideoTimeline
         $cursorDate = null;
         $cursorId = 0;
         global $wpdb;
+
+        // Once every narrative carries its `meydan_has_video` flag the feed is one indexed read.
+        if (NarrativeMediaFlags::ready()) {
+            return array_values(array_map('intval', $wpdb->get_col($wpdb->prepare(
+                "SELECT p.ID FROM {$wpdb->posts} p
+                 INNER JOIN {$wpdb->postmeta} v ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value = '1'
+                 WHERE p.post_type='meydan_narrative' AND p.post_status='publish'
+                 ORDER BY p.post_date_gmt DESC, p.ID DESC
+                 LIMIT %d",
+                NarrativeMediaFlags::VIDEO,
+                $limit,
+            )) ?: []));
+        }
 
         while (count($ids) < $limit) {
             $cursorSql = '';

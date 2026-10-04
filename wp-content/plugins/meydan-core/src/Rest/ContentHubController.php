@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Meydan\Core\Rest;
 
+use Meydan\Core\Domain\UserAccess;
 use Meydan\Core\Support\Actor;
+use Meydan\Core\Support\AudioProducers;
+use Meydan\Core\Support\NarrativeMediaFlags;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\Serializer;
 use WP_Query;
@@ -56,8 +59,7 @@ final class ContentHubController extends BaseController
         $cacheable = $offset % $limit === 0 && $offset <= 600;
         $rows = $cacheable ? get_transient($key) : false;
         if (!is_array($rows)) {
-            $types = $kind === 'faces' ? ['user', 'speaker', 'official'] : ['square', 'media', 'collective', 'organization'];
-            $rows = $this->producers($types, $limit + 1, $offset);
+            $rows = $this->producers($kind, $limit + 1, $offset);
             if ($cacheable) set_transient($key, $rows, self::CACHE_SECONDS);
         }
         $more = count($rows) > $limit;
@@ -67,13 +69,14 @@ final class ContentHubController extends BaseController
     /** @return array<string,mixed> */
     private function audioShelves(): array
     {
-        $featured = $this->items(['meta_query' => [$this->audioMeta(), ['key' => 'meydan_featured', 'value' => '1']]], 6);
-        $latest = $this->items(['meta_query' => [$this->audioMeta()]], 12);
+        // «ویژه‌ها» are exactly the content marked as a music video (نماهنگ).
+        $featured = $this->items(['meta_query' => [['key' => 'meydan_content_type', 'value' => 'music_video']]], 6);
+        $latest = $this->latestAudio(12);
         return [
             'featured' => $featured,
             'series' => $this->series(),
-            'faces' => $this->producers(['user', 'speaker', 'official'], 12),
-            'squares' => $this->producers(['square', 'media', 'collective', 'organization'], 12),
+            'faces' => $this->producers('faces', 12),
+            'squares' => $this->producers('squares', 12),
             'latest' => $latest,
         ];
     }
@@ -86,9 +89,111 @@ final class ContentHubController extends BaseController
             'series' => [],
             'faces' => [],
             'squares' => [],
-            'latest' => $this->items(['s' => $q, 'meta_query' => [$this->audioMeta()]], 20),
+            'latest' => $this->latestAudio(20, $q),
             'query' => $q,
         ];
+    }
+
+    /**
+     * The newest audio from anywhere: published audio content plus every audio file
+     * attached to a narrative by any account, whether or not it was ever promoted to content.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function latestAudio(int $limit, string $q = ''): array
+    {
+        $content = $this->items($q === '' ? ['meta_query' => [$this->audioMeta()]] : ['s' => $q, 'meta_query' => [$this->audioMeta()]], $limit);
+        return $this->mergeAudio($content, [], $q, $limit);
+    }
+
+    /**
+     * Every audio file one actor published: audio content produced by them plus audio in their posts.
+     * A plain offset keeps paging simple; both sources are read newest-first.
+     */
+    public function producer(WP_REST_Request $request)
+    {
+        $type = sanitize_key((string) $request->get_param('type'));
+        $id = (int) $request->get_param('id');
+        $offset = max(0, (int) $request->get_param('offset'));
+        $limit = 20;
+        if ($type === '' || $id <= 0) return Response::error('validation_failed', 'بازیگر نامعتبر است.', 422);
+        $need = $offset + $limit + 1;
+        $content = $this->items(['meta_query' => [
+            $this->audioMeta(),
+            ['key' => 'meydan_producer_actor_type', 'value' => $type],
+            ['key' => 'meydan_producer_actor_id', 'value' => (string) $id],
+        ]], $need);
+        $authored = [
+            ['key' => 'meydan_author_actor_type', 'value' => $type],
+            ['key' => 'meydan_author_actor_id', 'value' => (string) $id],
+        ];
+        $all = $this->mergeAudio($content, $authored, '', $need);
+        $more = count($all) > $offset + $limit;
+        return Response::cache(Response::ok(array_slice($all, $offset, $limit), ['next_offset' => $more ? $offset + $limit : null]), 'public, max-age=30, stale-while-revalidate=120');
+    }
+
+    /**
+     * Adds the audio files attached to posts to already-loaded audio content and returns
+     * the newest `$limit` of both. Narratives carry a `meydan_has_audio` flag, so the post
+     * side is one indexed read; nothing is scanned or fully serialized.
+     *
+     * @param array<int,array<string,mixed>> $content
+     * @param array<int,array<string,mixed>> $extraMeta further meta conditions on the post
+     * @return array<int,array<string,mixed>>
+     */
+    private function mergeAudio(array $content, array $extraMeta, string $q, int $limit): array
+    {
+        // A narrative already promoted to content is listed once, as content.
+        $promoted = [];
+        foreach ($content as $item) {
+            $source = (int) get_post_meta((int) $item['id'], 'meydan_source_narrative_id', true);
+            if ($source > 0) $promoted[$source] = true;
+        }
+        $args = [
+            'post_type' => 'meydan_narrative',
+            'post_status' => 'publish',
+            'posts_per_page' => $limit + count($promoted),
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'no_found_rows' => true,
+            'meta_query' => array_merge([['key' => NarrativeMediaFlags::AUDIO, 'value' => '1']], $extraMeta),
+        ];
+        if ($q !== '') $args['s'] = $q;
+        $query = new WP_Query($args);
+        $ids = wp_list_pluck($query->posts, 'ID');
+        if ($ids) update_meta_cache('post', $ids);
+        $fromPosts = [];
+        foreach ($query->posts as $post) {
+            if (count($fromPosts) >= $limit) break;
+            $id = (int) $post->ID;
+            if (isset($promoted[$id]) || !UserAccess::visibleNarrative($id)) continue;
+            foreach ((array) get_post_meta($id, 'meydan_attachments', true) as $raw) {
+                if (!is_array($raw)) continue;
+                $mediaId = (int) ($raw['media_id'] ?? $raw['id'] ?? 0);
+                if ($mediaId <= 0 || !str_starts_with((string) get_post_mime_type($mediaId), 'audio/')) continue;
+                $attachment = Serializer::attachment($raw);
+                $text = trim(wp_strip_all_tags((string) $post->post_content));
+                $title = (string) ($attachment['label'] ?? '') ?: ($text !== '' ? mb_substr(preg_split('/\\R/u', $text)[0], 0, 80) : 'صوت');
+                $duration = (float) ($attachment['duration'] ?? 0);
+                $fromPosts[] = [
+                    'id' => -$id,
+                    'title' => $title,
+                    'excerpt' => '',
+                    'body' => '',
+                    'format' => 'audio',
+                    'href' => '/posts/' . $id,
+                    'attachments' => [$attachment],
+                    'primary_attachment_id' => $mediaId,
+                    'producer' => Actor::fromNarrative($id),
+                    'published_at' => gmdate('c', (int) strtotime($post->post_date_gmt . ' UTC')),
+                    'media_duration' => $duration > 0 ? sprintf('%d:%02d', intdiv((int) $duration, 60), (int) $duration % 60) : '',
+                ];
+                break;
+            }
+        }
+        $all = array_merge($content, $fromPosts);
+        usort($all, static fn(array $a, array $b): int => strcmp((string) ($b['published_at'] ?? ''), (string) ($a['published_at'] ?? '')));
+        return array_slice($all, 0, $limit);
     }
 
     /** @return array<string,mixed> */
@@ -193,30 +298,13 @@ final class ContentHubController extends BaseController
     }
 
     /**
-     * Producers of audio content with how many items each has, busiest first.
+     * Who published audio, busiest first: one indexed read of the maintained table.
+     * «faces» are speaker or official accounts; «squares» are squares (میدان).
      *
-     * @param string[] $types
      * @return array<int,array<string,mixed>>
      */
-    private function producers(array $types, int $limit, int $offset = 0): array
+    private function producers(string $kind, int $limit, int $offset = 0): array
     {
-        global $wpdb;
-        $marks = implode(',', array_fill(0, count($types), '%s'));
-        $sql = "SELECT t.meta_value AS type, i.meta_value AS actor_id, COUNT(*) AS audios
-                FROM {$wpdb->postmeta} t
-                INNER JOIN {$wpdb->posts} p ON p.ID = t.post_id AND p.post_type = 'meydan_content' AND p.post_status = 'publish'
-                INNER JOIN {$wpdb->postmeta} i ON i.post_id = p.ID AND i.meta_key = 'meydan_producer_actor_id'
-                INNER JOIN {$wpdb->postmeta} f ON f.post_id = p.ID AND f.meta_key = 'meydan_format' AND f.meta_value = 'audio'
-                WHERE t.meta_key = 'meydan_producer_actor_type' AND t.meta_value IN ({$marks})
-                GROUP BY t.meta_value, i.meta_value
-                ORDER BY audios DESC
-                LIMIT %d OFFSET %d";
-        $rows = $wpdb->get_results($wpdb->prepare($sql, ...[...$types, $limit, $offset])) ?: [];
-        $out = [];
-        foreach ($rows as $row) {
-            $actor = Actor::parse((string) $row->type, (int) $row->actor_id);
-            if ($actor) $out[] = ['actor' => $actor, 'audios' => (int) $row->audios];
-        }
-        return $out;
+        return AudioProducers::top($kind === 'faces' ? 'face' : 'square', $limit, $offset);
     }
 }

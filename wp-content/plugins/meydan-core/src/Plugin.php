@@ -94,6 +94,8 @@ final class Plugin
         // run from maybeRun() on plugins_loaded.
         add_action('init', [Migrations::class, 'runDeferred'], 25);
         NarrativeCleanup::register();
+        \Meydan\Core\Support\NarrativeMediaFlags::register();
+        \Meydan\Core\Support\AudioProducers::register();
         \Meydan\Core\Support\Quotes::register();
         \Meydan\Core\Notifications\ProfileSubscriptions::register();
 
