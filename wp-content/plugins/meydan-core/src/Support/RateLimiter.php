@@ -12,8 +12,11 @@ final class RateLimiter
     public static function hit(string $bucket, string $identity, int $limit, int $windowSeconds): array
     {
         $key = 'meydan_rl_' . substr(Crypto::hash($bucket . '|' . $identity), 0, 40);
-        $state = get_transient($key);
         $now = time();
+        if (wp_using_ext_object_cache()) {
+            return self::hitCached($key, $limit, max(1, $windowSeconds), $now);
+        }
+        $state = get_transient($key);
         if (!is_array($state) || ($state['reset'] ?? 0) <= $now) {
             $state = ['count' => 0, 'reset' => $now + $windowSeconds];
         }
@@ -24,6 +27,30 @@ final class RateLimiter
             'allowed' => (int) $state['count'] <= $limit,
             'retry_after' => $ttl,
         ];
+    }
+
+    /**
+     * Atomic counter for a persistent object cache: `incr` cannot lose concurrent hits the way the
+     * read-modify-write transient can, and it never touches wp_options. Both keys expire with the window.
+     *
+     * @return array{allowed:bool,retry_after:int}
+     */
+    private static function hitCached(string $key, int $limit, int $window, int $now): array
+    {
+        $group = 'meydan_rl';
+        $count = wp_cache_incr($key, 1, $group);
+        if ($count === false) {
+            if (wp_cache_add($key, 1, $group, $window)) {
+                wp_cache_set($key . '_r', $now + $window, $group, $window);
+                $count = 1;
+            } else {
+                $count = wp_cache_incr($key, 1, $group);
+            }
+        }
+        $reset = (int) wp_cache_get($key . '_r', $group);
+        $retry = $reset > $now ? $reset - $now : $window;
+
+        return ['allowed' => (int) $count <= $limit, 'retry_after' => max(1, $retry)];
     }
 
     public static function ip(): string

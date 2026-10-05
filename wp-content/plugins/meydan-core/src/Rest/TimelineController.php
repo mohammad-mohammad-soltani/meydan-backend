@@ -88,7 +88,7 @@ final class TimelineController extends BaseController
             $refreshKey = 'meydan_feed_first_' . hash('sha256', $viewer->type . ':' . $viewer->id);
             $previousFirstId = (int) get_transient($refreshKey);
             $result = (new FeedService())->forYou($viewer, $limit, $debug, $previousFirstId);
-            if ($result['ids'] !== []) set_transient($refreshKey, $result['ids'][0], 6 * 3600);
+            if ($result['ids'] !== []) set_transient($refreshKey, $result['ids'][0], HOUR_IN_SECONDS);
             foreach ($result['items'] as $item) $this->feedV2Debug[(int) $item['narrative_id']] = $item;
             $this->feedV2DebugSummary = (array) ($result['debug_summary'] ?? []);
             return $result['ids'];

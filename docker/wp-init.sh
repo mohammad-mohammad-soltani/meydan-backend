@@ -48,6 +48,13 @@ fi
 wp option update permalink_structure '/%postname%/'
 wp rewrite flush --hard || true
 wp plugin activate meydan-core
+
+# Persistent object cache (Redis). Best effort: a failure here leaves the site working without it.
+if [ -n "${REDIS_HOST:-}" ]; then
+  wp plugin is-installed redis-cache >/dev/null 2>&1 || wp plugin install redis-cache --activate || true
+  wp plugin is-active redis-cache >/dev/null 2>&1 || wp plugin activate redis-cache || true
+  wp redis enable || true
+fi
 wp meydan migrate
 wp meydan seed
 wp meydan status

@@ -18,7 +18,8 @@ use Meydan\Core\Support\Viewer;
 final class TimelineSession
 {
     private const VERSION = 1;
-    private const TTL = 21600; // Six hours, refreshed on every successful page read.
+    private const TTL = 7200; // Two hours of idle time; refreshed while the viewer keeps scrolling.
+    private const MAX_AGE = 21600; // Hard cap: a snapshot is never kept alive longer than six hours.
     private const CACHE_GROUP = 'meydan_timeline_sessions';
     private const TRANSIENT_PREFIX = 'meydan_timeline_session_';
 
@@ -43,8 +44,9 @@ final class TimelineSession
             'viewer' => self::viewerKey($viewer),
             'mode' => $mode,
             'filter' => $filter,
-            'ids' => $snapshot,
+            'ids' => pack('V*', ...$snapshot), // 4 bytes per id instead of a PHP array (≈10x smaller in the cache)
             'created_at' => time(),
+            'touched_at' => time(),
         ];
 
         self::store($sessionId, $session);
@@ -81,13 +83,18 @@ final class TimelineSession
             || ($session['mode'] ?? null) !== $mode
             || ($session['filter'] ?? null) !== $filter
             || !isset($session['ids'])
-            || !is_array($session['ids'])
+            || (!is_array($session['ids']) && !is_string($session['ids']))
+            || time() - (int) ($session['created_at'] ?? 0) > self::MAX_AGE
         ) {
             return null;
         }
 
-        // Sliding expiration: an actively scrolling viewer never loses the session.
-        self::store($decoded['session_id'], $session);
+        // Sliding expiration: an actively scrolling viewer keeps the session, but the blob is only
+        // rewritten once half of the idle TTL has passed instead of on every page.
+        if (time() - (int) ($session['touched_at'] ?? 0) > self::TTL / 2) {
+            $session['touched_at'] = time();
+            self::store($decoded['session_id'], $session);
+        }
 
         return self::page(
             $decoded['session_id'],
@@ -103,7 +110,7 @@ final class TimelineSession
      */
     private static function page(string $sessionId, array $session, int $position, int $limit): array
     {
-        $ids = array_values(array_map('intval', $session['ids']));
+        $ids = self::decodeIds($session['ids']);
         $position = max(0, $position);
         $limit = max(1, $limit);
         $pageIds = array_slice($ids, $position, $limit);
@@ -122,6 +129,20 @@ final class TimelineSession
         ];
     }
 
+    /** @return array<int,int> */
+    private static function decodeIds(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            return array_values(array_map('intval', $raw)); // sessions written before ids were packed
+        }
+        if (!is_string($raw) || $raw === '') {
+            return [];
+        }
+        $ids = unpack('V*', $raw);
+
+        return $ids === false ? [] : array_values($ids);
+    }
+
     private static function viewerKey(Viewer $viewer): string
     {
         // Guest SSR and browser requests can have different guest-cookie ids.
@@ -136,7 +157,11 @@ final class TimelineSession
     {
         $cacheKey = self::cacheKey($sessionId);
         wp_cache_set($cacheKey, $session, self::CACHE_GROUP, self::TTL);
-        set_transient(self::TRANSIENT_PREFIX . $cacheKey, $session, self::TTL);
+        // With a persistent object cache (Redis) the group entry above already survives requests;
+        // a second transient copy would only double the memory per session.
+        if (!wp_using_ext_object_cache()) {
+            set_transient(self::TRANSIENT_PREFIX . $cacheKey, $session, self::TTL);
+        }
     }
 
     /** @return array<string,mixed>|false */
@@ -146,6 +171,10 @@ final class TimelineSession
         $cached = wp_cache_get($cacheKey, self::CACHE_GROUP);
         if (is_array($cached)) {
             return $cached;
+        }
+
+        if (wp_using_ext_object_cache()) {
+            return false;
         }
 
         $stored = get_transient(self::TRANSIENT_PREFIX . $cacheKey);

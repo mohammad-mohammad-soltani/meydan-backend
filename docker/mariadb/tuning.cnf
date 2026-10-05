@@ -1,0 +1,14 @@
+# Sized for a ~16 GB single server where this container gets ~6 GB.
+# Raise innodb_buffer_pool_size to 50-60% of the RAM given to the db service.
+[mysqld]
+innodb_buffer_pool_size = 4G
+innodb_log_file_size = 512M
+innodb_flush_log_at_trx_commit = 2
+innodb_flush_method = O_DIRECT
+max_connections = 300
+table_open_cache = 4000
+tmp_table_size = 64M
+max_heap_table_size = 64M
+slow_query_log = 1
+slow_query_log_file = /var/lib/mysql/slow.log
+long_query_time = 0.3

@@ -10,11 +10,28 @@ services:
     command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
     volumes:
       - db_data:/var/lib/mysql
+      - ./docker/mariadb/tuning.cnf:/etc/mysql/conf.d/zz-meydan-tuning.cnf:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
       timeout: 5s
       retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
+    # Hard container cap above maxmemory (1gb) so Redis can never starve MariaDB/PHP.
+    mem_limit: 1280m
+    volumes:
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
 
   wordpress:
     build:
@@ -24,6 +41,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "${WORDPRESS_PORT:-8082}:80"
     environment:
@@ -31,6 +50,9 @@ services:
       WORDPRESS_DB_NAME: ${DB_NAME:-meydan}
       WORDPRESS_DB_USER: ${DB_USER:-meydan}
       WORDPRESS_DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      REDIS_HOST: redis
+      OPCACHE_VALIDATE: ${OPCACHE_VALIDATE:-0}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
       WP_URL: ${WP_URL:-http://localhost:8082}
       WORDPRESS_DEBUG: ${WP_DEBUG:-1}
       WP_ENVIRONMENT_TYPE: ${WP_ENVIRONMENT_TYPE:-local}
@@ -82,6 +104,21 @@ services:
         define('MEYDAN_PUSHE_TOKEN', getenv('MEYDAN_PUSHE_TOKEN') ?: '');
         define('MEYDAN_FRONTEND_URL', getenv('MEYDAN_FRONTEND_URL') ?: '');
         define('DISALLOW_FILE_EDIT', true);
+        // Persistent object cache (Redis). Every key gets a TTL so nothing lives forever; a dead
+        // Redis must only make the site slower, never break it (short timeouts, no retries).
+        if (getenv('REDIS_HOST')) {
+            define('WP_REDIS_HOST', getenv('REDIS_HOST'));
+            define('WP_REDIS_PASSWORD', getenv('REDIS_PASSWORD') ?: '');
+            define('WP_REDIS_PREFIX', 'meydan:');
+            define('WP_REDIS_DATABASE', 0);
+            define('WP_REDIS_MAXTTL', 86400);
+            define('WP_REDIS_TIMEOUT', 1);
+            define('WP_REDIS_READ_TIMEOUT', 1);
+            define('WP_REDIS_RETRY_INTERVAL', 100);
+            define('WP_REDIS_SERIALIZER', extension_loaded('igbinary') ? 'igbinary' : 'php');
+        }
+        // WP-Cron is driven by the wpcli container's loop, not by site traffic.
+        define('DISABLE_WP_CRON', true);
         define('FORCE_SSL_ADMIN', (getenv('WP_ENVIRONMENT_TYPE') ?: 'local') === 'production');
         define('COOKIE_DOMAIN', '');
         define('COOKIEPATH', '/');
@@ -92,6 +129,7 @@ services:
       - wp_data:/var/www/html
       - ./wp-content/plugins/meydan-core:/var/www/html/wp-content/plugins/meydan-core
       - ./docker/uploads.ini:/usr/local/etc/php/conf.d/zz-meydan-uploads.ini:ro
+      - ./docker/php/opcache.ini:/usr/local/etc/php/conf.d/zz-meydan-opcache.ini:ro
     networks:
       - default
       - meydan_internal
@@ -111,6 +149,8 @@ services:
       WORDPRESS_DB_NAME: ${DB_NAME:-meydan}
       WORDPRESS_DB_USER: ${DB_USER:-meydan}
       WORDPRESS_DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
       WP_URL: ${WP_URL:-http://localhost:8082}
       WP_TITLE: ${WP_TITLE:-Meydan Backend}
       WP_ADMIN_USER: ${WP_ADMIN_USER:-admin}
@@ -134,6 +174,39 @@ services:
       - ./docker/wp-init.sh:/usr/local/bin/wp-init.sh:ro
     entrypoint: ["/bin/sh", "/usr/local/bin/wp-init.sh"]
     restart: "no"
+
+  # Replaces WP-Cron-on-request (DISABLE_WP_CRON): runs due events every minute.
+  cron:
+    build:
+      context: ./docker/wpcli
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      wordpress:
+        condition: service_started
+    user: "33:33"
+    restart: unless-stopped
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: ${DB_NAME:-meydan}
+      WORDPRESS_DB_USER: ${DB_USER:-meydan}
+      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      WP_URL: ${WP_URL:-http://localhost:8082}
+      MEDIA_STORAGE: ${MEDIA_STORAGE:-local}
+      MEDIA_STORAGE_PREFIX: ${MEDIA_STORAGE_PREFIX:-local}
+      MEDIA_PUBLIC_URL: ${MEDIA_PUBLIC_URL:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+    volumes:
+      - wp_data:/var/www/html
+      - ./wp-content/plugins/meydan-core:/var/www/html/wp-content/plugins/meydan-core
+    entrypoint: ["/bin/sh", "-c", "until [ -f /var/www/html/wp-load.php ]; do sleep 5; done; while true; do wp cron event run --due-now >/dev/null 2>&1 || true; sleep 60; done"]
 
 volumes:
   db_data:
