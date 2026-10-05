@@ -28,6 +28,8 @@ final class NarrativeFeatureRefreshCron
     private const LOCK = 'meydan_narrative_feature_refresh_lock';
     private const BATCH_SIZE = 200;
     private const INTERVAL = 30;
+    /** After a full pass over every narrative, rest this long before starting the next pass. */
+    private const IDLE_INTERVAL = 600;
 
     public static function register(): void
     {
@@ -35,12 +37,12 @@ final class NarrativeFeatureRefreshCron
         add_action(self::HOOK, [self::class, 'run']);
     }
 
-    public static function schedule(): void
+    public static function schedule(int $delay = self::INTERVAL): void
     {
         if (wp_next_scheduled(self::HOOK)) {
             return;
         }
-        wp_schedule_single_event(time() + self::INTERVAL, self::HOOK);
+        wp_schedule_single_event(time() + $delay, self::HOOK);
     }
 
     public static function run(): void
@@ -56,17 +58,19 @@ final class NarrativeFeatureRefreshCron
             return;
         }
 
+        $wrapped = false;
         try {
-            self::processNextBatch();
+            $wrapped = self::processNextBatch();
         } catch (Throwable $error) {
             error_log('Meydan narrative feature refresh: ' . $error->getMessage());
         } finally {
             delete_option(self::LOCK);
-            self::schedule();
+            self::schedule($wrapped ? self::IDLE_INTERVAL : self::INTERVAL);
         }
     }
 
-    public static function processNextBatch(): void
+    /** @return bool true when this call reached the end of the table (a full pass is complete) */
+    public static function processNextBatch(): bool
     {
         global $wpdb;
         $cursor = (int) get_option(self::CURSOR_OPTION, 0);
@@ -83,10 +87,11 @@ final class NarrativeFeatureRefreshCron
             // Wrapped the whole table — restart from the top so stat drift and
             // reflection publishes keep getting picked up continuously.
             update_option(self::CURSOR_OPTION, 0, false);
-            return;
+            return true;
         }
 
         NarrativeFeatureStore::upsertBatch(array_map('intval', $ids));
         update_option(self::CURSOR_OPTION, (int) end($ids), false);
+        return false;
     }
 }
