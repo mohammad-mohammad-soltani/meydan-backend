@@ -79,7 +79,7 @@ final class TimelineController extends BaseController
     private function buildSnapshot(Viewer $viewer, string $mode, string $filter, int $limit, bool $debug = false): array
     {
         if ($mode === 'for_you' && $filter === 'video') {
-            return (new VideoTimeline())->ids($limit);
+            return (new VideoTimeline())->ids($limit, $viewer);
         }
 
         // Cursor requests return before this method, so V2 runs only for a newly created snapshot.

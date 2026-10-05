@@ -103,7 +103,7 @@ final class NarrativeFeatureStore
              WHERE post_id IN ({$liveMarks}) AND meta_key IN (
                 'meydan_author_actor_type','meydan_author_actor_id',
                 'meydan_city_id','meydan_province_id',
-                'meydan_attachments','meydan_initiative_id'
+                'meydan_attachments','meydan_initiative_id','meydan_has_video'
              )",
             ...$liveIds
         ), ARRAY_A) ?: [];
@@ -146,14 +146,14 @@ final class NarrativeFeatureStore
             $wpdb->query($wpdb->prepare(
                 "INSERT INTO {$table}
                     (narrative_id, actor_type, actor_id, city_id, province_id, has_media,
-                     initiative_boost, media_reflection_boost, post_date_gmt,
+                     initiative_boost, media_reflection_boost, has_video, post_date_gmt,
                      views, likes, reposts, comments, shares, computed_at)
-                 VALUES (%d,%s,%d,%d,%d,%d,%d,%d,%s,%d,%d,%d,%d,%d,%s)
+                 VALUES (%d,%s,%d,%d,%d,%d,%d,%d,%d,%s,%d,%d,%d,%d,%d,%s)
                  ON DUPLICATE KEY UPDATE
                     actor_type=VALUES(actor_type), actor_id=VALUES(actor_id),
                     city_id=VALUES(city_id), province_id=VALUES(province_id),
                     has_media=VALUES(has_media), initiative_boost=VALUES(initiative_boost),
-                    media_reflection_boost=VALUES(media_reflection_boost),
+                    media_reflection_boost=VALUES(media_reflection_boost), has_video=VALUES(has_video),
                     post_date_gmt=VALUES(post_date_gmt),
                     views=VALUES(views), likes=VALUES(likes), reposts=VALUES(reposts),
                     comments=VALUES(comments), shares=VALUES(shares), computed_at=VALUES(computed_at)",
@@ -165,6 +165,7 @@ final class NarrativeFeatureStore
                 $hasMedia ? 1 : 0,
                 (int) ($m['meydan_initiative_id'] ?? 0) > 0 ? 1 : 0,
                 isset($reflectedIds[$id]) ? 1 : 0,
+                ($m['meydan_has_video'] ?? '') === '1' ? 1 : 0,
                 (string) $post['post_date_gmt'],
                 (int) ($s['views'] ?? 0),
                 (int) ($s['likes'] ?? 0),

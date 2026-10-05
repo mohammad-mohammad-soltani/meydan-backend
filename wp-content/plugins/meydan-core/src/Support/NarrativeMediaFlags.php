@@ -32,6 +32,13 @@ final class NarrativeMediaFlags
         }
         add_action('deleted_post_meta', [self::class, 'onDeleted'], 10, 4);
         add_action('init', [self::class, 'continueBackfill'], 40);
+        // A narrative published after its video was attached (status flips last) joins the video feed immediately.
+        add_action('transition_post_status', static function ($new, $old, $post): void {
+            if ($new === 'publish' && $old !== 'publish' && $post instanceof \WP_Post && $post->post_type === 'meydan_narrative'
+                && self::ready() && get_post_meta($post->ID, self::VIDEO, true) === '1') {
+                \Meydan\Core\Timeline\NarrativeFeatureStore::upsertBatch([(int) $post->ID]);
+            }
+        }, 20, 3);
     }
 
     /** @param mixed $metaId @param mixed $value */
@@ -84,6 +91,15 @@ final class NarrativeMediaFlags
         $before = get_post_meta($postId, $key, true) === '1';
         if ($on) update_post_meta($postId, $key, '1');
         else delete_post_meta($postId, $key);
+        if ($key === self::VIDEO && $before !== $on) {
+            // The video feed reads this mirror (indexed with the date) instead of joining postmeta.
+            global $wpdb;
+            $wpdb->update($wpdb->prefix . 'meydan_narrative_features', ['has_video' => $on ? 1 : 0], ['narrative_id' => $postId]);
+            // A new video must reach the video feed now, not whenever the refresh cron gets to it.
+            if ($on && self::ready() && get_post_status($postId) === 'publish') {
+                \Meydan\Core\Timeline\NarrativeFeatureStore::upsertBatch([$postId]);
+            }
+        }
         // While the first backfill runs the table is built from scratch afterwards, so only live changes count.
         if ($key === self::AUDIO && $before !== $on && self::ready() && get_post_status($postId) === 'publish') {
             AudioProducers::narrativeAudio($postId, $on ? 1 : -1);

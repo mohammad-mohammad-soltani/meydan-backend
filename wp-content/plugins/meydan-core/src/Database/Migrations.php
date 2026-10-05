@@ -9,7 +9,7 @@ use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.4.7';
+    public const VERSION = '1.4.8';
 
     /**
      * Legacy speaker-post meta holding the linked user id.
@@ -408,6 +408,7 @@ final class Migrations
             has_media TINYINT UNSIGNED NOT NULL DEFAULT 0,
             initiative_boost TINYINT UNSIGNED NOT NULL DEFAULT 0,
             media_reflection_boost TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            has_video TINYINT UNSIGNED NOT NULL DEFAULT 0,
             post_date_gmt DATETIME NOT NULL,
             views BIGINT UNSIGNED NOT NULL DEFAULT 0,
             likes BIGINT UNSIGNED NOT NULL DEFAULT 0,
@@ -416,7 +417,8 @@ final class Migrations
             shares BIGINT UNSIGNED NOT NULL DEFAULT 0,
             computed_at DATETIME NOT NULL,
             PRIMARY KEY (narrative_id),
-            KEY actor (actor_type, actor_id)
+            KEY actor (actor_type, actor_id),
+            KEY video_feed (has_video, post_date_gmt)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}idempotency (
