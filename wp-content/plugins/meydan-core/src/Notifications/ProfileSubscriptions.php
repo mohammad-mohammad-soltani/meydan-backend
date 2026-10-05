@@ -77,12 +77,12 @@ final class ProfileSubscriptions
             "SELECT id, user_id FROM {$wpdb->prefix}meydan_interactions WHERE object_type=%s AND object_id=%d AND action=%s AND id > %d ORDER BY id ASC LIMIT %d",
             $type, $actorId, self::ACTION, $afterId, self::BATCH
         ), ARRAY_A) ?: [];
-        $service = new NotificationService();
+        $recipients = [];
         foreach ($rows as $row) {
             $recipient = (int) $row['user_id'];
-            if ($recipient <= 0 || $recipient === $authorUserId) continue;
-            $service->fromTemplate($recipient, 'profile_post', $type, $actorId, 'narrative', $narrativeId, '/posts/' . $narrativeId);
+            if ($recipient > 0 && $recipient !== $authorUserId) $recipients[] = $recipient;
         }
+        (new NotificationService())->fromTemplateMany($recipients, 'profile_post', $type, $actorId, 'narrative', $narrativeId, '/posts/' . $narrativeId);
         if (count($rows) === self::BATCH) {
             wp_schedule_single_event(time() + 5, self::HOOK, [$narrativeId, (int) end($rows)['id']]);
         }

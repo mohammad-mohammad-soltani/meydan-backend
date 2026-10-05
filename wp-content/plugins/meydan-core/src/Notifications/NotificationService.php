@@ -304,30 +304,62 @@ final class NotificationService
         return $this->create($recipientUserId, $type, $actorType, $actorId, $entityType, $entityId, $title, $body, $deepLink, $groupKey, $payload, null, null, $aggregate);
     }
 
+    /**
+     * Template-based notification for many recipients at once (profile-post fan-out): one lookup for
+     * recipients already notified about this entity, then a bulk insert — no per-recipient queries.
+     *
+     * @param int[] $recipientUserIds
+     */
+    public function fromTemplateMany(array $recipientUserIds, string $type, ?string $actorType, ?int $actorId, string $entityType, int $entityId, ?string $deepLink = null): int
+    {
+        $recipients = array_values(array_unique(array_filter(array_map('intval', $recipientUserIds), static fn(int $id): bool => $id > 0)));
+        if (!$recipients) {
+            return 0;
+        }
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_notifications';
+        $marks = implode(',', array_fill(0, count($recipients), '%d'));
+        // Keeps a retried job idempotent (the single-recipient path dedupes the same way).
+        $already = array_map('intval', $wpdb->get_col($wpdb->prepare(
+            "SELECT recipient_user_id FROM {$table} WHERE type = %s AND entity_type = %s AND entity_id = %d AND recipient_user_id IN ({$marks})",
+            $type, sanitize_key($entityType), $entityId, ...$recipients
+        )) ?: []);
+        $recipients = array_values(array_diff($recipients, $already));
+        if (!$recipients) {
+            return 0;
+        }
+
+        $tpl = self::template($type);
+        $actor = ($actorType && $actorId) ? Actor::parse($actorType, $actorId) : null;
+        $name = (string) ($actor['display_name'] ?? 'یک کاربر');
+        $body = str_replace('{actor}', $name, $tpl['body']);
+
+        return $this->createMany($recipients, $type, $actorType, $actorId, $entityType, $entityId, $tpl['title'], $body, $deepLink);
+    }
+
     public function broadcast(string $title, string $body, array $audience, ?string $deepLink = null): int
     {
         $users = $this->resolveAudience($audience);
-        $pushUsers = [];
-        $count = 0;
-        foreach ($users as $userId) {
-            $uid = (int) $userId;
-            $id = $this->create($uid, 'admin_notice', null, null, 'broadcast', null, $title, $body, $deepLink, null, ['audience' => $audience], null, null, false, false);
-            if ($id > 0) {
-                $count++;
-                $pushUsers[] = $uid;
-            }
-        }
-        if ($pushUsers) {
-            self::sendPushToUsers(
-                $pushUsers,
+        // One multi-row INSERT per 500 users plus one realtime and one push job per chunk, instead of
+        // a statement, a realtime POST and a cron event for every recipient. Chunks of 2000 keep each
+        // queued job's argument list small (it is stored in the shared `cron` option).
+        $stored = 0;
+        foreach (array_chunk(array_map('intval', $users), 2000) as $chunk) {
+            $stored += $this->createMany(
+                $chunk,
+                'admin_notice',
+                null,
+                null,
+                'broadcast',
+                null,
                 $title,
                 $body,
                 $deepLink,
-                self::iconUrl('admin_notice'),
-                ['type' => 'admin_notice', 'tag' => 'admin-notice'],
+                null,
+                ['audience' => $audience],
             );
         }
-        return $count;
+        return $stored;
     }
 
     /** @param array<string,mixed> $data */
