@@ -12,7 +12,23 @@ final class GuestSessionService
 
     public static function ensureGuestCookie(): void
     {
+        // Public, CDN-cacheable reads never need a guest identity; a Set-Cookie on them would stop
+        // shared caches from storing the response (and would hand every visitor the same guest id).
+        // Anything that does need the identity still gets it lazily through id().
+        if (self::isPublicCacheableRead()) {
+            return;
+        }
         self::id();
+    }
+
+    private static function isPublicCacheableRead(): bool
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
+            return false;
+        }
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+
+        return (bool) preg_match('#/wp-json/meydan/v1/(?:entities|creators|profiles|provinces|cities)(?:[/?]|$)#', $uri);
     }
 
     public static function id(): string

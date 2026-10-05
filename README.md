@@ -175,3 +175,20 @@ docker compose run --rm wpcli wp route list --namespace=meydan/v1
 ## Production
 
 Use strong secrets, TLS, an external SMS provider, a reverse proxy, persistent backups, object cache if needed, and disable the local OTP code. The Docker compose file is development/acceptance-test friendly; production orchestration should pin digests and externalize secrets/volumes.
+
+## Running for ~100k users on one server
+
+Infra is in `docker-compose.yml` (Redis object cache, MariaDB tuning, OPcache, Apache prefork limits, a `cron` service
+that replaces WP-Cron-on-request). Set `REDIS_PASSWORD` in `.env`; keep `OPCACHE_VALIDATE=0` in production.
+
+- **Redis memory is bounded**: `maxmemory 1gb` + `allkeys-lru`, container hard cap 1280 MB, every WordPress key gets a TTL
+  (`WP_REDIS_MAXTTL=86400`). Check it any time with `tools/redis-memcheck.sh` (exits 1 above 80% of `maxmemory`).
+- **Retention** (`Support/Retention.php`, every 10 minutes): sessions, OTP challenges, idempotency replies, events (90d),
+  served history (7d), audit log (1y), notifications (180d), dead push endpoints. Override days with the
+  `meydan_retention` option, e.g. `wp option update meydan_retention '{"events":30}' --format=json`.
+- **Edge cache** (nginx/Varnish/CDN): only cache `GET /entities/*`, `/creators/*`, `/profiles/*`, `/provinces`, `/cities`,
+  `/explore/home` (they send `Cache-Control: public` and no `Set-Cookie`). Bypass the cache when an `Authorization`
+  header is present. Everything under `/timeline`, `/me`, `/narratives`, `/squares`, `/content`, `/explore/*` stays `no-store`
+  on purpose (moderation must take effect immediately).
+- **Load test**: `k6 run -e BASE_URL=... -e USERS=200 -e VUS=2000 tools/loadtest/k6-mixed.js` against a staging copy
+  (dev OTP enabled), then run `tools/redis-memcheck.sh` and look at the MariaDB slow log (`/var/lib/mysql/slow.log`).
