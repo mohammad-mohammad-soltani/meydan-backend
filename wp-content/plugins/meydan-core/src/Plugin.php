@@ -109,6 +109,7 @@ final class Plugin
         VideoPosterBackfill::register();
         \Meydan\Core\Uploads\UploadCleanup::register();
         \Meydan\Core\Support\Retention::register();
+        \Meydan\Core\Support\Actor::registerCache();
         NarrativeFeatureRefreshCron::register();
 
         CampaignCurrentGuard::register();

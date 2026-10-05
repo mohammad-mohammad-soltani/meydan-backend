@@ -101,9 +101,46 @@ final class Serializer
         ];
     }
 
+    /**
+     * Everything about an attachment that comes from the media file itself (URL, mime, dimensions,
+     * poster, size) is the same for every narrative that shows it, so it is built once and cached.
+     * Item-specific fields (caption, label, order, a client-supplied duration) are added per call.
+     */
     public static function attachment(array $item): array
     {
         $mediaId = (int) ($item['media_id'] ?? $item['id'] ?? 0);
+        $itemDuration = isset($item['duration']) ? (float) $item['duration'] : null;
+        $cacheKey = $mediaId > 0 ? $mediaId . ':' . ($itemDuration ?? '') : '';
+        $media = $cacheKey !== '' ? wp_cache_get($cacheKey, 'meydan_media') : false;
+        if (!is_array($media)) {
+            $media = self::mediaFacts($item, $mediaId, $itemDuration);
+            if ($cacheKey !== '') {
+                // Short TTL: video posters can appear after the first read (poster backfill).
+                wp_cache_set($cacheKey, $media, 'meydan_media', 600);
+            }
+        }
+
+        return [
+            'id' => $mediaId,
+            'type' => $media['type'],
+            'mime_type' => $media['mime'],
+            'filename' => $media['filename'],
+            'url' => $media['url'],
+            'poster_url' => $media['poster'],
+            'thumbnail_url' => $media['poster'],
+            'size' => $media['size'],
+            'width' => $media['width'],
+            'height' => $media['height'],
+            'duration' => $media['duration'],
+            'caption' => isset($item['caption']) ? (string) $item['caption'] : null,
+            'label' => isset($item['label']) ? (string) $item['label'] : null,
+            'order' => (int) ($item['order'] ?? 0),
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private static function mediaFacts(array $item, int $mediaId, ?float $itemDuration): array
+    {
         $url = $mediaId ? (string) wp_get_attachment_url($mediaId) : (string) ($item['url'] ?? '');
         $path = $mediaId ? AttachmentStorage::localPath($mediaId) : '';
         $mime = $mediaId ? (string) get_post_mime_type($mediaId) : (string) ($item['mime_type'] ?? '');
@@ -112,7 +149,7 @@ final class Serializer
 
         $width = isset($metadata['width']) ? (int) $metadata['width'] : null;
         $height = isset($metadata['height']) ? (int) $metadata['height'] : null;
-        $duration = isset($item['duration']) ? (float) $item['duration'] : null;
+        $duration = $itemDuration;
         $poster = null;
 
         // Videos also expose a still frame and their real length so a card never
@@ -126,20 +163,15 @@ final class Serializer
         }
 
         return [
-            'id' => $mediaId,
             'type' => $type,
-            'mime_type' => $mime,
+            'mime' => $mime,
             'filename' => $path ? wp_basename($path) : wp_basename((string) parse_url($url, PHP_URL_PATH)),
             'url' => $url,
-            'poster_url' => $poster,
-            'thumbnail_url' => $poster,
+            'poster' => $poster,
             'size' => ($path && is_file($path)) ? (int) filesize($path) : (int) ($metadata['filesize'] ?? $item['size'] ?? 0),
             'width' => $width,
             'height' => $height,
             'duration' => $duration,
-            'caption' => isset($item['caption']) ? (string) $item['caption'] : null,
-            'label' => isset($item['label']) ? (string) $item['label'] : null,
-            'order' => (int) ($item['order'] ?? 0),
         ];
     }
 

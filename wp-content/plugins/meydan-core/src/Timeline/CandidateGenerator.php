@@ -8,27 +8,75 @@ use WP_Query;
 
 final class CandidateGenerator
 {
+    private const POOL_GROUP = 'meydan_pools';
+    private const SHARED_TTL = 90;   // pools every viewer shares (trending, verified, initiatives, exploration, per-city local)
+    private const VIEWER_TTL = 30;   // per-viewer pools (following, interaction graph)
+
     public function generate(Viewer $viewer):array
     {
         $cfg=(array)get_option('meydan_timeline',[]);
+        $local=(int)($cfg['pool_local']??200);$trend=(int)($cfg['pool_trending']??300);$expl=(int)($cfg['pool_exploration']??100);
+        // Where a viewer's local pool depends only on city/province, so it is shared by everyone in that city.
+        $loc=(int)$viewer->cityId.'_'.(int)$viewer->provinceId;
         if(!$viewer->isAuthenticated()){
             $c=array_merge(
-                $this->local($viewer,(int)($cfg['pool_local']??200),'guest_local'),
-                $this->trending((int)($cfg['pool_trending']??300),'guest_trending'),
-                $this->verifiedSquares(200),
-                $this->initiatives(100),
-                $this->exploration((int)($cfg['pool_exploration']??100))
+                $this->shared('local_'.$loc.'_'.$local.'_g',self::SHARED_TTL,fn()=>$this->local($viewer,$local,'guest_local')),
+                $this->shared('trending_'.$trend.'_g',self::SHARED_TTL,fn()=>$this->trending($trend,'guest_trending')),
+                $this->shared('verified_200',self::SHARED_TTL,fn()=>$this->verifiedSquares(200)),
+                $this->shared('initiatives_100',self::SHARED_TTL,fn()=>$this->initiatives(100)),
+                $this->shared('exploration_'.$expl,self::SHARED_TTL,fn()=>$this->exploration($expl))
             );
             return $this->unique($c);
         }
+        $uid=(int)$viewer->userId;$tok=$this->viewerToken($uid);
         return $this->unique(array_merge(
-            $this->following($viewer->userId,(int)($cfg['pool_following']??400)),
-            $this->interactionGraph($viewer->userId,(int)($cfg['pool_interaction']??250)),
-            $this->local($viewer,(int)($cfg['pool_local']??200),'local'),
-            $this->trending((int)($cfg['pool_trending']??300),'trending'),
-            $this->exploration((int)($cfg['pool_exploration']??100))
+            $this->shared('following_'.$uid.'_'.$tok,self::VIEWER_TTL,fn()=>$this->following($viewer->userId,(int)($cfg['pool_following']??400))),
+            $this->shared('interaction_'.$uid.'_'.$tok,self::VIEWER_TTL,fn()=>$this->interactionGraph($viewer->userId,(int)($cfg['pool_interaction']??250))),
+            $this->shared('local_'.$loc.'_'.$local.'_u',self::SHARED_TTL,fn()=>$this->local($viewer,$local,'local')),
+            $this->shared('trending_'.$trend.'_u',self::SHARED_TTL,fn()=>$this->trending($trend,'trending')),
+            $this->shared('exploration_'.$expl,self::SHARED_TTL,fn()=>$this->exploration($expl))
         ));
     }
+
+    /** A follow/unfollow or new affinity was written: the next feed build must not reuse this viewer's cached pools. */
+    public static function forgetViewer(int $userId):void
+    {
+        if($userId>0)wp_cache_set('tok_'.$userId,(string)microtime(true),self::POOL_GROUP,DAY_IN_SECONDS);
+    }
+
+    private function viewerToken(int $uid):string
+    {
+        $t=wp_cache_get('tok_'.$uid,self::POOL_GROUP);
+        return $t===false?'0':(string)$t;
+    }
+
+    /**
+     * Candidate lists that many viewers share are built once per TTL instead of once per viewer.
+     * Only narrative ids are cached; visibility is checked again when the page is serialized, so a
+     * hidden author never shows up even if their id is still in a cached pool.
+     * A rebuild takes a short lock so a cold cache costs one query set, not one per concurrent request.
+     *
+     * @param callable():array<int,array{id:int,source:string}> $build
+     * @return array<int,array{id:int,source:string}>
+     */
+    private function shared(string $key,int $ttl,callable $build):array
+    {
+        $hit=wp_cache_get($key,self::POOL_GROUP);
+        if(is_array($hit))return $hit;
+        $lock=$key.'_lock';
+        if(!wp_cache_add($lock,1,self::POOL_GROUP,10)){
+            for($i=0;$i<10;$i++){
+                usleep(50000);
+                $hit=wp_cache_get($key,self::POOL_GROUP);
+                if(is_array($hit))return $hit;
+            }
+        }
+        $value=$build();
+        wp_cache_set($key,$value,self::POOL_GROUP,$ttl);
+        wp_cache_delete($lock,self::POOL_GROUP);
+        return $value;
+    }
+
     public function followingChronological(int $userId,int $limit=100):array
     {
         return $this->following($userId,$limit);

@@ -252,9 +252,16 @@ final class TimelineController extends BaseController
     private function respondPage(Viewer $viewer, array $page, string $mode, string $filter, ?array $debug = null)
     {
         $ids = $page['ids'];
-        Stats::incrementViewsBulk($ids);
         $source = $filter === 'all' ? $mode : $mode . ':' . $filter;
-        $this->record($viewer, $ids, $source);
+        // View counts and served history are bookkeeping, not part of the answer: write them after the
+        // response has been sent (the client never waits for these INSERT/UPDATE statements).
+        add_action('shutdown', function () use ($viewer, $ids, $source): void {
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            }
+            Stats::incrementViewsBulk($ids);
+            $this->record($viewer, $ids, $source);
+        }, 20);
 
         $this->primeCaches($ids);
         Stats::primeNarratives($ids);

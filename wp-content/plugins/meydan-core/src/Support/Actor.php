@@ -144,7 +144,67 @@ final class Actor
         return self::accountType($userId) === 'official';
     }
 
+    private const CACHE_GROUP = 'meydan_actor';
+    private const CACHE_TTL = 300; // safety net; the hooks below drop an actor the moment it changes
+
+    /**
+     * Public actor payloads are the same for every viewer and are rebuilt for every card, comment,
+     * notification and chat row, so they live in the object cache. registerCache() invalidates them.
+     */
+    public static function registerCache(): void
+    {
+        $forgetUserMeta = static function ($metaId, $userId, $key = ''): void {
+            if (str_starts_with((string) $key, 'meydan_') || $key === 'first_name' || $key === 'last_name' || $key === 'wp_capabilities') {
+                self::forgetUser((int) $userId);
+            }
+        };
+        add_action('added_user_meta', $forgetUserMeta, 10, 3);
+        add_action('updated_user_meta', $forgetUserMeta, 10, 3);
+        add_action('deleted_user_meta', $forgetUserMeta, 10, 3);
+        foreach (['profile_update', 'user_register', 'delete_user', 'set_user_role', 'add_user_role', 'remove_user_role'] as $hook) {
+            add_action($hook, static fn($userId = 0) => self::forgetUser((int) $userId));
+        }
+        $forgetPostMeta = static function ($metaId, $postId, $key = ''): void {
+            if (str_starts_with((string) $key, 'meydan_') || $key === '_thumbnail_id') {
+                self::forgetEntity((int) $postId);
+            }
+        };
+        add_action('added_post_meta', $forgetPostMeta, 10, 3);
+        add_action('updated_post_meta', $forgetPostMeta, 10, 3);
+        add_action('deleted_post_meta', $forgetPostMeta, 10, 3);
+        add_action('save_post', static fn($postId = 0) => self::forgetEntity((int) $postId));
+        add_action('deleted_post', static fn($postId = 0) => self::forgetEntity((int) $postId));
+        add_action('trashed_post', static fn($postId = 0) => self::forgetEntity((int) $postId));
+    }
+
+    public static function forgetUser(int $userId): void
+    {
+        if ($userId <= 0) return;
+        wp_cache_delete('u_' . $userId, self::CACHE_GROUP);
+        $entityId = (int) get_user_meta($userId, 'meydan_square_id', true);
+        if ($entityId > 0) wp_cache_delete('e_' . $entityId, self::CACHE_GROUP);
+    }
+
+    public static function forgetEntity(int $entityId): void
+    {
+        if ($entityId <= 0) return;
+        wp_cache_delete('e_' . $entityId, self::CACHE_GROUP);
+        $owner = (int) get_post_meta($entityId, 'meydan_owner_user_id', true);
+        if ($owner > 0) wp_cache_delete('u_' . $owner, self::CACHE_GROUP);
+        $author = (int) get_post_field('post_author', $entityId);
+        if ($author > 0 && $author !== $owner) wp_cache_delete('u_' . $author, self::CACHE_GROUP);
+    }
+
     public static function forUser(int $userId): array
+    {
+        $hit = wp_cache_get('u_' . $userId, self::CACHE_GROUP);
+        if (is_array($hit)) return $hit;
+        $actor = self::buildUser($userId);
+        wp_cache_set('u_' . $userId, $actor, self::CACHE_GROUP, self::CACHE_TTL);
+        return $actor;
+    }
+
+    private static function buildUser(int $userId): array
     {
         $type = self::accountType($userId);
         if (EntityKinds::isEntityActorType($type)) {
@@ -178,6 +238,15 @@ final class Actor
 
     /** Public actor payload of an entity of any kind; `type` and `kind` both carry the kind. */
     public static function forEntity(int $entityId): array
+    {
+        $hit = wp_cache_get('e_' . $entityId, self::CACHE_GROUP);
+        if (is_array($hit)) return $hit;
+        $actor = self::buildEntity($entityId);
+        wp_cache_set('e_' . $entityId, $actor, self::CACHE_GROUP, self::CACHE_TTL);
+        return $actor;
+    }
+
+    private static function buildEntity(int $entityId): array
     {
         $kind = EntityKinds::kindOf($entityId);
         $handle = (($o = self::squareOwnerUserId($entityId)) > 0 ? Handles::ofUser($o) : '') ?: (string) get_post_meta($entityId, 'meydan_handle', true);
