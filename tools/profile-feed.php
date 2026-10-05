@@ -32,9 +32,15 @@ function feed(string $query = 'mode=for_you&limit=20'): array {
 wp_set_current_user(0);
 profile_call('guest first page (cold)', fn() => feed());
 profile_call('guest first page (warm)', fn() => feed());
+// Video feed: two loads should differ (weighted shuffle) and the second should be cheap (shared pool).
+$v1 = profile_call('guest video feed (cold)', fn() => feed('mode=for_you&filter=video&limit=20'));
+$v2 = profile_call('guest video feed (warm)', fn() => feed('mode=for_you&filter=video&limit=20'));
+$ids = fn($r) => array_map(fn($i) => $i['id'], (array) ($r['data'] ?? []));
+printf("    video loads identical: %s | overlap %d/%d\n", $ids($v1) === $ids($v2) ? 'YES (unexpected)' : 'no', count(array_intersect($ids($v1), $ids($v2))), count($ids($v1)));
 if ($uid > 0) {
     wp_set_current_user($uid);
     $first = profile_call("user $uid first page", fn() => feed());
     $cursor = $first['meta']['next_cursor'] ?? null;
     if ($cursor) profile_call('user cursor page', fn() => feed('mode=for_you&limit=20&cursor=' . rawurlencode($cursor)));
+    profile_call("user $uid video feed", fn() => feed('mode=for_you&filter=video&limit=20'));
 }
