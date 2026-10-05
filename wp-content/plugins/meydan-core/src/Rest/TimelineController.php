@@ -108,6 +108,8 @@ final class TimelineController extends BaseController
         $ranked = (new Ranker())->rank($features);
 
         if ($filter !== 'all') {
+            // matches() reads meta and attachment mime types per candidate; load them for the whole pool at once.
+            $this->primeCaches(array_map('intval', array_column($ranked, 'id')));
             $ranked = array_values(array_filter(
                 $ranked,
                 fn (array $item): bool => $this->matches((int) $item['id'], $filter),
@@ -254,6 +256,8 @@ final class TimelineController extends BaseController
         $source = $filter === 'all' ? $mode : $mode . ':' . $filter;
         $this->record($viewer, $ids, $source);
 
+        $this->primeCaches($ids);
+        Stats::primeNarratives($ids);
         Serializer::primeMediaReflections($ids);
         Serializer::primeNarrativeStates($ids);
         $data = array_values(array_filter(array_map([Serializer::class, 'narrative'], $ids)));
@@ -268,6 +272,48 @@ final class TimelineController extends BaseController
             Response::ok($data, $meta),
             'private, no-store',
         );
+    }
+
+    /**
+     * Warms the post, meta, term, user and attachment caches for a set of narratives in a handful of
+     * queries, so the per-item code that follows (serialization, filter chips) reads from memory.
+     *
+     * @param int[] $ids
+     */
+    private function primeCaches(array $ids): void
+    {
+        $ids = array_values(array_unique(array_filter($ids, static fn(int $id): bool => $id > 0)));
+        if (!$ids) {
+            return;
+        }
+        _prime_post_caches($ids, true, true);
+
+        $authors = [];
+        $entities = [];
+        $media = [];
+        foreach ($ids as $id) {
+            $post = get_post($id);
+            if ($post) {
+                $authors[] = (int) $post->post_author;
+            }
+            if ((string) get_post_meta($id, 'meydan_author_actor_type', true) === 'square') {
+                $entities[] = (int) get_post_meta($id, 'meydan_author_actor_id', true);
+            }
+            foreach ((array) get_post_meta($id, 'meydan_attachments', true) as $attachment) {
+                if (is_array($attachment) && !empty($attachment['media_id'])) {
+                    $media[] = (int) $attachment['media_id'];
+                }
+            }
+        }
+        $authors = array_values(array_unique(array_filter($authors)));
+        if ($authors) {
+            cache_users($authors);
+            update_meta_cache('user', $authors);
+        }
+        $related = array_values(array_unique(array_filter(array_merge($entities, $media))));
+        if ($related) {
+            _prime_post_caches($related, false, true);
+        }
     }
 
     private function isAdministrator(): bool

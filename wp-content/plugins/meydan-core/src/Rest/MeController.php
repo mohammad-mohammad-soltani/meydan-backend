@@ -436,16 +436,20 @@ final class MeController extends BaseController
 
     private function profile(int $uid): array
     {
-        $narratives = (int) (new WP_Query([
-            'post_type' => 'meydan_narrative',
-            'post_status' => 'publish',
-            'meta_query' => [
-                ['key' => 'meydan_author_actor_type', 'value' => 'user'],
-                ['key' => 'meydan_author_actor_id', 'value' => $uid],
-            ],
-            'fields' => 'ids',
-            'posts_per_page' => 1,
-        ]))->found_posts;
+        // Plain COUNT (no WP_Query / found_rows) behind a short object-cache entry: /me and /me/shell run on every page load.
+        $narratives = wp_cache_get('narratives_' . $uid, 'meydan_counts');
+        if ($narratives === false) {
+            global $wpdb;
+            $narratives = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->posts} p
+                 INNER JOIN {$wpdb->postmeta} t ON t.post_id = p.ID AND t.meta_key = 'meydan_author_actor_type' AND t.meta_value = 'user'
+                 INNER JOIN {$wpdb->postmeta} i ON i.post_id = p.ID AND i.meta_key = 'meydan_author_actor_id' AND i.meta_value = %s
+                 WHERE p.post_type = 'meydan_narrative' AND p.post_status = 'publish'",
+                (string) $uid
+            ));
+            wp_cache_set('narratives_' . $uid, $narratives, 'meydan_counts', 30);
+        }
+        $narratives = (int) $narratives;
 
         $resumeStats = array_values((array) get_user_meta($uid, 'meydan_resume_stats', true));
         if (!$resumeStats) {

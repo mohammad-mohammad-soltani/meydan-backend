@@ -8,8 +8,65 @@ use Meydan\Core\Timeline\NarrativeFeatureStore;
 
 final class Stats
 {
+    /** @var array<int,array<string,int>> request-local rows filled in bulk by primeNarratives() */
+    private static array $narrativeCache = [];
+
+    /**
+     * Loads the stats of a whole page of narratives with four grouped queries instead of four per
+     * narrative. Numbers are the same live counts narrative() computes (likes/reposts from the
+     * interactions table, comments from wp_comments), so nothing can drift.
+     *
+     * @param int[] $ids
+     */
+    public static function primeNarratives(array $ids): void
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', $ids),
+            static fn(int $id): bool => $id > 0 && !isset(self::$narrativeCache[$id])
+        )));
+        if (!$ids) {
+            return;
+        }
+        global $wpdb;
+        $marks = implode(',', array_fill(0, count($ids), '%d'));
+        $out = [];
+        foreach ($ids as $id) {
+            $out[$id] = ['views' => 0, 'likes' => 0, 'comments' => 0, 'reposts' => 0, 'quotes' => 0, 'shares' => 0];
+        }
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT narrative_id, views, quotes, shares FROM {$wpdb->prefix}meydan_narrative_stats WHERE narrative_id IN ({$marks})",
+            ...$ids
+        ), ARRAY_A) ?: [];
+        foreach ($rows as $row) {
+            $id = (int) $row['narrative_id'];
+            $out[$id]['views'] = (int) $row['views'];
+            $out[$id]['quotes'] = (int) $row['quotes'];
+            $out[$id]['shares'] = (int) $row['shares'];
+        }
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT object_id, action, COUNT(*) AS n FROM {$wpdb->prefix}meydan_interactions
+             WHERE object_type='narrative' AND action IN ('like','repost') AND object_id IN ({$marks}) GROUP BY object_id, action",
+            ...$ids
+        ), ARRAY_A) ?: [];
+        foreach ($rows as $row) {
+            $out[(int) $row['object_id']][$row['action'] === 'like' ? 'likes' : 'reposts'] = (int) $row['n'];
+        }
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT comment_post_ID AS id, COUNT(*) AS n FROM {$wpdb->comments}
+             WHERE comment_type='meydan_comment' AND comment_approved='1' AND comment_post_ID IN ({$marks}) GROUP BY comment_post_ID",
+            ...$ids
+        ), ARRAY_A) ?: [];
+        foreach ($rows as $row) {
+            $out[(int) $row['id']]['comments'] = (int) $row['n'];
+        }
+        self::$narrativeCache += $out;
+    }
+
     public static function narrative(int $id): array
     {
+        if (isset(self::$narrativeCache[$id])) {
+            return self::$narrativeCache[$id];
+        }
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_narrative_stats';
         $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE narrative_id = %d", $id), ARRAY_A);
@@ -60,6 +117,7 @@ final class Stats
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_narrative_stats';
         $delta = max(-1_000_000, min(1_000_000, $delta));
+        unset(self::$narrativeCache[$id]);
         $wpdb->query($wpdb->prepare(
             "INSERT INTO {$table} (narrative_id, {$field}, updated_at) VALUES (%d, %d, UTC_TIMESTAMP())
              ON DUPLICATE KEY UPDATE {$field} = GREATEST(0, {$field} + VALUES({$field})), updated_at = UTC_TIMESTAMP()",
@@ -121,6 +179,7 @@ final class Stats
 
     public static function correct(string $type, int $id, array $values): bool
     {
+        unset(self::$narrativeCache[$id]);
         global $wpdb;
         if ($type === 'narrative') {
             $allowed = ['views', 'likes', 'comments', 'reposts', 'quotes', 'shares'];
