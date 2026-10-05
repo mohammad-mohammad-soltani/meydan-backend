@@ -33,7 +33,7 @@ final class NarrativeFeatureRefreshCron
 
     public static function register(): void
     {
-        add_action('init', [self::class, 'schedule'], 40);
+        add_action('init', [self::class, 'schedule'], 40, 0);
         add_action(self::HOOK, [self::class, 'run']);
     }
 
