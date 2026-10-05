@@ -335,14 +335,17 @@ final class TimelineController extends BaseController
         global $wpdb;
         $table = $wpdb->prefix . 'meydan_served_history';
 
+        // One multi-row INSERT per page instead of one statement per narrative.
+        $now = current_time('mysql', true);
+        $rows = [];
+        $args = [];
         foreach ($ids as $id) {
-            $wpdb->insert($table, [
-                'viewer_type' => $viewer->type,
-                'viewer_id' => $viewer->id,
-                'narrative_id' => (int) $id,
-                'served_at' => current_time('mysql', true),
-                'source' => $source,
-            ]);
+            $rows[] = '(%s, %s, %d, %s, %s)';
+            array_push($args, $viewer->type, $viewer->id, (int) $id, $now, $source);
         }
+        $wpdb->query($wpdb->prepare(
+            "INSERT INTO {$table} (viewer_type, viewer_id, narrative_id, served_at, source) VALUES " . implode(',', $rows),
+            ...$args
+        ));
     }
 }

@@ -9,7 +9,7 @@ use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.4.6';
+    public const VERSION = '1.4.7';
 
     /**
      * Legacy speaker-post meta holding the linked user id.
@@ -110,7 +110,8 @@ final class Migrations
             UNIQUE KEY access_token_hash (access_token_hash),
             UNIQUE KEY refresh_token_hash (refresh_token_hash),
             KEY user_id (user_id),
-            KEY refresh_expires_at (refresh_expires_at)
+            KEY refresh_expires_at (refresh_expires_at),
+            KEY revoked_at (revoked_at)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}interactions (
@@ -169,7 +170,8 @@ final class Migrations
             source VARCHAR(48) NULL,
             PRIMARY KEY (id),
             KEY viewer_served (viewer_type, viewer_id, served_at),
-            KEY narrative_id (narrative_id)
+            KEY narrative_id (narrative_id),
+            KEY served_at (served_at)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}actor_affinity (
@@ -308,6 +310,7 @@ final class Migrations
             KEY recipient_created (recipient_user_id, created_at),
             KEY recipient_read (recipient_user_id, read_at),
             KEY group_key (group_key),
+            KEY created_at (created_at),
             KEY entity_lookup (entity_type, entity_id)
         ) {$charset};";
 

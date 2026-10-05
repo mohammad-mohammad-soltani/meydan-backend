@@ -108,6 +108,7 @@ final class Plugin
         WordPressMediaHooks::register();
         VideoPosterBackfill::register();
         \Meydan\Core\Uploads\UploadCleanup::register();
+        \Meydan\Core\Support\Retention::register();
         NarrativeFeatureRefreshCron::register();
 
         CampaignCurrentGuard::register();
