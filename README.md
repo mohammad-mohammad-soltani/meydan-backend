@@ -179,7 +179,7 @@ Use strong secrets, TLS, an external SMS provider, a reverse proxy, persistent b
 ## Running for ~100k users on one server
 
 Infra is in `docker-compose.yml` (Redis object cache, MariaDB tuning, OPcache, Apache prefork limits, a `cron` service
-that replaces WP-Cron-on-request). Set `REDIS_PASSWORD` in `.env`; keep `OPCACHE_VALIDATE=0` in production.
+that replaces WP-Cron-on-request). Set `REDIS_PASSWORD` in `.env`. OPcache re-checks files every 30 s by default (`OPCACHE_VALIDATE=1`); after `wp-init` rewrites `wp-config.php` the site picks it up within seconds, no restart needed.
 
 - **Redis memory is bounded**: `maxmemory 1gb` + `allkeys-lru`, container hard cap 1280 MB, every WordPress key gets a TTL
   (`WP_REDIS_MAXTTL=86400`). Check it any time with `tools/redis-memcheck.sh` (exits 1 above 80% of `maxmemory`).
