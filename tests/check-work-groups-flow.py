@@ -70,6 +70,10 @@ call('POST', f'/chat/conversations/{work}/messages', A, {'client_id': 'x1', 'bod
 
 step('B can read the room but cannot post until joined')
 call('GET', f'/works/{work}', B, expect=200)
+call('GET', f'/works/{work}/messages', B, expect=403)
+call('GET', f'/works/{work}/members', B, expect=403)
+_, outsider_list = call('GET', '/works?filter=all', B, expect=200)
+assert all(w['viewer']['joined'] for w in outsider_list['data']), 'an outsider must never see a work group in the list'
 call('POST', f'/works/{work}/messages', B, {'client_id': 'b-pre', 'kind': 'text', 'body': 'hi'}, 403)
 
 step('B joins; owner is notified')
@@ -96,7 +100,9 @@ step('idempotent retry returns the same message')
 _, again = call('POST', f'/works/{work}/messages', A, {'client_id': 'a-text-' + work, 'kind': 'text', 'body': 'سلام @member'}, 201)
 assert again['data']['id'] == t['data']['id']
 
-step('B interacts: reply, react, claim, rsvp, seen, vote')
+step('B interacts: react, claim, rsvp, seen, vote; replies are off by default')
+call('POST', f'/works/{work}/messages', B, {'client_id': 'b-reply-' + work, 'kind': 'text', 'body': 'باشه', 'reply_to_id': int(t['data']['id'])}, 403)
+call('PATCH', f'/works/{work}', A, {'members_can_reply': True}, 200)
 call('POST', f'/works/{work}/messages', B, {'client_id': 'b-reply-' + work, 'kind': 'text', 'body': 'باشه', 'reply_to_id': int(t['data']['id'])}, 201)
 call('PUT', f'/works/messages/{ann["data"]["id"]}/reaction', B, {'reaction': '👍'}, 200)
 call('POST', f'/works/tasks/{task_id}/claim', B, expect=200)

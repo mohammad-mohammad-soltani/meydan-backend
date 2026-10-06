@@ -34,7 +34,8 @@ final class MediaPipeline
         $size = (int) filesize($path);
         if ($this->maxFileSize > 0 && $size > $this->maxFileSize) return new WP_Error('file_too_large', 'اندازه فایل بیش از حد مجاز است.');
         $actual = $this->mimeDetector !== null ? (string) ($this->mimeDetector)($path) : (string) (mime_content_type($path) ?: '');
-        if (!$this->mimeAllowed($actual) || ($expectedMime !== '' && $actual !== $expectedMime)) {
+        $sameFile = $expectedMime !== '' && $this->mimeAllowed($expectedMime) && self::sameContainer($actual, $expectedMime);
+        if (!$sameFile && (!$this->mimeAllowed($actual) || ($expectedMime !== '' && $actual !== $expectedMime))) {
             return new WP_Error('mime_not_allowed', 'نوع واقعی فایل مجاز نیست.');
         }
         return null;
@@ -64,6 +65,22 @@ final class MediaPipeline
     {
         foreach ($derivativeKeys as $key) $this->storage->delete($key);
         if ($originalKey !== '') $this->storage->delete($originalKey);
+    }
+
+    /**
+     * libmagic names the same voice-note containers differently from WordPress' extension table:
+     * an opus-only .weba sniffs as video/webm, an AAC .m4a as audio/x-m4a / audio/mp4.
+     */
+    private static function sameContainer(string $actual, string $expected): bool
+    {
+        $actual = strtolower($actual);
+        $expected = strtolower($expected);
+        $groups = [
+            'audio/webm' => ['video/webm', 'audio/webm'],
+            'audio/mpeg' => ['audio/x-m4a', 'audio/mp4', 'audio/aac', 'audio/mpeg', 'video/mp4'],
+            'audio/mp4' => ['audio/x-m4a', 'audio/mp4', 'video/mp4'],
+        ];
+        return isset($groups[$expected]) && in_array($actual, $groups[$expected], true);
     }
 
     private function mimeAllowed(string $mime): bool

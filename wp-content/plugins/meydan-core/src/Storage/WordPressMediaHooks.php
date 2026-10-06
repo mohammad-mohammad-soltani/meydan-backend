@@ -19,6 +19,22 @@ final class WordPressMediaHooks
 
     public static function register(): void
     {
+        add_filter('upload_mimes', static function (array $mimes): array {
+            // Browser voice notes: Chrome records opus in WebM, Safari/new Chrome AAC in MP4.
+            $mimes['weba'] = 'audio/webm';
+            return $mimes;
+        });
+        // libmagic reports an opus-only WebM as video/webm; WordPress would then drop the .weba type.
+        add_filter('wp_check_filetype_and_ext', static function (array $data, string $file, string $filename, $mimes, $realMime) {
+            if (strtolower(pathinfo($filename, PATHINFO_EXTENSION)) === 'weba' && in_array((string) $realMime, ['video/webm', 'audio/webm'], true)) {
+                return ['ext' => 'weba', 'type' => 'audio/webm', 'proper_filename' => false];
+            }
+            // Browser-recorded AAC in (fragmented) MP4: libmagic says audio/x-m4a, video/mp4 or audio/mp4.
+            if (strtolower(pathinfo($filename, PATHINFO_EXTENSION)) === 'm4a' && in_array((string) $realMime, ['audio/x-m4a', 'audio/mp4', 'video/mp4', 'audio/aac', 'audio/mpeg'], true)) {
+                return ['ext' => 'm4a', 'type' => 'audio/mpeg', 'proper_filename' => false];
+            }
+            return $data;
+        }, 10, 5);
         add_action('add_attachment', [self::class, 'markPending'], 10, 1);
         // New Meydan S3 uploads intentionally keep one original object only.
         // This is scoped to pending Meydan attachments; legacy/local media and

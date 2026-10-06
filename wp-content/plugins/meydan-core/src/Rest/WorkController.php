@@ -62,6 +62,9 @@ final class WorkController extends BaseController
         if (!WorkQueries::conversation($id)) {
             return $this->notFound();
         }
+        if (!WorkGroups::role($id, get_current_user_id()) && !WorkGroups::isSiteAdmin(get_current_user_id())) {
+            return Response::error('work_join_required', 'اول به این کار بپیوندید.', 403);
+        }
         $page = WorkQueries::members($id, (string) ($r->get_param('q') ?? ''), (string) ($r->get_param('cursor') ?? ''), (int) ($r->get_param('limit') ?: 50));
         return Response::ok($page['items'], ['next_cursor' => $page['next_cursor']]);
     }
@@ -140,7 +143,11 @@ final class WorkController extends BaseController
             return $this->notFound();
         }
         $uid = get_current_user_id();
-        $manager = WorkGroups::canManage(WorkGroups::role($id, $uid), $uid);
+        $role = WorkGroups::role($id, $uid);
+        if ($role === null && !WorkGroups::isSiteAdmin($uid)) {
+            return Response::error('work_join_required', 'اول به این کار بپیوندید.', 403);
+        }
+        $manager = WorkGroups::canManage($role, $uid);
         $page = WorkMessages::page($id, $uid, $manager, [
             'before_id' => (int) $r->get_param('before_id'),
             'after_id' => (int) $r->get_param('after_id'),

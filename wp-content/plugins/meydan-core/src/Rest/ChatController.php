@@ -208,7 +208,7 @@ final class ChatController extends BaseController
         if ($body === '') {
             $attachment = is_array($message['attachment'] ?? null) ? $message['attachment'] : [];
             $fileName = trim((string) ($attachment['name'] ?? ''));
-            $body = $fileName !== '' ? 'فایل: ' . $fileName : 'یک پیام جدید برای شما ارسال شد.';
+            $body = !empty($attachment['voice']) ? 'پیام صوتی' : ($fileName !== '' ? 'فایل: ' . $fileName : 'یک پیام جدید برای شما ارسال شد.');
         }
 
         AsyncDispatcher::queueWebPushOnly(

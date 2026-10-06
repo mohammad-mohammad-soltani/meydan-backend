@@ -97,6 +97,7 @@ final class WorkMessages
         $kind = (string) ($opts['kind'] ?? '');
         $m = self::t('messages');
 
+        $membersReply = (bool) $wpdb->get_var($wpdb->prepare('SELECT members_can_reply FROM ' . self::t('conversations') . ' WHERE id=%d', $conversationId));
         $where = ['m.conversation_id=' . (int) $conversationId, self::visibleSql('m', $viewerId, $manager)];
         if ($before > 0) {
             $where[] = 'm.id<' . $before;
@@ -353,7 +354,7 @@ final class WorkMessages
                 'conversation_id' => (string) $r->conversation_id,
                 'kind' => (string) $r->kind,
                 'client_id' => (string) $r->client_id,
-                'can_reply' => !$deleted && $r->kind !== 'system' && ($viewerManager || WorkGroups::canManage($roles[(int) $r->sender_user_id] ?? null, (int) $r->sender_user_id)),
+                'can_reply' => !$deleted && $r->kind !== 'system' && ($viewerManager || ($membersReply && WorkGroups::canManage($roles[(int) $r->sender_user_id] ?? null, (int) $r->sender_user_id))),
                 'sender' => $user((int) $r->sender_user_id),
                 'sender_role' => $roles[(int) $r->sender_user_id] ?? null,
                 'body' => $deleted ? '' : (string) $r->body,
@@ -562,6 +563,13 @@ final class WorkMessages
                 return new WP_Error('invalid_attachment', 'فایل پیوست معتبر نیست.', ['status' => 422]);
             }
             $attachment = ['id' => (string) $mediaId, 'name' => sanitize_text_field((string) ($input['attachment']['name'] ?? $media->post_title)), 'mime_type' => (string) $media->post_mime_type, 'url' => (string) wp_get_attachment_url($mediaId)];
+            // Voice note: length and a small amplitude envelope so every client can draw the waveform.
+            if (!empty($input['attachment']['voice']) && str_starts_with($attachment['mime_type'], 'audio/')) {
+                $peaks = is_array($input['attachment']['waveform'] ?? null) ? array_slice(array_values($input['attachment']['waveform']), 0, 96) : [];
+                $attachment['voice'] = true;
+                $attachment['duration'] = max(0.0, min(3600.0, round((float) ($input['attachment']['duration'] ?? 0), 2)));
+                $attachment['waveform'] = array_map(static fn ($v): int => max(0, min(100, (int) round((float) $v))), $peaks);
+            }
         }
         $replyTo = max(0, (int) ($input['reply_to_id'] ?? 0));
 
@@ -578,8 +586,9 @@ final class WorkMessages
             }
         }
         if (!$manager) {
-            if ($kind !== 'text' || !$parent) {
-                return new WP_Error('work_read_only', 'در این کار فقط مدیر و ادمین‌ها پیام می‌گذارند؛ شما می‌توانید به پیام‌ها پاسخ بدهید.', ['status' => 403]);
+            // By default members post nothing at all; an owner may allow answers to managers' messages.
+            if (empty($conversation['members_can_reply']) || $kind !== 'text' || !$parent || $attachment) {
+                return new WP_Error('work_read_only', 'در این کار فقط مدیر و ادمین‌ها پیام می‌گذارند؛ شما می‌توانید واکنش بدهید و روی پیام‌ها تعامل کنید.', ['status' => 403]);
             }
             $parentRole = WorkGroups::role($conversationId, (int) $parent->sender_user_id);
             if (!WorkGroups::isManagerRole($parentRole) && !WorkGroups::isSiteAdmin((int) $parent->sender_user_id)) {

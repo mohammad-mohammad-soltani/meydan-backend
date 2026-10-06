@@ -85,6 +85,9 @@ final class WorkActions
         if ($c instanceof WP_Error) {
             return $c;
         }
+        if ($err = self::requireMember($c['role'], $c['manager'])) {
+            return $err;
+        }
         return WorkMessages::one($messageId, $userId, $c['manager']) ?? new WP_Error('message_not_found', 'پیام پیدا نشد.', ['status' => 404]);
     }
 
@@ -557,6 +560,9 @@ final class WorkActions
         $c = self::ctx($messageId, $userId, 'announcement');
         if ($c instanceof WP_Error) {
             return $c;
+        }
+        if ($err = self::requireMember($c['role'], $c['manager'])) {
+            return $err;
         }
         global $wpdb;
         $limit = min(100, max(1, $limit));

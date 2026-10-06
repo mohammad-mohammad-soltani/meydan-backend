@@ -21,7 +21,7 @@ use WP_REST_Request;
 final class ContentHubController extends BaseController
 {
     private const CACHE_SECONDS = 60;
-    private const NOTE_TYPES = ['note'];
+    private const NOTE_TYPES = ['speech'];
 
     public function audio(WP_REST_Request $request)
     {
@@ -207,13 +207,17 @@ final class ContentHubController extends BaseController
         }
         $featuredArgs = $base;
         $featuredArgs['meta_query'][] = ['key' => 'meydan_featured', 'value' => '1'];
-        $terms = get_terms(['taxonomy' => 'meydan_content_category', 'hide_empty' => true]);
+        // Only the vocabulary notes are filed under: speaker categories and the notes section's own.
         $categories = [];
-        if (is_array($terms)) {
-            foreach ($terms as $term) {
-                if (in_array($term->slug, ['talks', 'audio', 'schedule', 'featured'], true)) continue;
-                $categories[] = ['slug' => $term->slug, 'name' => $term->name, 'count' => (int) $term->count];
-            }
+        foreach (\Meydan\Core\Domain\NoteCategories::all() as $item) {
+            $term = get_term_by('slug', $item['slug'], 'meydan_content_category');
+            if (!$term instanceof \WP_Term) continue;
+            $count = (int) (new WP_Query([
+                'post_type' => 'meydan_content', 'post_status' => 'publish', 'posts_per_page' => 1, 'fields' => 'ids',
+                'meta_query' => [['key' => 'meydan_content_type', 'value' => self::NOTE_TYPES, 'compare' => 'IN']],
+                'tax_query' => [['taxonomy' => 'meydan_content_category', 'field' => 'term_id', 'terms' => $term->term_id]],
+            ]))->found_posts;
+            if ($count > 0) $categories[] = ['slug' => $item['slug'], 'name' => $item['name'], 'count' => $count];
         }
         return [
             'categories' => $categories,
