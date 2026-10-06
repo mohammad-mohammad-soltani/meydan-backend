@@ -7,7 +7,8 @@ services:
       MARIADB_USER: ${DB_USER:-meydan}
       MARIADB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
-    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    # innodb_buffer_pool_size: keep it at 50-60% of the RAM the db may use (DB_BUFFER_POOL in .env).
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW --innodb-buffer-pool-size=${DB_BUFFER_POOL:-1G}
     volumes:
       - db_data:/var/lib/mysql
       - ./docker/mariadb/tuning.cnf:/etc/mysql/conf.d/zz-meydan-tuning.cnf:ro
@@ -42,7 +43,7 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "${WORDPRESS_PORT:-8082}:80"
     environment:
@@ -104,21 +105,6 @@ services:
         define('MEYDAN_PUSHE_TOKEN', getenv('MEYDAN_PUSHE_TOKEN') ?: '');
         define('MEYDAN_FRONTEND_URL', getenv('MEYDAN_FRONTEND_URL') ?: '');
         define('DISALLOW_FILE_EDIT', true);
-        // Persistent object cache (Redis). Every key gets a TTL so nothing lives forever; a dead
-        // Redis must only make the site slower, never break it (short timeouts, no retries).
-        if (getenv('REDIS_HOST')) {
-            define('WP_REDIS_HOST', getenv('REDIS_HOST'));
-            define('WP_REDIS_PASSWORD', getenv('REDIS_PASSWORD') ?: '');
-            define('WP_REDIS_PREFIX', 'meydan:');
-            define('WP_REDIS_DATABASE', 0);
-            define('WP_REDIS_MAXTTL', 86400);
-            define('WP_REDIS_TIMEOUT', 1);
-            define('WP_REDIS_READ_TIMEOUT', 1);
-            define('WP_REDIS_RETRY_INTERVAL', 100);
-            define('WP_REDIS_SERIALIZER', extension_loaded('igbinary') ? 'igbinary' : 'php');
-        }
-        // WP-Cron is driven by the wpcli container's loop, not by site traffic.
-        define('DISABLE_WP_CRON', true);
         define('FORCE_SSL_ADMIN', (getenv('WP_ENVIRONMENT_TYPE') ?: 'local') === 'production');
         define('COOKIE_DOMAIN', '');
         define('COOKIEPATH', '/');
@@ -142,6 +128,8 @@ services:
       db:
         condition: service_healthy
       wordpress:
+        condition: service_started
+      redis:
         condition: service_started
     user: "33:33"
     environment:
@@ -184,6 +172,8 @@ services:
       db:
         condition: service_healthy
       wordpress:
+        condition: service_started
+      redis:
         condition: service_started
     user: "33:33"
     restart: unless-stopped

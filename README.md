@@ -192,3 +192,10 @@ that replaces WP-Cron-on-request). Set `REDIS_PASSWORD` in `.env`; keep `OPCACHE
   on purpose (moderation must take effect immediately).
 - **Load test**: `k6 run -e BASE_URL=... -e USERS=200 -e VUS=2000 tools/loadtest/k6-mixed.js` against a staging copy
   (dev OTP enabled), then run `tools/redis-memcheck.sh` and look at the MariaDB slow log (`/var/lib/mysql/slow.log`).
+
+### If `docker compose up -d --build` misbehaves
+- `docker compose ps -a` and `docker compose logs --tail=60 db redis wordpress wpcli cron` show which service fails.
+- Redis problems never block startup; to turn the object cache off: `docker compose run --rm wpcli wp redis disable`.
+- `wp-config.php` lives in the persistent volume: Redis/cron constants are (re)written by `docker/wp-init.sh`
+  (`wpcli` service) on every `up`, check them with `docker compose run --rm wpcli wp config list WP_REDIS_HOST DISABLE_WP_CRON`.
+- Low on RAM? Lower `DB_BUFFER_POOL` in `.env` and `MaxRequestWorkers` in `docker/wordpress/meydan-mpm.conf`.

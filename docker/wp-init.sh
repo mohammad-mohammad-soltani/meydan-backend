@@ -49,11 +49,27 @@ wp option update permalink_structure '/%postname%/'
 wp rewrite flush --hard || true
 wp plugin activate meydan-core
 
-# Persistent object cache (Redis). Best effort: a failure here leaves the site working without it.
+# WP-Cron is driven by the `cron` service, not by site traffic. Written into the persistent wp-config.php
+# here (WORDPRESS_CONFIG_EXTRA only applies when the file is first created).
+wp config set DISABLE_WP_CRON true --raw || true
+
+# Persistent object cache (Redis). Best effort: any failure leaves the site working without it.
 if [ -n "${REDIS_HOST:-}" ]; then
-  wp plugin is-installed redis-cache >/dev/null 2>&1 || wp plugin install redis-cache --activate || true
-  wp plugin is-active redis-cache >/dev/null 2>&1 || wp plugin activate redis-cache || true
-  wp redis enable || true
+  if php -r 'exit(@fsockopen(getenv("REDIS_HOST"), 6379, $e, $s, 2) ? 0 : 1);'; then
+    wp config set WP_REDIS_HOST "$REDIS_HOST" || true
+    wp config set WP_REDIS_PASSWORD "${REDIS_PASSWORD:-}" || true
+    wp config set WP_REDIS_PREFIX "meydan:" || true
+    wp config set WP_REDIS_DATABASE 0 --raw || true
+    wp config set WP_REDIS_MAXTTL 86400 --raw || true
+    wp config set WP_REDIS_TIMEOUT 1 --raw || true
+    wp config set WP_REDIS_READ_TIMEOUT 1 --raw || true
+    wp plugin is-installed redis-cache >/dev/null 2>&1 || wp plugin install redis-cache || true
+    wp plugin is-active redis-cache >/dev/null 2>&1 || wp plugin activate redis-cache || true
+    wp redis enable || true
+  else
+    echo "Redis is not reachable at ${REDIS_HOST}:6379; leaving the object cache off." >&2
+    wp redis disable >/dev/null 2>&1 || true
+  fi
 fi
 wp meydan migrate
 wp meydan seed
