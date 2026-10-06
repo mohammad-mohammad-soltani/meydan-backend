@@ -66,7 +66,8 @@ final class WorkQueries
         $m = self::t('messages');
         $uid = (int) $userId;
 
-        $join = '';
+        // A work group is only ever listed to its members: no `filter` value (or absence of one) widens this.
+        $join = " INNER JOIN {$p} pj ON pj.conversation_id=c.id AND pj.user_id={$uid} AND pj.archived_at IS NULL";
         $where = ["c.type='work'"];
         $q = trim($q);
         if ($q !== '') {
@@ -76,15 +77,10 @@ final class WorkQueries
         $tp = self::t('work_task_people');
         $mn = self::t('message_mentions');
         switch ($filter) {
-            case 'joined':
-                $join = " INNER JOIN {$p} pj ON pj.conversation_id=c.id AND pj.user_id={$uid} AND pj.archived_at IS NULL";
-                break;
             case 'my_tasks':
-                $join = " INNER JOIN {$p} pj ON pj.conversation_id=c.id AND pj.user_id={$uid} AND pj.archived_at IS NULL";
                 $where[] = "EXISTS (SELECT 1 FROM {$tp} t INNER JOIN {$m} m ON m.id=t.message_id WHERE t.user_id={$uid} AND m.conversation_id=c.id AND {$openTask})";
                 break;
             case 'late':
-                $join = " INNER JOIN {$p} pj ON pj.conversation_id=c.id AND pj.user_id={$uid} AND pj.archived_at IS NULL";
                 $where[] = "EXISTS (SELECT 1 FROM {$tp} t INNER JOIN {$m} m ON m.id=t.message_id WHERE t.user_id={$uid} AND m.conversation_id=c.id AND {$openTask} AND m.due_at IS NOT NULL AND m.due_at<UTC_TIMESTAMP())";
                 break;
             case 'mentions':
@@ -305,6 +301,14 @@ final class WorkQueries
 
         $avatars = self::avatars([(int) $conv['avatar_media_id']]);
 
+        // Outsiders get the invitation card (name, avatar, size) and nothing from inside the room.
+        $inside = $standing !== null || WorkGroups::isSiteAdmin($uid);
+        if (!$inside) {
+            $counts = array_map(static fn(): int => 0, $counts);
+            $stats = [];
+            $pinned = null;
+        }
+
         return [
             'id' => (string) $conv['id'],
             'initiative_id' => $conv['initiative_id'] !== null ? (string) $conv['initiative_id'] : null,
@@ -312,6 +316,7 @@ final class WorkQueries
             'description' => (string) ($conv['description'] ?? ''),
             'avatar_url' => $avatars[(int) $conv['avatar_media_id']] ?? null,
             'member_count' => $memberCount,
+            'members_can_reply' => !empty($conv['members_can_reply']),
             'viewer' => [
                 'joined' => $standing !== null,
                 'role' => $role,
@@ -429,6 +434,9 @@ final class WorkQueries
                 return new WP_Error('invalid_media', 'تصویر معتبر نیست.', ['status' => 422]);
             }
             $update['avatar_media_id'] = $media ?: null;
+        }
+        if (array_key_exists('members_can_reply', $input)) {
+            $update['members_can_reply'] = filter_var($input['members_can_reply'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
         }
         if ($update) {
             global $wpdb;

@@ -15,7 +15,7 @@ use WP_REST_Request;
 
 final class ContentController extends BaseController
 {
-    public const CONTENT_TYPES = ['placard', 'speech', 'music_video', 'video', 'report', 'note'];
+    public const CONTENT_TYPES = ['placard', 'speech', 'music_video', 'video', 'report'];
 
     public function list(WP_REST_Request $r) { return $this->query($r, false); }
     public function adminList(WP_REST_Request $r) { if (!current_user_can('manage_meydan_content')) return Response::error('forbidden','دسترسی کافی ندارید.',403); return $this->query($r, true); }
@@ -47,7 +47,18 @@ final class ContentController extends BaseController
     public function download(WP_REST_Request $r){$id=(int)$r['id'];$fid=(int)$r['file_id'];$c=Serializer::content($id);if(!$c)return Response::error('not_found','محتوا پیدا نشد.',404);foreach($c['attachments'] as $a)if((int)$a['id']===$fid){Stats::incrementContent($id,'downloads',1);EventLogger::log('download','content',$id,['file_id'=>$fid]);return Response::ok(['file'=>$a,'downloads'=>Stats::content($id)['downloads']]);}return Response::error('not_found','فایل پیدا نشد.',404);}
     public function adminCreate(WP_REST_Request $r){if(!current_user_can('manage_meydan_content'))return Response::error('forbidden','دسترسی کافی ندارید.',403);return $this->save($r,0);}
     public function adminUpdate(WP_REST_Request $r){if(!current_user_can('manage_meydan_content'))return Response::error('forbidden','دسترسی کافی ندارید.',403);return $this->save($r,(int)$r['id']);}
-    public function adminDelete(WP_REST_Request $r){if(!current_user_can('manage_meydan_content'))return Response::error('forbidden','دسترسی کافی ندارید.',403);$id=(int)$r['id'];$before=Serializer::content($id);if(!$before)return Response::error('not_found','محتوا پیدا نشد.',404);wp_trash_post($id);AuditLogger::log('content_deleted','content',$id,$before,['status'=>'trash']);return Response::ok(['deleted'=>true]);}
+    public function adminDelete(WP_REST_Request $r){if(!current_user_can('manage_meydan_content'))return Response::error('forbidden','دسترسی کافی ندارید.',403);$id=(int)$r['id'];$before=Serializer::content($id);if(!$before)return Response::error('not_found','محتوا پیدا نشد.',404);wp_trash_post($id);\Meydan\Core\Domain\NoteCategories::flushHub();AuditLogger::log('content_deleted','content',$id,$before,['status'=>'trash']);return Response::ok(['deleted'=>true]);}
+
+    /** The viewer's like / bookmark state for a handful of content ids (lists are cached publicly, so it cannot ride along). */
+    public function viewerStates(WP_REST_Request $r){
+        if(!is_user_logged_in())return Response::error('unauthenticated','برای این عملیات باید وارد شوید.',401);
+        $ids=array_slice(array_values(array_unique(array_filter(array_map('intval',explode(',',(string)$r->get_param('ids')))))),0,60);
+        $out=[];foreach($ids as $id)$out[(string)$id]=['liked'=>false,'bookmarked'=>false];
+        if($ids){global $wpdb;$t=$wpdb->prefix.'meydan_interactions';$marks=implode(',',array_fill(0,count($ids),'%d'));
+            $rows=$wpdb->get_results($wpdb->prepare("SELECT object_id,action FROM {$t} WHERE user_id=%d AND object_type='content' AND action IN ('like','bookmark') AND object_id IN ({$marks})",get_current_user_id(),...$ids));
+            foreach($rows?:[] as $row){$k=(string)(int)$row->object_id;if(isset($out[$k]))$out[$k][$row->action==='like'?'liked':'bookmarked']=true;}}
+        return Response::ok($out);
+    }
 
     public function convertNarrative(WP_REST_Request $r){
         if(!current_user_can('manage_meydan_content'))return Response::error('forbidden','دسترسی کافی ندارید.',403);
@@ -63,6 +74,7 @@ final class ContentController extends BaseController
         $id=wp_insert_post(['post_type'=>'meydan_content','post_status'=>'publish','post_title'=>$title,'post_content'=>$n->post_content,'post_excerpt'=>''],true);if(is_wp_error($id))return $this->error($id);$id=(int)$id;
         update_post_meta($id,'meydan_content_type',$type);update_post_meta($id,'meydan_format',sanitize_key((string)($p['format']??'mixed'))?:'mixed');$this->storeOwner($id,['is_user'=>true,'user_id'=>$userId,'creator_id'=>0]);update_post_meta($id,'meydan_time',$n->post_date_gmt);update_post_meta($id,'meydan_attachments',$sourceMedia);if($primaryId>0)update_post_meta($id,'meydan_primary_attachment_id',$primaryId);update_post_meta($id,'meydan_source_narrative_id',(int)$n->ID);
         $actorType=(string)get_post_meta($n->ID,'meydan_author_actor_type',true);$actorId=(int)get_post_meta($n->ID,'meydan_author_actor_id',true);if(!in_array($actorType,\Meydan\Core\Domain\EntityKinds::actorTypes(),true)||$actorId<=0){$actorType=Actor::actorType($userId);$actorId=$actorType!=='user'?Actor::entityId($userId):$userId;}update_post_meta($id,'meydan_producer_actor_type',$actorType);update_post_meta($id,'meydan_producer_actor_id',$actorId);
+        $chosen=sanitize_key((string)($p['category']??''));$termId=\Meydan\Core\Domain\NoteCategories::resolve($chosen,$userId);if($termId>0)wp_set_post_terms($id,[$termId],'meydan_content_category');if(array_key_exists('featured',$p))update_post_meta($id,'meydan_featured',(int)$this->bool($p['featured']));\Meydan\Core\Domain\NoteCategories::flushHub();
         update_post_meta($n->ID,'meydan_content_id',$id);Stats::incrementContent($id,'views',0);AuditLogger::log('narrative_converted_to_content','content',$id,null,['narrative_id'=>(int)$n->ID,'user_id'=>$userId]);return Response::ok($this->enrich(Serializer::content($id),$id),[],201);
     }
     public function removeNarrativeContent(WP_REST_Request $r){if(!current_user_can('manage_meydan_content'))return Response::error('forbidden','دسترسی کافی ندارید.',403);$nid=(int)$r['id'];$n=get_post($nid);if(!$n||$n->post_type!=='meydan_narrative')return Response::error('not_found','روایت پیدا نشد.',404);$id=(int)get_post_meta($nid,'meydan_content_id',true);$c=get_post($id);if(!$c||$c->post_type!=='meydan_content'||(int)get_post_meta($id,'meydan_source_narrative_id',true)!==$nid){delete_post_meta($nid,'meydan_content_id');return Response::error('not_found','محتوای مرتبط پیدا نشد.',404);}$before=$this->enrich(Serializer::content($id),$id);wp_trash_post($id);delete_post_meta($nid,'meydan_content_id');AuditLogger::log('narrative_content_removed','content',$id,$before,['narrative_id'=>$nid,'status'=>'trash']);return Response::ok(['deleted'=>true,'content_id'=>$id]);}
@@ -101,7 +113,7 @@ final class ContentController extends BaseController
         if($time!==null)update_post_meta($id,'meydan_time',$time);elseif(!get_post_meta($id,'meydan_time',true))update_post_meta($id,'meydan_time',current_time('mysql',true));
         if(isset($p['files']))update_post_meta($id,'meydan_files',(array)$p['files']);
         if(isset($p['tags']))wp_set_post_terms($id,array_map('sanitize_text_field',(array)$p['tags']),'meydan_content_tag');
-        if(isset($p['category']))wp_set_post_terms($id,[(int)$p['category']],'meydan_content_category');
+        if(array_key_exists('category',$p)){$cat=$p['category'];if($cat===null||$cat===''){wp_set_post_terms($id,[],'meydan_content_category');}elseif(is_numeric($cat)){wp_set_post_terms($id,[(int)$cat],'meydan_content_category');}else{$tid=\Meydan\Core\Domain\NoteCategories::termId(sanitize_key((string)$cat));if($tid>0)wp_set_post_terms($id,[$tid],'meydan_content_category');}}\Meydan\Core\Domain\NoteCategories::flushHub();
         AuditLogger::log($before?'content_updated':'content_created','content',$id,$before,Serializer::content($id));
         return Response::ok($this->enrich(Serializer::content($id),$id),[],$before?200:201);
     }

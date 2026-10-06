@@ -6,7 +6,7 @@ namespace Meydan\Core\Database;
 
 final class ChatMigrations
 {
-    private const VERSION = '1.2.3';
+    private const VERSION = '1.2.4';
 
     public static function maybeRun(): void
     {
@@ -184,6 +184,8 @@ final class ChatMigrations
             'initiative_id' => 'BIGINT UNSIGNED NULL',
             'description' => 'TEXT NULL',
             'avatar_media_id' => 'BIGINT UNSIGNED NULL',
+            // Members never post by default; an owner may let them answer managers' messages.
+            'members_can_reply' => 'TINYINT(1) NOT NULL DEFAULT 0',
         ]);
         $addKeys($conversations, [
             'initiative_id' => 'UNIQUE KEY initiative_id (initiative_id)',

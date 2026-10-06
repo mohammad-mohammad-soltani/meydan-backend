@@ -138,7 +138,7 @@ final class ChatRepository
             if ($last && !$last['deleted_at']) {
                 $preview = trim((string) $last['body']);
                 if ($preview === '' && $last['attachment_json']) {
-                    $preview = 'فایل پیوست‌شده';
+                    $preview = str_contains((string) $last['attachment_json'], '"voice":true') ? 'پیام صوتی' : 'فایل پیوست‌شده';
                 }
             }
             $vState = $viewerState[$cid] ?? null;
@@ -216,7 +216,7 @@ final class ChatRepository
         $preview = '';
         if ($last && !$last->deleted_at) {
             $preview = trim((string) $last->body);
-            if ($preview === '' && $last->attachment_json) $preview = 'فایل پیوست‌شده';
+            if ($preview === '' && $last->attachment_json) $preview = str_contains((string) $last->attachment_json, '"voice":true') ? 'پیام صوتی' : 'فایل پیوست‌شده';
         }
 
         $viewerState = $wpdb->get_row($wpdb->prepare(
@@ -560,6 +560,28 @@ final class ChatRepository
             'mime_type' => sanitize_mime_type((string) ($attachment['mime_type'] ?? 'application/octet-stream')),
             'size' => max(0, (int) ($attachment['size'] ?? 0)),
             'url' => esc_url_raw((string) ($attachment['url'] ?? $attachment['preview_url'] ?? '')),
+        ] + $this->sanitizeVoice($attachment);
+    }
+
+    /**
+     * Voice notes carry their length and a small amplitude envelope so every client can draw
+     * the waveform without downloading and decoding the audio.
+     *
+     * @param array<string,mixed> $attachment
+     * @return array<string,mixed>
+     */
+    private function sanitizeVoice(array $attachment): array
+    {
+        $mime = (string) ($attachment['mime_type'] ?? '');
+        if (!str_starts_with($mime, 'audio/') || empty($attachment['voice'])) {
+            return [];
+        }
+        $peaks = is_array($attachment['waveform'] ?? null) ? array_slice(array_values($attachment['waveform']), 0, 96) : [];
+        $peaks = array_map(static fn ($v): int => max(0, min(100, (int) round((float) $v))), $peaks);
+        return [
+            'voice' => true,
+            'duration' => max(0.0, min(3600.0, round((float) ($attachment['duration'] ?? 0), 2))),
+            'waveform' => $peaks,
         ];
     }
 }
