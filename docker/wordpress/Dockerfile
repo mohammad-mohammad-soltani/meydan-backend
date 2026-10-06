@@ -13,11 +13,22 @@ RUN set -eux; \
     a2enmod headers expires; \
     rm -rf /var/lib/apt/lists/*
 
-# PhpRedis for the persistent object cache (handled by the installer, no manual pecl). The default PHP
-# serializer is kept on purpose: the wpcli/cron containers have no igbinary and must read the same cache.
-COPY --from=ghcr.io/mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
-RUN install-php-extensions redis \
-    && php -m | grep -E '^redis$'
+# PhpRedis (faster Redis client) built from the GitHub source tarball. It is optional: if the build fails or
+# GitHub is unreachable the image is still produced and the redis-cache plugin falls back to its bundled Predis
+# client. The default PHP serializer is kept on purpose: the wpcli/cron containers have no phpredis/igbinary
+# and must read the same cache. (ghcr.io is deliberately not used: it is unreachable from some hosts.)
+ARG PHPREDIS_VERSION=6.1.0
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends $PHPIZE_DEPS curl ca-certificates; \
+    ( curl -fsSL --retry 2 --max-time 90 "https://github.com/phpredis/phpredis/archive/refs/tags/${PHPREDIS_VERSION}.tar.gz" -o /tmp/phpredis.tgz \
+      && mkdir /tmp/phpredis && tar -xzf /tmp/phpredis.tgz -C /tmp/phpredis --strip-components=1 \
+      && cd /tmp/phpredis && phpize && ./configure && make -j"$(nproc)" && make install \
+      && docker-php-ext-enable redis \
+    ) || echo "phpredis was not built; the redis-cache plugin will use Predis"; \
+    cd /; rm -rf /tmp/phpredis /tmp/phpredis.tgz; \
+    apt-get purge -y --auto-remove $PHPIZE_DEPS; \
+    rm -rf /var/lib/apt/lists/*
 
 COPY meydan-uploads.conf /etc/apache2/conf-available/meydan-uploads.conf
 RUN a2enconf meydan-uploads
