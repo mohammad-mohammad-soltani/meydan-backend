@@ -306,10 +306,26 @@ final class ExploreController extends BaseController
      */
     public function hashtagSuggestions(WP_REST_Request $request)
     {
+        if (!$this->hashtagSuggestRate()) {
+            return Response::error(
+                'rate_limited',
+                'تعداد درخواست‌های پیشنهاد هشتگ بیش از حد مجاز است.',
+                429
+            );
+        }
+
         $q = ltrim($this->normalizeSearch((string) $request->get_param('q')), '#');
 
         if ($q === '') {
-            return Response::ok(['items' => $this->hotTags(24, 6)]);
+            // The empty-query case is what every «#» keystroke hits first, so it is
+            // cached separately from the rest: one query serves every composer for 20s.
+            $cached = get_transient('meydan_hot_tags_24h');
+            if (is_array($cached)) {
+                return Response::cache(Response::ok(['items' => $cached]), 'private, max-age=20');
+            }
+            $hot = $this->hotTags(24, 6);
+            set_transient('meydan_hot_tags_24h', $hot, 20);
+            return Response::cache(Response::ok(['items' => $hot]), 'private, max-age=20');
         }
 
         global $wpdb;
@@ -665,6 +681,24 @@ final class ExploreController extends BaseController
             'search',
             $key,
             60,
+            MINUTE_IN_SECONDS
+        );
+
+        return $rate['allowed'];
+    }
+
+    /** A separate, more generous budget than {@see searchRate}: this fires on every composer keystroke. */
+    private function hashtagSuggestRate(): bool
+    {
+        $viewer = $this->viewer();
+        $key = $viewer->isAuthenticated()
+            ? 'u' . $viewer->userId
+            : 'g' . $viewer->id;
+
+        $rate = \Meydan\Core\Support\RateLimiter::hit(
+            'hashtag_suggest',
+            $key,
+            90,
             MINUTE_IN_SECONDS
         );
 
