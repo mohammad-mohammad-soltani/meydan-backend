@@ -19,24 +19,28 @@ use WP_Error;
 final class EntityKinds
 {
     public const SQUARE = 'square';
-    public const KINDS = ['square', 'collective', 'media', 'organization'];
+    public const MEMORIAL = 'memorial';
+    public const KINDS = ['square', 'collective', 'media', 'organization', 'memorial'];
     public const ROLES = [
         'collective' => 'meydan_collective',
         'media' => 'meydan_media',
         'organization' => 'meydan_organization',
+        'memorial' => 'meydan_memorial',
     ];
     public const POST_TYPES = [
         'square' => 'meydan_square',
         'media' => 'meydan_media_acct',
         'collective' => 'meydan_collective',
         'organization' => 'meydan_organization',
+        'memorial' => 'meydan_memorial',
     ];
-    public const PREFIXES = ['square' => 'sq_', 'media' => 'md_', 'collective' => 'cl_', 'organization' => 'og_'];
-    public const LABELS = ['square' => 'میدان', 'media' => 'رسانه', 'collective' => 'مجموعه', 'organization' => 'سازمان'];
+    public const PREFIXES = ['square' => 'sq_', 'media' => 'md_', 'collective' => 'cl_', 'organization' => 'og_', 'memorial' => 'mm_'];
+    public const LABELS = ['square' => 'میدان', 'media' => 'رسانه', 'collective' => 'مجموعه', 'organization' => 'سازمان', 'memorial' => 'یادبود'];
     public const ROLE_LABELS = [
         'meydan_collective' => 'مجموعه',
         'meydan_media' => 'رسانه',
         'meydan_organization' => 'سازمان',
+        'meydan_memorial' => 'یادبود',
     ];
 
     public static function valid(string $kind): bool

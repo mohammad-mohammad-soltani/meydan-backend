@@ -7,6 +7,7 @@ namespace Meydan\Core\Support;
 use Meydan\Core\Storage\AttachmentStorage;
 
 use Meydan\Core\Domain\CreatorService;
+use Meydan\Core\Domain\MemorialService;
 use Meydan\Core\Domain\SpeakerService;
 use Meydan\Core\Domain\EntityKinds;
 use Meydan\Core\Domain\UserAccess;
@@ -352,6 +353,31 @@ final class Serializer
                 'narratives' => $includeNarrativeCount ? self::squareNarrativeCount($id) : null,
             ],
         ];
+    }
+
+    /**
+     * Full admin-panel profile of a یادبود (memorial) account: the generic
+     * entity fields plus its three memorial-specific objects (biography,
+     * timeline, frames gallery). Biography is the full `post_content`, not
+     * the truncated/owner-overridable `description` that `entity()` returns.
+     */
+    public static function memorial(int|WP_Post $post): ?array
+    {
+        $post = $post instanceof WP_Post ? $post : get_post($post);
+        if (!$post || $post->post_type !== EntityKinds::postType(EntityKinds::MEMORIAL)) return null;
+        $data = self::entity($post, false);
+        if (!$data) return null;
+        $id = (int) $post->ID;
+        $data['biography'] = (string) $post->post_content;
+        $data['birth_date'] = (string) get_post_meta($id, 'meydan_birth_date', true);
+        $data['death_date'] = (string) get_post_meta($id, 'meydan_death_date', true);
+        $data['timeline'] = MemorialService::timeline($id);
+        $data['frames'] = array_map(static function (array $frame): array {
+            $frame['url'] = Actor::avatarUrl((int) $frame['media_id']);
+            return $frame;
+        }, MemorialService::frames($id));
+        unset($data['description'], $data['schedule'], $data['eitaa_channel'], $data['bale_channel']);
+        return $data;
     }
 
     private static function squareNarrativeCount(int $squareId): int

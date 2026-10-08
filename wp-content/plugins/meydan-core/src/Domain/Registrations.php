@@ -64,6 +64,7 @@ final class Registrations
             'manage_meydan_officials',
             'manage_meydan_squares',
             'verify_meydan_squares',
+            'manage_meydan_memorials',
             'manage_meydan_initiatives',
             'manage_meydan_campaigns',
             'manage_meydan_media_reflections',
@@ -87,6 +88,9 @@ final class Registrations
         self::postType('meydan_media_acct', 'حساب‌های رسانه', 'حساب رسانه', true, 'manage_meydan_squares', ['title', 'editor', 'thumbnail', 'author']);
         self::postType('meydan_collective', 'مجموعه‌ها', 'مجموعه', true, 'manage_meydan_squares', ['title', 'editor', 'thumbnail', 'author']);
         self::postType('meydan_organization', 'سازمان‌ها', 'سازمان', true, 'manage_meydan_squares', ['title', 'editor', 'thumbnail', 'author']);
+        // A memorial is a biographical profile (یادبود): its own entity kind,
+        // managed only through the admin REST API for now.
+        self::postType('meydan_memorial', 'یادبودها', 'یادبود', true, 'manage_meydan_memorials', ['title', 'editor', 'thumbnail', 'author']);
         self::postType('meydan_initiative', 'ابتکارها', 'ابتکار', true, 'manage_meydan_initiatives', ['title', 'editor', 'thumbnail']);
         self::postType('meydan_campaign', 'کمپین‌ها', 'کمپین', true, 'manage_meydan_campaigns', ['title', 'editor', 'thumbnail']);
     }
