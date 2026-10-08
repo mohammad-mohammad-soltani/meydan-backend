@@ -16,6 +16,9 @@ use WP_REST_Request;
 
 final class ExploreController extends BaseController
 {
+    /** Object-cache group for everything on this page (Redis, via the redis-cache plugin). */
+    private const CACHE_GROUP = 'meydan_explore';
+
     public function search(WP_REST_Request $request)
     {
         $query = $this->normalizeSearch((string) $request->get_param('q'));
@@ -137,10 +140,22 @@ final class ExploreController extends BaseController
      * The hottest narratives of the last `$hours` hours, each with `trend_score`
      * and `growth_pct` (engagement now against the same span before it).
      *
+     * Redis-cached for 30 minutes («ترندهای داغ میادین» is allowed to lag that
+     * far behind) — the same cached rows are served to every visitor, so
+     * `viewer_state` is always nulled out before caching (see `home()`, which
+     * already did this before this cache existed; this just makes it the rule
+     * for every caller instead of a one-off at the call site).
+     *
      * @return array<int,array<string,mixed>>
      */
     private function trendItems(int $hours, int $limit): array
     {
+        $cacheKey = "trend_items_{$hours}_{$limit}";
+        $cached = wp_cache_get($cacheKey, self::CACHE_GROUP);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         global $wpdb;
 
         $weights = (array) get_option('meydan_trends', []);
@@ -204,6 +219,13 @@ final class ExploreController extends BaseController
                 : $growthB <=> $growthA;
         });
 
+        foreach ($items as &$item) {
+            $item['viewer_state'] = null;
+        }
+        unset($item);
+
+        wp_cache_set($cacheKey, $items, self::CACHE_GROUP, 30 * MINUTE_IN_SECONDS);
+
         return $items;
     }
 
@@ -252,20 +274,30 @@ final class ExploreController extends BaseController
         if (is_array($cached)) {
             return Response::cache(Response::ok($cached), 'public, max-age=60, stale-while-revalidate=300');
         }
-        // One payload serves every visitor, so nothing viewer-specific may be baked into it.
-        $hot = array_map(static function (array $item): array {
-            $item['viewer_state'] = null;
-            return $item;
-        }, $this->trendItems(24, 6));
+        // trendItems() already nulls viewer_state before caching itself (30 min,
+        // shared with /explore/trends); this transient wraps the rest of the page
+        // at a shorter 60s, since «active»/«people»/«entities» move faster.
         $data = [
-            'tags' => $this->hotTags(),
-            'hot' => $hot,
+            'tags' => $this->cachedHotTags(),
+            'hot' => $this->trendItems(24, 6),
             'active' => $this->activeEntities(),
             'people' => $this->topFollowed(['user'], 6),
             'entities' => $this->topFollowed(['square', 'media', 'collective', 'organization'], 8),
         ];
         set_transient('meydan_explore_home', $data, 60);
         return Response::cache(Response::ok($data), 'public, max-age=60, stale-while-revalidate=300');
+    }
+
+    /** `hotTags()`'s default (24h/top-8) shape, Redis-cached for 30 minutes alongside the trending narratives. */
+    private function cachedHotTags(): array
+    {
+        $cached = wp_cache_get('hot_tags_24_8', self::CACHE_GROUP);
+        if (is_array($cached)) {
+            return $cached;
+        }
+        $tags = $this->hotTags();
+        wp_cache_set('hot_tags_24_8', $tags, self::CACHE_GROUP, 30 * MINUTE_IN_SECONDS);
+        return $tags;
     }
 
     /**
@@ -315,17 +347,20 @@ final class ExploreController extends BaseController
         }
 
         $q = ltrim($this->normalizeSearch((string) $request->get_param('q')), '#');
+        // Autocomplete, Redis-cached for 2h: every answer here is a function only
+        // of `$q` (no viewer-specific data), so it is safe to share across every
+        // composer. `md5` keeps the cache key bounded and ASCII regardless of
+        // what Persian/Arabic text was typed.
+        $cacheKey = 'suggest_' . md5($q);
+        $cached = wp_cache_get($cacheKey, self::CACHE_GROUP);
+        if (is_array($cached)) {
+            return Response::ok(['items' => $cached]);
+        }
 
         if ($q === '') {
-            // The empty-query case is what every «#» keystroke hits first, so it is
-            // cached separately from the rest: one query serves every composer for 20s.
-            $cached = get_transient('meydan_hot_tags_24h');
-            if (is_array($cached)) {
-                return Response::cache(Response::ok(['items' => $cached]), 'private, max-age=20');
-            }
-            $hot = $this->hotTags(24, 6);
-            set_transient('meydan_hot_tags_24h', $hot, 20);
-            return Response::cache(Response::ok(['items' => $hot]), 'private, max-age=20');
+            $items = $this->hotTags(24, 6);
+            wp_cache_set($cacheKey, $items, self::CACHE_GROUP, 2 * HOUR_IN_SECONDS);
+            return Response::ok(['items' => $items]);
         }
 
         global $wpdb;
@@ -351,6 +386,8 @@ final class ExploreController extends BaseController
             static fn(array $row): array => ['tag' => (string) $row['name'], 'count' => (int) $row['uses']],
             $rows
         );
+
+        wp_cache_set($cacheKey, $items, self::CACHE_GROUP, 2 * HOUR_IN_SECONDS);
 
         return Response::ok(['items' => $items]);
     }
