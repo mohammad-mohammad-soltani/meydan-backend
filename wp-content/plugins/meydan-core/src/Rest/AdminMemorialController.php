@@ -28,7 +28,10 @@ final class AdminMemorialController extends BaseController
         ];
         if ($q = trim((string) $r->get_param('q'))) $args['s'] = $q;
         $query = new WP_Query($args);
-        $items = array_map(static fn (\WP_Post $post): ?array => Serializer::entity($post, false), $query->posts);
+        $items = array_map(static function (\WP_Post $post): ?array {
+            $row = Serializer::entity($post, false);
+            return $row ? $row + ['post_status' => (string) $post->post_status] : null;
+        }, $query->posts);
         return Response::ok(array_values(array_filter($items)), ['page' => $page, 'per_page' => $perPage, 'total' => (int) $query->found_posts, 'pages' => (int) $query->max_num_pages]);
     }
 

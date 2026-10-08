@@ -581,6 +581,12 @@ final class ExploreController extends BaseController
             $results[] = Actor::forUser($userId);
         }
 
+        // Memorial accounts are people too: they surface beside users, by name or @handle.
+        foreach ($this->searchEntities('memorial', $query) as $memorial) {
+            if (count($results) >= 10) break;
+            $results[] = Actor::forEntity((int) $memorial['id']);
+        }
+
         return $results;
     }
 

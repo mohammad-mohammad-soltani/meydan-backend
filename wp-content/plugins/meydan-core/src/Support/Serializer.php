@@ -368,9 +368,15 @@ final class Serializer
         $data = self::entity($post, false);
         if (!$data) return null;
         $id = (int) $post->ID;
+        // Admin forms need the backing account so its own handle is not reported as taken.
+        // The admin form's status select and badge read this; without it every memorial looked like a draft.
+        $data['post_status'] = (string) $post->post_status;
+        $data['owner_user_id'] = (int) get_post_meta($id, 'meydan_owner_user_id', true) ?: null;
         $data['biography'] = (string) $post->post_content;
         $data['birth_date'] = (string) get_post_meta($id, 'meydan_birth_date', true);
         $data['death_date'] = (string) get_post_meta($id, 'meydan_death_date', true);
+        $data['position'] = (string) get_post_meta($id, MemorialService::POSITION_META, true);
+        $data['office'] = (string) get_post_meta($id, MemorialService::OFFICE_META, true);
         $data['timeline'] = MemorialService::timeline($id);
         $data['frames'] = array_map(static function (array $frame): array {
             $frame['url'] = Actor::avatarUrl((int) $frame['media_id']);

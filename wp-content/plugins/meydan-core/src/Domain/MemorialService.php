@@ -31,6 +31,10 @@ final class MemorialService
     public const KIND = EntityKinds::MEMORIAL;
     public const TIMELINE_META = 'meydan_memorial_timeline';
     public const FRAMES_META = 'meydan_memorial_frames';
+    /** سمت: the person's post, e.g. «رئیس دانشگاه آزاد اسلامی». */
+    public const POSITION_META = 'meydan_memorial_position';
+    /** منصب: the person's field/standing, e.g. «فیزیک نظری • کیهان‌شناسی». */
+    public const OFFICE_META = 'meydan_memorial_office';
     public const POST_STATUSES = ['draft', 'publish'];
 
     /** @param array<string,mixed> $input @return array{user_id:int,memorial_id:int,name:string}|WP_Error */
@@ -82,10 +86,14 @@ final class MemorialService
         $memorialId = (int) $memorialId;
 
         update_post_meta($memorialId, 'meydan_owner_user_id', $userId);
+        // Every entity kind resolves its owner account's profile through this user meta.
+        update_user_meta($userId, 'meydan_square_id', $memorialId);
         update_post_meta($memorialId, 'meydan_approval_status', 'approved');
         update_post_meta($memorialId, 'meydan_verified', 1);
         update_post_meta($memorialId, 'meydan_birth_date', sanitize_text_field((string) ($input['birth_date'] ?? '')));
         update_post_meta($memorialId, 'meydan_death_date', sanitize_text_field((string) ($input['death_date'] ?? '')));
+        update_post_meta($memorialId, self::POSITION_META, sanitize_text_field((string) ($input['position'] ?? '')));
+        update_post_meta($memorialId, self::OFFICE_META, sanitize_text_field((string) ($input['office'] ?? '')));
         update_post_meta($memorialId, self::TIMELINE_META, wp_json_encode($timeline, JSON_UNESCAPED_UNICODE));
         update_post_meta($memorialId, self::FRAMES_META, wp_json_encode($frames, JSON_UNESCAPED_UNICODE));
 
@@ -153,6 +161,9 @@ final class MemorialService
         if (array_key_exists('death_date', $input)) {
             update_post_meta($id, 'meydan_death_date', sanitize_text_field((string) $input['death_date']));
         }
+        foreach (['position' => self::POSITION_META, 'office' => self::OFFICE_META] as $field => $metaKey) {
+            if (array_key_exists($field, $input)) update_post_meta($id, $metaKey, sanitize_text_field((string) $input[$field]));
+        }
         if (array_key_exists('verified', $input)) {
             update_post_meta($id, 'meydan_verified', $input['verified'] ? 1 : 0);
         }
@@ -172,6 +183,8 @@ final class MemorialService
             return new WP_Error('internal_error', 'حذف یادبود ناموفق بود.', ['status' => 500]);
         }
         if ($ownerId > 0 && get_userdata($ownerId)) {
+            // Not loaded on REST requests; without it the account (and its handle) outlives the memorial.
+            require_once ABSPATH . 'wp-admin/includes/user.php';
             wp_delete_user($ownerId);
         }
         AuditLogger::log('memorial_deleted', 'memorial', $id, $before, ['status' => 'deleted_permanently']);

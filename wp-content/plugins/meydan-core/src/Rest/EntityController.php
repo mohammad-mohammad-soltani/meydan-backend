@@ -60,6 +60,13 @@ final class EntityController extends BaseController
         $data['stats'] = is_array($data['stats'] ?? null) ? $data['stats'] : [];
         $data['social'] = ProfileExtras::social(EntityKinds::kindOf($id), $id, $ownerId);
         $data['stats']['followers'] = $data['social']['followers'];
+        if (EntityKinds::kindOf($id) === EntityKinds::MEMORIAL) {
+            // The memorial page's own sections: life story, dates, timeline and the photo gallery.
+            $memorial = Serializer::memorial($id) ?: [];
+            foreach (['biography', 'birth_date', 'death_date', 'position', 'office', 'timeline', 'frames'] as $key) {
+                $data[$key] = $memorial[$key] ?? (in_array($key, ['timeline', 'frames'], true) ? [] : '');
+            }
+        }
         return $data;
     }
 }

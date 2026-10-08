@@ -27,7 +27,7 @@ final class Handles
     public const RESERVED = [
         'admin', 'administrator', 'root', 'support', 'help', 'meydan', 'official', 'system',
         'api', 'www', 'null', 'undefined', 'me', 'user', 'users', 'square', 'speaker', 'works',
-        'squares', 'media', 'collective', 'collectives', 'organization', 'organizations', 'entities', 'profiles',
+        'squares', 'media', 'collective', 'collectives', 'organization', 'organizations', 'memorial', 'memorials', 'entities', 'profiles',
         'home', 'explore', 'chat', 'compose', 'content', 'initiatives', 'map', 'podcasts', 'posts', 'post',
         'profile', 'speakers', 'auth', 'direct', 'login', 'logout', 'register', 'signup', 'settings',
         'notifications', 'search', 'images', 'maps', 'fonts', 'static', 'assets', 'offline', 'favicon',

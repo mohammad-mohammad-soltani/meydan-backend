@@ -9,7 +9,7 @@ use Meydan\Core\Notifications\NotificationService;
 
 final class Migrations
 {
-    public const VERSION = '1.4.8';
+    public const VERSION = '1.4.9';
 
     /**
      * Legacy speaker-post meta holding the linked user id.
@@ -251,6 +251,28 @@ final class Migrations
             KEY requester_user_id (requester_user_id),
             KEY inviter_user_id (inviter_user_id),
             KEY speaker_user_id (speaker_user_id)
+        ) {$charset};";
+
+        $sql[] = "CREATE TABLE {$p}speaker_applications (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT UNSIGNED NOT NULL,
+            full_name VARCHAR(190) NOT NULL,
+            city VARCHAR(120) NOT NULL,
+            category VARCHAR(80) NOT NULL,
+            topics VARCHAR(500) NOT NULL,
+            phone VARCHAR(32) NOT NULL,
+            link VARCHAR(500) NULL,
+            about TEXT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            verified TINYINT(1) NOT NULL DEFAULT 0,
+            admin_note TEXT NULL,
+            decided_by BIGINT UNSIGNED NULL,
+            decided_at DATETIME NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            KEY user_id (user_id),
+            KEY status (status)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}uploads (
