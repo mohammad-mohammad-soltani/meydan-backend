@@ -35,6 +35,7 @@ use Meydan\Core\Support\ApiMiddleware;
 use Meydan\Core\Support\CampaignCurrentGuard;
 use Meydan\Core\Support\Cors;
 use Meydan\Core\Support\GoodAction;
+use Meydan\Core\Support\HashtagBackfill;
 use Meydan\Core\Support\RootResponse;
 use Meydan\Core\Support\SquareActivity;
 use Meydan\Core\Support\UserEmails;
@@ -107,6 +108,7 @@ final class Plugin
         add_action('init', [UploadCache::class, 'ensure'], 5);
         WordPressMediaHooks::register();
         VideoPosterBackfill::register();
+        HashtagBackfill::register();
         \Meydan\Core\Uploads\UploadCleanup::register();
         \Meydan\Core\Support\Retention::register();
         \Meydan\Core\Support\Actor::registerCache();
