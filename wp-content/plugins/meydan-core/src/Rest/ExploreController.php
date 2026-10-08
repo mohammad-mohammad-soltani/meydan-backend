@@ -385,17 +385,30 @@ final class ExploreController extends BaseController
 
         global $wpdb;
         $like = $wpdb->esc_like($q) . '%';
-        // `tt.count` is WordPress core's own running tally for the taxonomy (kept in
-        // sync on every wp_set_post_terms call, since this taxonomy uses the default
-        // update_count_callback) — an indexed lookup instead of a live join across
-        // every narrative that has ever carried this tag.
+        // A short prefix (one or two letters) can match thousands of tags —
+        // `LIMIT 8` at the end only bounds what's *returned*, not what MySQL
+        // has to join and sort to get there: ORDER BY uses (a joined, non-
+        // indexed column) forces a full sort of every matching row before it
+        // can take the top 8. The inner subquery caps that to 200 candidates
+        // *before* any sort — already scoped to this one taxonomy (so a term
+        // that only belongs to meydan_topic can't steal a candidate slot from
+        // a real hashtag sharing its prefix) and ordered by `name`, which the
+        // core `KEY name (name(191))` index on wp_terms serves directly. So a
+        // single-letter «#a» costs the same as a specific one, not a scan and
+        // sort of however many thousand tags happen to start with it.
         $rows = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT t.name, tt.count AS uses
-                 FROM {$wpdb->terms} t
-                 INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_id = t.term_id AND tt.taxonomy = 'meydan_narrative_tag'
-                 WHERE t.name LIKE %s
-                 ORDER BY uses DESC, t.name ASC
+                "SELECT t.name, candidates.uses
+                 FROM (
+                     SELECT tt1.term_id, tt1.count AS uses
+                     FROM {$wpdb->term_taxonomy} tt1
+                     INNER JOIN {$wpdb->terms} t1 ON t1.term_id = tt1.term_id
+                     WHERE tt1.taxonomy = 'meydan_narrative_tag' AND t1.name LIKE %s
+                     ORDER BY t1.name ASC
+                     LIMIT 200
+                 ) candidates
+                 INNER JOIN {$wpdb->terms} t ON t.term_id = candidates.term_id
+                 ORDER BY candidates.uses DESC, t.name ASC
                  LIMIT 8",
                 $like
             ),
