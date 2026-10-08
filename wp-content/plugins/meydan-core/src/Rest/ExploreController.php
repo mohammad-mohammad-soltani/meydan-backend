@@ -383,35 +383,61 @@ final class ExploreController extends BaseController
             return Response::ok(['items' => $items]);
         }
 
+        // A short prefix (one or two letters) can match thousands of tags, and
+        // ranking true matches by popularity needs ORDER BY uses — a joined,
+        // non-indexed column, so MySQL can't stop early the way it can for an
+        // indexed ORDER BY name. Rather than pay that sort on every request
+        // (once per keystroke, across every composer), filter it in PHP against
+        // `popularHashtags()`: the site's own top 500 tags by all-time usage,
+        // one query, cached until a tag actually changes (same version counter
+        // as this method's own cache). A one-letter prefix then costs an
+        // in-memory scan of 500 short strings, not a live MySQL sort of
+        // however many thousand rows happen to match it — and the result is
+        // genuinely popularity-ranked, not an arbitrary alphabetical sample.
+        $needle = mb_strtolower($q);
+        $items = [];
+        foreach ($this->popularHashtags() as $entry) {
+            if (mb_strpos(mb_strtolower($entry['tag']), $needle) === 0) {
+                $items[] = $entry;
+                if (count($items) >= 8) {
+                    break;
+                }
+            }
+        }
+
+        wp_cache_set($cacheKey, $items, self::CACHE_GROUP, $items ? 2 * HOUR_IN_SECONDS : 5 * MINUTE_IN_SECONDS);
+
+        return Response::ok(['items' => $items]);
+    }
+
+    /**
+     * The site's top 500 hashtags by all-time usage, busiest first — the pool
+     * `hashtagSuggestions()` filters by prefix in PHP instead of asking MySQL
+     * to sort every matching row on every keystroke. One query (`tt.count` is
+     * already the right-shaped, indexed-by-taxonomy total; the join to a
+     * single taxonomy's rows is what `KEY taxonomy (taxonomy)` is for),
+     * cached until `bumpSuggestVersion()` fires — i.e. exactly when a tag's
+     * count could have changed — so this never serves stale popularity for
+     * longer than it takes the next narrative to publish.
+     *
+     * @return array<int,array{tag:string,count:int}>
+     */
+    private function popularHashtags(): array
+    {
+        $cacheKey = 'popular_tags_' . self::suggestVersion();
+        $cached = wp_cache_get($cacheKey, self::CACHE_GROUP);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         global $wpdb;
-        $like = $wpdb->esc_like($q) . '%';
-        // A short prefix (one or two letters) can match thousands of tags —
-        // `LIMIT 8` at the end only bounds what's *returned*, not what MySQL
-        // has to join and sort to get there: ORDER BY uses (a joined, non-
-        // indexed column) forces a full sort of every matching row before it
-        // can take the top 8. The inner subquery caps that to 200 candidates
-        // *before* any sort — already scoped to this one taxonomy (so a term
-        // that only belongs to meydan_topic can't steal a candidate slot from
-        // a real hashtag sharing its prefix) and ordered by `name`, which the
-        // core `KEY name (name(191))` index on wp_terms serves directly. So a
-        // single-letter «#a» costs the same as a specific one, not a scan and
-        // sort of however many thousand tags happen to start with it.
         $rows = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT t.name, candidates.uses
-                 FROM (
-                     SELECT tt1.term_id, tt1.count AS uses
-                     FROM {$wpdb->term_taxonomy} tt1
-                     INNER JOIN {$wpdb->terms} t1 ON t1.term_id = tt1.term_id
-                     WHERE tt1.taxonomy = 'meydan_narrative_tag' AND t1.name LIKE %s
-                     ORDER BY t1.name ASC
-                     LIMIT 200
-                 ) candidates
-                 INNER JOIN {$wpdb->terms} t ON t.term_id = candidates.term_id
-                 ORDER BY candidates.uses DESC, t.name ASC
-                 LIMIT 8",
-                $like
-            ),
+            "SELECT t.name, tt.count AS uses
+             FROM {$wpdb->term_taxonomy} tt
+             INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+             WHERE tt.taxonomy = 'meydan_narrative_tag'
+             ORDER BY tt.count DESC
+             LIMIT 500",
             ARRAY_A
         ) ?: [];
 
@@ -420,9 +446,9 @@ final class ExploreController extends BaseController
             $rows
         );
 
-        wp_cache_set($cacheKey, $items, self::CACHE_GROUP, $items ? 2 * HOUR_IN_SECONDS : 5 * MINUTE_IN_SECONDS);
+        wp_cache_set($cacheKey, $items, self::CACHE_GROUP, DAY_IN_SECONDS);
 
-        return Response::ok(['items' => $items]);
+        return $items;
     }
 
     /**
