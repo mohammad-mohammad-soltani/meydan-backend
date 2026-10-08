@@ -330,15 +330,16 @@ final class ExploreController extends BaseController
 
         global $wpdb;
         $like = $wpdb->esc_like($q) . '%';
+        // `tt.count` is WordPress core's own running tally for the taxonomy (kept in
+        // sync on every wp_set_post_terms call, since this taxonomy uses the default
+        // update_count_callback) — an indexed lookup instead of a live join across
+        // every narrative that has ever carried this tag.
         $rows = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT t.name, COUNT(DISTINCT r.object_id) AS uses
+                "SELECT t.name, tt.count AS uses
                  FROM {$wpdb->terms} t
                  INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_id = t.term_id AND tt.taxonomy = 'meydan_narrative_tag'
-                 INNER JOIN {$wpdb->term_relationships} r ON r.term_taxonomy_id = tt.term_taxonomy_id
-                 INNER JOIN {$wpdb->posts} p ON p.ID = r.object_id AND p.post_type = 'meydan_narrative' AND p.post_status = 'publish'
                  WHERE t.name LIKE %s
-                 GROUP BY t.term_id, t.name
                  ORDER BY uses DESC, t.name ASC
                  LIMIT 8",
                 $like
