@@ -93,11 +93,12 @@ final class ImportService
 
             $wpdb->query('START TRANSACTION');
             $postId = $row ? (int) $row['narrative_id'] : 0;
+            $body = wp_kses_post((string) ($payload['body_html'] ?? $payload['body'] ?? ''));
             $post = [
                 'post_type' => 'meydan_narrative',
                 'post_status' => 'publish',
                 'post_author' => $userId,
-                'post_content' => wp_kses_post((string) ($payload['body_html'] ?? $payload['body'] ?? '')),
+                'post_content' => $body,
                 'post_date_gmt' => gmdate('Y-m-d H:i:s', $publishedAt),
                 'post_date' => get_date_from_gmt(gmdate('Y-m-d H:i:s', $publishedAt)),
             ];
@@ -112,6 +113,11 @@ final class ImportService
                 return $result;
             }
             $postId = (int) $result;
+
+            // #هشتگ tokens in the imported body need the same treatment a
+            // composed narrative gets — they were previously never saved for
+            // Eitaa imports, since this path never touched NarrativeController.
+            wp_set_post_terms($postId, \Meydan\Core\Support\Hashtags::merge([], $body), 'meydan_narrative_tag');
 
             update_post_meta($postId, 'meydan_author_actor_type', $squareId > 0 ? \Meydan\Core\Domain\EntityKinds::kindOf($squareId) : 'user');
             update_post_meta($postId, 'meydan_author_actor_id', $squareId > 0 ? $squareId : $userId);

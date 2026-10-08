@@ -20,7 +20,11 @@ final class Hashtags
      */
     public static function extract(string $body): array
     {
-        if (!preg_match_all('/(?:^|[\s\x{060C}\x{061B}.,!?؟])#([\p{L}\p{N}_]{' . self::MIN_LENGTH . ',' . self::MAX_LENGTH . '})/u', $body, $matches)) {
+        // `>` is in the lookback set alongside whitespace/punctuation: imported
+        // narratives (Eitaa/Bale) carry HTML, where a hashtag commonly opens a
+        // paragraph right after its tag (`<p>#خبر ...`), with no whitespace of
+        // its own before the `#`.
+        if (!preg_match_all('/(?:^|[\s\x{060C}\x{061B}.,!?؟>])#([\p{L}\p{N}_]{' . self::MIN_LENGTH . ',' . self::MAX_LENGTH . '})/u', $body, $matches)) {
             return [];
         }
 
