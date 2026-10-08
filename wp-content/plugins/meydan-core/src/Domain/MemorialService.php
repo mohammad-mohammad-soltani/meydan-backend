@@ -40,7 +40,8 @@ final class MemorialService
         if ($name === '') {
             return new WP_Error('validation_failed', 'نام یادبود الزامی است.', ['status' => 422, 'fields' => ['name' => 'required']]);
         }
-        $handle = Handles::validate((string) ($input['handle'] ?? ''));
+        $rawHandle = trim((string) ($input['handle'] ?? ''));
+        $handle = $rawHandle !== '' ? Handles::validate($rawHandle) : Handles::generate($name);
         if (is_wp_error($handle)) return $handle;
         $postStatus = in_array($input['status'] ?? null, self::POST_STATUSES, true) ? (string) $input['status'] : 'draft';
         $timeline = self::sanitizeTimeline($input['timeline'] ?? []);
