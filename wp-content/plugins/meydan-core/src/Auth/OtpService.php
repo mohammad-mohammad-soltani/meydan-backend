@@ -50,6 +50,21 @@ final class OtpService
         }
         $resendLimit = RateLimiter::hit('otp-request-phone', $phoneHash, 1, self::RESEND_AFTER);
         if (!$resendLimit['allowed']) {
+            // The resend window is still open, so no new SMS can go out. If the
+            // earlier challenge is still usable, hand it back instead of erroring:
+            // the client may have lost its in-memory challenge_id (e.g. the form
+            // remounted after the phone field lost focus) even though the user
+            // still has the SMS from that earlier request and just needs to reach
+            // the code step to enter it.
+            $active = $this->findActiveChallenge($phoneHash);
+            if ($active !== null) {
+                return [
+                    'challenge_id' => $active->challenge_id,
+                    'expires_in' => max(0, strtotime((string) $active->expires_at . ' UTC') - time()),
+                    'resend_after' => $resendLimit['retry_after'],
+                    'delivery_status' => 'already_sent',
+                ];
+            }
             return new WP_Error('rate_limited', 'کد ورود اخیراً برای این شماره ارسال شده است. کمی صبر کنید.', ['status' => 429]);
         }
         $dailyLimit = RateLimiter::hit('otp-request-phone-daily', $phoneHash, 8, DAY_IN_SECONDS);
@@ -112,6 +127,19 @@ final class OtpService
     private function isTransportUncertain(WP_Error $error): bool
     {
         return $error->get_error_code() === 'sms_transport_error';
+    }
+
+    private function findActiveChallenge(string $phoneHash): ?object
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'meydan_auth_challenges';
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT challenge_id, expires_at FROM {$table}
+             WHERE phone_hash = %s AND purpose = 'login' AND consumed_at IS NULL AND expires_at > UTC_TIMESTAMP()
+             ORDER BY created_at DESC LIMIT 1",
+            $phoneHash
+        ));
+        return $row ?: null;
     }
 
     public function verify(string $challengeId, string $code, bool $persistentDevice = false): array|WP_Error
