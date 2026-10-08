@@ -136,6 +136,12 @@ final class Registrations
     {
         self::taxonomy('meydan_content_category', ['meydan_content'], 'دسته‌های محتوا', true);
         self::taxonomy('meydan_narrative_tag', ['meydan_narrative'], 'برچسب‌های روایت', false);
+        // A new/removed tag invalidates the composer's cached hashtag suggestions.
+        add_action('set_object_terms', static function ($objectId, $terms, $ttIds, $taxonomy): void {
+            if ($taxonomy === 'meydan_narrative_tag') {
+                \Meydan\Core\Rest\ExploreController::bumpSuggestVersion();
+            }
+        }, 10, 4);
         self::taxonomy('meydan_content_tag', ['meydan_content'], 'برچسب‌های محتوا', false);
         self::taxonomy('meydan_creator_type', ['meydan_creator'], 'نوع تولیدکننده', false);
         // Speaker topical categories are user meta (`meydan_speaker_categories`)

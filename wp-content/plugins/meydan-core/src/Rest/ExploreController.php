@@ -336,6 +336,26 @@ final class ExploreController extends BaseController
      * Hashtag autocomplete for the composer: tags starting with `q`, busiest
      * (in the last 24h) first; with no `q`, the current hot tags.
      */
+    /**
+     * Cache generation for the suggestion answers. Bumped whenever a narrative's
+     * tags change, so a freshly created tag is suggestable at once instead of
+     * after every cached prefix (including cached empty answers) expires.
+     */
+    private static function suggestVersion(): int
+    {
+        $version = wp_cache_get('suggest_version', self::CACHE_GROUP);
+        if (!is_numeric($version)) {
+            $version = 1;
+            wp_cache_set('suggest_version', $version, self::CACHE_GROUP);
+        }
+        return (int) $version;
+    }
+
+    public static function bumpSuggestVersion(): void
+    {
+        wp_cache_set('suggest_version', self::suggestVersion() + 1, self::CACHE_GROUP);
+    }
+
     public function hashtagSuggestions(WP_REST_Request $request)
     {
         if (!$this->hashtagSuggestRate()) {
@@ -351,7 +371,7 @@ final class ExploreController extends BaseController
         // of `$q` (no viewer-specific data), so it is safe to share across every
         // composer. `md5` keeps the cache key bounded and ASCII regardless of
         // what Persian/Arabic text was typed.
-        $cacheKey = 'suggest_' . md5($q);
+        $cacheKey = 'suggest_' . self::suggestVersion() . '_' . md5($q);
         $cached = wp_cache_get($cacheKey, self::CACHE_GROUP);
         if (is_array($cached)) {
             return Response::ok(['items' => $cached]);
@@ -359,7 +379,7 @@ final class ExploreController extends BaseController
 
         if ($q === '') {
             $items = $this->hotTags(24, 6);
-            wp_cache_set($cacheKey, $items, self::CACHE_GROUP, 2 * HOUR_IN_SECONDS);
+            wp_cache_set($cacheKey, $items, self::CACHE_GROUP, $items ? 2 * HOUR_IN_SECONDS : 5 * MINUTE_IN_SECONDS);
             return Response::ok(['items' => $items]);
         }
 
@@ -387,7 +407,7 @@ final class ExploreController extends BaseController
             $rows
         );
 
-        wp_cache_set($cacheKey, $items, self::CACHE_GROUP, 2 * HOUR_IN_SECONDS);
+        wp_cache_set($cacheKey, $items, self::CACHE_GROUP, $items ? 2 * HOUR_IN_SECONDS : 5 * MINUTE_IN_SECONDS);
 
         return Response::ok(['items' => $items]);
     }
