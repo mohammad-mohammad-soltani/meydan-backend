@@ -194,6 +194,16 @@ final class ExploreController extends BaseController
             $items[] = $narrative;
         }
 
+        // Fastest-growing first: a post with no prior-window baseline is brand
+        // new and growing from zero, so it outranks a merely steady climber.
+        usort($items, static function (array $a, array $b): int {
+            $growthA = $a['growth_pct'] ?? PHP_INT_MAX;
+            $growthB = $b['growth_pct'] ?? PHP_INT_MAX;
+            return $growthA === $growthB
+                ? $b['trend_score'] <=> $a['trend_score']
+                : $growthB <=> $growthA;
+        });
+
         return $items;
     }
 
@@ -258,20 +268,29 @@ final class ExploreController extends BaseController
         return Response::cache(Response::ok($data), 'public, max-age=60, stale-while-revalidate=300');
     }
 
-    /** @return array<int,array{tag:string,count:int,hot:bool}> */
-    private function hotTags(): array
+    /**
+     * The most-used hashtags of the last `$hours` hours (capped at 24h by
+     * default, per product spec — trends never look further back than a day).
+     *
+     * @return array<int,array{tag:string,count:int,hot:bool}>
+     */
+    private function hotTags(int $hours = 24, int $limit = 8): array
     {
         global $wpdb;
         $rows = $wpdb->get_results(
-            "SELECT t.name, COUNT(DISTINCT r.object_id) AS uses
-             FROM {$wpdb->term_relationships} r
-             INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = r.term_taxonomy_id AND tt.taxonomy = 'meydan_narrative_tag'
-             INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
-             INNER JOIN {$wpdb->posts} p ON p.ID = r.object_id AND p.post_type = 'meydan_narrative' AND p.post_status = 'publish'
-                AND p.post_date_gmt >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)
-             GROUP BY t.term_id, t.name
-             ORDER BY uses DESC, t.name ASC
-             LIMIT 8",
+            $wpdb->prepare(
+                "SELECT t.name, COUNT(DISTINCT r.object_id) AS uses
+                 FROM {$wpdb->term_relationships} r
+                 INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = r.term_taxonomy_id AND tt.taxonomy = 'meydan_narrative_tag'
+                 INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+                 INNER JOIN {$wpdb->posts} p ON p.ID = r.object_id AND p.post_type = 'meydan_narrative' AND p.post_status = 'publish'
+                    AND p.post_date_gmt >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)
+                 GROUP BY t.term_id, t.name
+                 ORDER BY uses DESC, t.name ASC
+                 LIMIT %d",
+                $hours,
+                $limit
+            ),
             ARRAY_A
         ) ?: [];
         $out = [];
@@ -279,6 +298,44 @@ final class ExploreController extends BaseController
             $out[] = ['tag' => (string) $row['name'], 'count' => (int) $row['uses'], 'hot' => $index < 3];
         }
         return $out;
+    }
+
+    /**
+     * Hashtag autocomplete for the composer: tags starting with `q`, busiest
+     * (in the last 24h) first; with no `q`, the current hot tags.
+     */
+    public function hashtagSuggestions(WP_REST_Request $request)
+    {
+        $q = ltrim($this->normalizeSearch((string) $request->get_param('q')), '#');
+
+        if ($q === '') {
+            return Response::ok(['items' => $this->hotTags(24, 6)]);
+        }
+
+        global $wpdb;
+        $like = $wpdb->esc_like($q) . '%';
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT t.name, COUNT(DISTINCT r.object_id) AS uses
+                 FROM {$wpdb->terms} t
+                 INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_id = t.term_id AND tt.taxonomy = 'meydan_narrative_tag'
+                 INNER JOIN {$wpdb->term_relationships} r ON r.term_taxonomy_id = tt.term_taxonomy_id
+                 INNER JOIN {$wpdb->posts} p ON p.ID = r.object_id AND p.post_type = 'meydan_narrative' AND p.post_status = 'publish'
+                 WHERE t.name LIKE %s
+                 GROUP BY t.term_id, t.name
+                 ORDER BY uses DESC, t.name ASC
+                 LIMIT 8",
+                $like
+            ),
+            ARRAY_A
+        ) ?: [];
+
+        $items = array_map(
+            static fn(array $row): array => ['tag' => (string) $row['name'], 'count' => (int) $row['uses']],
+            $rows
+        );
+
+        return Response::ok(['items' => $items]);
     }
 
     /**
