@@ -17,6 +17,7 @@ use Meydan\Core\Timeline\VideoTimeline;
 use Meydan\Core\Feed\FeedService;
 use Meydan\Core\Feed\FeedSettings;
 use WP_Query;
+use Meydan\Core\Support\Tributes;
 use WP_REST_Request;
 
 final class TimelineController extends BaseController
@@ -100,7 +101,7 @@ final class TimelineController extends BaseController
             return array_values(array_map('intval', array_column($items, 'id')));
         }
 
-        if (in_array($filter, ['initiatives', 'reflected'], true)) {
+        if (in_array($filter, ['initiatives', 'reflected', 'tributes'], true)) {
             return $this->filteredIds($filter, $limit);
         }
 
@@ -221,6 +222,25 @@ final class TimelineController extends BaseController
                 'no_found_rows' => true,
                 'meta_query' => [[
                     'key' => 'meydan_initiative_id',
+                    'value' => 0,
+                    'compare' => '>',
+                    'type' => 'NUMERIC',
+                ]],
+            ]);
+
+            return array_values(array_map('intval', $query->posts));
+        }
+
+        if ($filter === 'tributes') {
+            $query = new WP_Query([
+                'post_type' => 'meydan_narrative',
+                'post_status' => 'publish',
+                'posts_per_page' => $limit,
+                'fields' => 'ids',
+                'orderby' => ['date' => 'DESC', 'ID' => 'DESC'],
+                'no_found_rows' => true,
+                'meta_query' => [[
+                    'key' => Tributes::META,
                     'value' => 0,
                     'compare' => '>',
                     'type' => 'NUMERIC',
@@ -361,7 +381,8 @@ final class TimelineController extends BaseController
             'reflected' => Serializer::mediaReflections($id) !== [],
             'initiatives' => (int) get_post_meta($id, 'meydan_initiative_id', true) > 0,
             // «روایت» chip: plain narratives, i.e. not attached to a کار.
-            'narratives' => (int) get_post_meta($id, 'meydan_initiative_id', true) <= 0,
+            'narratives' => (int) get_post_meta($id, 'meydan_initiative_id', true) <= 0 && Tributes::memorialId($id) <= 0,
+            'tributes' => Tributes::memorialId($id) > 0,
             'visual' => $hasVisual,
             'audio' => $hasAudio,
             'media' => $hasVisual || $hasAudio,

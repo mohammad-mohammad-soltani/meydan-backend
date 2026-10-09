@@ -11,6 +11,7 @@ use Meydan\Core\Support\Actor;
 use Meydan\Core\Support\Handles;
 use Meydan\Core\Support\Response;
 use Meydan\Core\Support\Serializer;
+use Meydan\Core\Support\Tributes;
 use WP_REST_Request;
 
 /**
@@ -33,6 +34,10 @@ final class EntityController extends BaseController
     {
         $id = $this->visibleId($r);
         if ($id <= 0) return Response::error('not_found', 'مورد پیدا نشد.', 404);
+        // A memorial has no posts of its own; what its page lists are the tributes paid to it, newest first.
+        if (EntityKinds::kindOf($id) === EntityKinds::MEMORIAL) {
+            return ProfileNarrativePage::list([['key' => Tributes::META, 'value' => $id, 'type' => 'NUMERIC']], $r, 'memorial:' . $id);
+        }
         $ownerId = Actor::squareOwnerUserId($id);
         return ProfileExtras::withPinned(ProfileNarrativePage::listByAuthor($ownerId, $r, EntityKinds::kindOf($id) . ':' . $id, true), $ownerId, $r);
     }
@@ -63,9 +68,15 @@ final class EntityController extends BaseController
         if (EntityKinds::kindOf($id) === EntityKinds::MEMORIAL) {
             // The memorial page's own sections: life story, dates, timeline and the photo gallery.
             $memorial = Serializer::memorial($id) ?: [];
-            foreach (['biography', 'birth_date', 'death_date', 'position', 'office', 'timeline', 'frames'] as $key) {
+            foreach (['biography', 'birth_date', 'death_date', 'position', 'office', 'tagline', 'timeline', 'frames'] as $key) {
                 $data[$key] = $memorial[$key] ?? (in_array($key, ['timeline', 'frames'], true) ? [] : '');
             }
+            // The public page draws each life event's photo, so hand it a URL rather than an attachment id.
+            $data['timeline'] = array_map(static function (array $event): array {
+                $photo = (int) ($event['photo_media_id'] ?? 0);
+                $event['photo_url'] = $photo > 0 ? (Actor::avatarUrl($photo) ?: null) : null;
+                return $event;
+            }, is_array($data['timeline']) ? $data['timeline'] : []);
         }
         return $data;
     }

@@ -61,6 +61,7 @@ final class Serializer
             ],
             'quoted_narrative_id' => Quotes::quotedId($id) ?: null,
             'quoted_narrative' => self::quotedNarrative($id),
+            'tribute' => Tributes::summary($id),
             'stats' => Stats::narrative($id),
             'viewer_state' => $viewer->isAuthenticated() ? self::narrativeViewerState((int) $viewer->userId, $id) + [
                 'can_delete' => (int) $post->post_author === $viewer->userId || current_user_can('moderate_meydan_narratives') || current_user_can('manage_options'),
@@ -377,6 +378,7 @@ final class Serializer
         $data['death_date'] = (string) get_post_meta($id, 'meydan_death_date', true);
         $data['position'] = (string) get_post_meta($id, MemorialService::POSITION_META, true);
         $data['office'] = (string) get_post_meta($id, MemorialService::OFFICE_META, true);
+        $data['tagline'] = (string) get_post_meta($id, MemorialService::TAGLINE_META, true);
         $data['timeline'] = MemorialService::timeline($id);
         $data['frames'] = array_map(static function (array $frame): array {
             $frame['url'] = Actor::avatarUrl((int) $frame['media_id']);

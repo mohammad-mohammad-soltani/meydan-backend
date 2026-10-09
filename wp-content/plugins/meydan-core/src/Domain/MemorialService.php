@@ -35,6 +35,8 @@ final class MemorialService
     public const POSITION_META = 'meydan_memorial_position';
     /** منصب: the person's field/standing, e.g. «فیزیک نظری • کیهان‌شناسی». */
     public const OFFICE_META = 'meydan_memorial_office';
+    /** The one line under the name on the public page (the entity subtitle every profile reads). */
+    public const TAGLINE_META = 'meydan_subtitle';
     public const POST_STATUSES = ['draft', 'publish'];
 
     /** @param array<string,mixed> $input @return array{user_id:int,memorial_id:int,name:string}|WP_Error */
@@ -94,6 +96,7 @@ final class MemorialService
         update_post_meta($memorialId, 'meydan_death_date', sanitize_text_field((string) ($input['death_date'] ?? '')));
         update_post_meta($memorialId, self::POSITION_META, sanitize_text_field((string) ($input['position'] ?? '')));
         update_post_meta($memorialId, self::OFFICE_META, sanitize_text_field((string) ($input['office'] ?? '')));
+        update_post_meta($memorialId, self::TAGLINE_META, sanitize_text_field((string) ($input['tagline'] ?? '')));
         update_post_meta($memorialId, self::TIMELINE_META, wp_json_encode($timeline, JSON_UNESCAPED_UNICODE));
         update_post_meta($memorialId, self::FRAMES_META, wp_json_encode($frames, JSON_UNESCAPED_UNICODE));
 
@@ -161,7 +164,7 @@ final class MemorialService
         if (array_key_exists('death_date', $input)) {
             update_post_meta($id, 'meydan_death_date', sanitize_text_field((string) $input['death_date']));
         }
-        foreach (['position' => self::POSITION_META, 'office' => self::OFFICE_META] as $field => $metaKey) {
+        foreach (['position' => self::POSITION_META, 'office' => self::OFFICE_META, 'tagline' => self::TAGLINE_META] as $field => $metaKey) {
             if (array_key_exists($field, $input)) update_post_meta($id, $metaKey, sanitize_text_field((string) $input[$field]));
         }
         if (array_key_exists('verified', $input)) {
@@ -241,6 +244,8 @@ final class MemorialService
                 'id' => preg_match('/^[a-zA-Z0-9_-]{1,40}$/', (string) ($event['id'] ?? '')) ? (string) $event['id'] : wp_generate_password(12, false, false),
                 'date' => sanitize_text_field((string) ($event['date'] ?? '')),
                 'title' => $title,
+                // The organisation or city under the title («دانشگاه آزاد اسلامی»، «تهران»).
+                'place' => sanitize_text_field((string) ($event['place'] ?? '')),
                 'description' => wp_kses_post((string) ($event['description'] ?? '')),
                 'photo_media_id' => max(0, (int) ($event['photo_media_id'] ?? 0)) ?: null,
                 'order' => $index + 1,
