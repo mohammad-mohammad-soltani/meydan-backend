@@ -99,6 +99,7 @@ final class Plugin
         \Meydan\Core\Support\AudioProducers::register();
         \Meydan\Core\Support\Quotes::register();
         \Meydan\Core\Notifications\ProfileSubscriptions::register();
+        \Meydan\Core\Notifications\MentionDelivery::register();
 
         add_filter('determine_current_user', [SessionService::class, 'authenticateBearer'], 30);
         add_filter('determine_current_user', [UserAccess::class, 'currentUser'], 99);
